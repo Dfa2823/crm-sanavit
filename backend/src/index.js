@@ -33,7 +33,9 @@ app.use('/api/outsourcing', authMiddleware, require('./routes/outsourcing'));
 app.use('/api/comisiones', authMiddleware, require('./routes/comisiones'));
 app.use('/api/sac',        authMiddleware, require('./routes/sac'));
 app.use('/api/supervisor', authMiddleware, require('./routes/supervisor'));
-app.use('/api/inventario', authMiddleware, require('./routes/inventario'));
+app.use('/api/inventario',   authMiddleware, require('./routes/inventario'));
+app.use('/api/alertas',      authMiddleware, require('./routes/alertas'));
+app.use('/api/liquidaciones', authMiddleware, require('./routes/liquidaciones'));
 
 const productosRouter = require('./routes/productos');
 const ventasRouter = require('./routes/ventas');
@@ -49,7 +51,7 @@ app.get('/health', (req, res) => {
     status: 'ok',
     sistema: 'CRM Sanavit Ecuador',
     version: '2.0.0',
-    fase: 'Fase 6 - Reportes CSV, Inventario, KPIs Charts, HojaDeVida 360°',
+    fase: 'Fase 7 - Contrato PDF, Liquidaciones, Alertas, Dashboard por Rol',
     timestamp: new Date().toISOString(),
     rutas: ['/api/auth','/api/personas','/api/leads','/api/citas','/api/kpis',
             '/api/admin','/api/cartera','/api/reportes','/api/outsourcing',

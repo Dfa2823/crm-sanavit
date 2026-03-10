@@ -13,8 +13,10 @@ const MENU_POR_ROL = {
     { label: 'Reportes', path: '/reportes', icon: '📈' },
     { label: 'Outsourcing', path: '/outsourcing', icon: '🏢' },
     { label: 'Comisiones', path: '/comisiones', icon: '💰' },
+    { label: 'Liquidaciones', path: '/liquidaciones', icon: '✅' },
     { label: 'SAC / PQR', path: '/sac', icon: '🎫' },
     { label: 'Inventario', path: '/inventario', icon: '📦' },
+    { label: 'Alertas', path: '/alertas', icon: '🔔' },
     { label: 'Administración', path: '/admin', icon: '⚙️' },
   ],
   director: [
@@ -28,8 +30,10 @@ const MENU_POR_ROL = {
     { label: 'Reportes', path: '/reportes', icon: '📈' },
     { label: 'Outsourcing', path: '/outsourcing', icon: '🏢' },
     { label: 'Comisiones', path: '/comisiones', icon: '💰' },
+    { label: 'Liquidaciones', path: '/liquidaciones', icon: '✅' },
     { label: 'SAC / PQR', path: '/sac', icon: '🎫' },
     { label: 'Inventario', path: '/inventario', icon: '📦' },
+    { label: 'Alertas', path: '/alertas', icon: '🔔' },
   ],
   supervisor_cc: [
     { label: 'Mi Equipo TMK', path: '/mercadeo/supervisor', icon: '🎯' },

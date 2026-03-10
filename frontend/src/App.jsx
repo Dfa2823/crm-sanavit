@@ -18,9 +18,12 @@ import ComisionesPage from './pages/Comisiones/ComisionesPage'
 import VentasPage from './pages/Ventas/VentasPage'
 import Venta360Page from './pages/Ventas/Venta360Page'
 import NuevaVentaPage from './pages/Ventas/NuevaVentaPage'
+import ContratoPrint from './pages/Ventas/ContratoPrint'
 import SACPage from './pages/SAC/SACPage'
 import SupervisorDashboard from './pages/Mercadeo/SupervisorDashboard'
 import InventarioPage from './pages/Inventario/InventarioPage'
+import LiquidacionesPage from './pages/Comisiones/LiquidacionesPage'
+import AlertasPage from './pages/Alertas/AlertasPage'
 
 // Rutas protegidas: solo usuarios autenticados
 function PrivateRoute({ children }) {
@@ -67,9 +70,12 @@ function AppRoutes() {
         <Route path="ventas" element={<VentasPage />} />
         <Route path="ventas/nueva" element={<NuevaVentaPage />} />
         <Route path="ventas/:id" element={<Venta360Page />} />
+        <Route path="ventas/:id/imprimir" element={<ContratoPrint />} />
         <Route path="sac" element={<SACPage />} />
         <Route path="mercadeo/supervisor" element={<SupervisorDashboard />} />
         <Route path="inventario" element={<InventarioPage />} />
+        <Route path="liquidaciones" element={<LiquidacionesPage />} />
+        <Route path="alertas" element={<AlertasPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

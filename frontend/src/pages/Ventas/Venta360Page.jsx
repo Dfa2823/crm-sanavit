@@ -122,6 +122,12 @@ export default function Venta360Page() {
           <p className="text-sm text-gray-500">{contrato.nombres} {contrato.apellidos}</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
+          <button
+            onClick={() => navigate(`/ventas/${id}/imprimir`)}
+            className="border border-gray-300 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm flex items-center gap-1.5"
+          >
+            🖨️ Imprimir contrato
+          </button>
           <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
             contrato.estado === 'activo' ? 'bg-green-100 text-green-700' :
             contrato.estado === 'completado' ? 'bg-blue-100 text-blue-700' :
