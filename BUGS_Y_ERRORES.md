@@ -184,6 +184,48 @@
 - [x] Reportes `/reportes` — 4 tipos: Leads / Asistencias / TMK / Contratos+Ventas ✅
 - [x] Reportes — resumen estadístico por tipo (cards financieros, totales) ✅
 
+---
+
+## ✅ RESUELTOS (sesión 2026-03-10 continuación 4 — E2E Fase 3)
+
+### [018] Frontend no rebuildeaba tras push docs-only
+- **Fecha:** 2026-03-10
+- **Síntoma:** Railway no reconstruyó el frontend después del push de `688d287` (BUGS_Y_ERRORES.md only), pese a que el commit anterior `8d02f9c` tenía cambios en `frontend/`
+- **Causa:** Railway detecta cambios por watch path sobre el HEAD del push, no sobre todos los commits del push
+- **Solución:** Bump `frontend/package.json` de v1.0.0 → v2.0.0 (commit `fb2ec8d`) para forzar detección de cambio en `frontend/`
+- **Bundle resultante:** `index-ObB_-HrQ.js` (nuevo hash confirmado)
+
+### [019] git push cuelga en bash/shell de Claude
+- **Fecha:** 2026-03-10
+- **Síntoma:** `git push origin main` se cuelga indefinidamente en terminal bash
+- **Causa:** Windows Credential Manager (GCM) requiere abrir diálogo GUI del browser para re-autenticar GitHub, lo cual no es posible en terminal no-interactiva
+- **Solución:** Usuario ejecuta push manualmente desde PowerShell/CMD donde GCM puede mostrar el diálogo GUI
+- **Entorno:** Windows + Git Credential Manager
+
+---
+
+## ✅ E2E FASE 3 — Verificado 2026-03-10
+
+### Frontend Fase 3 (bundle index-ObB_-HrQ.js)
+- [x] **Reportes** `/reportes` — 4 chips: Leads / Asistencias/Tours / Productividad TMK / Contratos/Ventas ✅
+- [x] **Reportes** — Stats cards por tipo (Total Leads 15, Tours 1, Confirmados 5 en Leads; 2 agentes TMK) ✅
+- [x] **Leads** `/mercadeo/captura` — Botón 📱 WhatsApp junto a cada teléfono → `wa.me/593XXXXXXXXX` ✅
+- [x] **Leads** — Campo "Teléfono 2 (opcional)" visible en formulario de nueva persona ✅
+- [x] **Admin** `/admin` — Tab 💳 Formas de Pago: 8 formas registradas, CRUD funcional ✅
+- [x] **Admin** `/admin` — Tab 📦 Productos: 6 productos Sanavit, CRUD funcional ✅
+- [x] **Ventas** `/ventas` — Lista contratos con stats financieros ✅
+- [x] **Vista 360°** `/ventas/1` — 5 tabs + indicador "⏳ Falta 30.0% para comisión" ✅
+
+### Backend Fase 3 (v2.0.0 en Railway)
+- [x] `GET /api/productos` → 6 productos ✅
+- [x] `GET /api/ventas` → contrato SQT-2476 ✅
+- [x] `GET /api/ventas/1` → Vista 360° con resumen comisión ✅
+- [x] `POST /api/recibos` → funcional ✅
+- [x] `GET /api/admin/formas-pago` → 8 items ✅
+- [x] `GET /api/reportes/tmk` → 2 agentes ✅
+
+---
+
 ### Pendiente para próxima iteración
 - [ ] Módulo SAC/PQR (quejas y reclamos)
 - [ ] Generación PDF contratos (Acta Entrega Recepción + Acta Crédito) — pendiente formatos de Juan Sebastian
@@ -204,9 +246,10 @@
 - **Frontend prod:** https://reasonable-hope-production.up.railway.app (Puerto 8080)
 - **GitHub:** https://github.com/Dfa2823/crm-sanavit
 - **Railway Project:** passionate-healing (ID: 81338afe-6cb9-48c9-a7bc-fd97b3e5ffab)
-- **Último commit backend:** 8d02f9c — feat: Mejoras UX Fase 3 (en deploy)
-- **Último commit frontend:** 8d02f9c — feat: Mejoras UX Fase 3 (en deploy)
+- **Último commit backend:** 8d02f9c — feat: Mejoras UX Fase 3
+- **Último commit frontend:** fb2ec8d — chore: bump frontend version to trigger Railway rebuild
 - **Backend version:** 2.0.0 — Fase 3 activa en producción ✅
+- **Frontend bundle:** index-ObB_-HrQ.js (rebuildeado 2026-03-10)
 - **Schema v2:** aplicado en Railway DB (10 tablas nuevas + extensiones + telefono2)
 - **E2E Fase 2:** ✅ Todos los módulos verificados (2026-03-10)
-- **E2E Fase 3:** 🔄 Deploy en progreso — pendiente verificación /ventas UI
+- **E2E Fase 3:** ✅ Todos los módulos verificados (2026-03-10)
