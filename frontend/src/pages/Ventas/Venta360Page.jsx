@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
 import { getVenta360 } from '../../api/ventas'
-import { getRecibos, createRecibo } from '../../api/recibos'
+import { createRecibo, anularRecibo } from '../../api/recibos'
+import { getFormasPago } from '../../api/admin'
 
 function fmt(val) {
   if (val === null || val === undefined) return '—'
@@ -27,10 +29,25 @@ const TABS = [
 export default function Venta360Page() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { usuario } = useAuth()
   const [data, setData]       = useState(null)
   const [tab, setTab]         = useState('cliente')
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
+
+  // ── Pago / Recibo ─────────────────────────────────────────
+  const [mostrarPago, setMostrarPago] = useState(false)
+  const [formasPago, setFormasPago]   = useState([])
+  const [pago, setPago] = useState({
+    cuota_id: '',
+    valor: '',
+    forma_pago_id: '',
+    fecha_pago: new Date().toISOString().split('T')[0],
+    referencia_pago: '',
+    observacion: '',
+  })
+  const [guardandoPago, setGuardandoPago] = useState(false)
+  const [errorPago, setErrorPago]         = useState('')
 
   const cargar = async () => {
     setLoading(true); setError('')
@@ -45,6 +62,44 @@ export default function Venta360Page() {
   }
 
   useEffect(() => { cargar() }, [id])
+  useEffect(() => { getFormasPago().then(fps => setFormasPago(fps.filter(f => f.activo))).catch(console.error) }, [])
+
+  async function handleGuardarPago(e) {
+    e.preventDefault()
+    setErrorPago('')
+    if (!pago.valor || Number(pago.valor) <= 0) { setErrorPago('El monto debe ser mayor a 0'); return }
+    setGuardandoPago(true)
+    try {
+      await createRecibo({
+        persona_id: data.contrato.persona_id,
+        contrato_id: Number(id),
+        cuota_id: pago.cuota_id ? Number(pago.cuota_id) : undefined,
+        valor: Number(pago.valor),
+        forma_pago_id: pago.forma_pago_id ? Number(pago.forma_pago_id) : undefined,
+        fecha_pago: pago.fecha_pago,
+        referencia_pago: pago.referencia_pago || undefined,
+        observacion: pago.observacion || undefined,
+        sala_id: data.contrato.sala_id,
+      })
+      setMostrarPago(false)
+      setPago({ cuota_id: '', valor: '', forma_pago_id: '', fecha_pago: new Date().toISOString().split('T')[0], referencia_pago: '', observacion: '' })
+      cargar()
+    } catch (err) {
+      setErrorPago(err.response?.data?.error || 'Error al registrar el pago')
+    } finally {
+      setGuardandoPago(false)
+    }
+  }
+
+  async function handleAnularRecibo(reciboId) {
+    if (!window.confirm('¿Anular este recibo? Esta acción no se puede deshacer.')) return
+    try {
+      await anularRecibo(reciboId)
+      cargar()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al anular el recibo')
+    }
+  }
 
   if (loading) return <div className="p-6"><Spinner /></div>
   if (error) return (
@@ -57,6 +112,7 @@ export default function Venta360Page() {
   const { contrato, productos, cuotas, recibos, resumen } = data
 
   return (
+    <>
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
@@ -300,10 +356,24 @@ export default function Venta360Page() {
           {/* TAB: Pagos (Recibos) */}
           {tab === 'pagos' && (
             <div className="space-y-4">
+              {/* Header con botón */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">
+                  {recibos.length} pago{recibos.length !== 1 ? 's' : ''} registrado{recibos.length !== 1 ? 's' : ''}
+                </span>
+                <button
+                  onClick={() => setMostrarPago(true)}
+                  className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                >
+                  + Registrar Pago
+                </button>
+              </div>
+
               {recibos.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
                   <div className="text-4xl mb-3">💰</div>
                   <p>Sin pagos registrados aún</p>
+                  <p className="text-sm mt-1">Haz clic en "+ Registrar Pago" para comenzar</p>
                 </div>
               ) : (
                 <table className="w-full text-sm">
@@ -315,6 +385,7 @@ export default function Venta360Page() {
                       <th className="text-center px-4 py-3 text-gray-600">Fecha</th>
                       <th className="text-left px-4 py-3 text-gray-600">Referencia</th>
                       <th className="text-center px-4 py-3 text-gray-600">Estado</th>
+                      <th className="px-4 py-3"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -330,6 +401,16 @@ export default function Venta360Page() {
                             {r.estado}
                           </span>
                         </td>
+                        <td className="px-4 py-3 text-center">
+                          {['admin', 'director'].includes(usuario?.rol) && r.estado === 'activo' && (
+                            <button
+                              onClick={() => handleAnularRecibo(r.id)}
+                              className="text-red-400 hover:text-red-600 text-xs font-medium"
+                            >
+                              Anular
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -340,5 +421,135 @@ export default function Venta360Page() {
         </div>
       </div>
     </div>
+
+    {/* ── Drawer: Registrar Pago ── */}
+    {mostrarPago && (
+      <>
+        <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setMostrarPago(false)} />
+        <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 flex flex-col">
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white sticky top-0">
+            <div>
+              <h2 className="font-bold text-gray-800 text-lg">Registrar Pago</h2>
+              <p className="text-xs text-gray-400">{contrato.numero_contrato} · {contrato.nombres} {contrato.apellidos}</p>
+            </div>
+            <button onClick={() => setMostrarPago(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            <form id="form-pago" onSubmit={handleGuardarPago} className="space-y-4">
+
+              {/* Info saldo */}
+              <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg text-sm">
+                <div className="flex justify-between">
+                  <span className="text-teal-700">Saldo pendiente:</span>
+                  <span className="font-bold text-teal-800">{fmt(resumen.saldo_pendiente)}</span>
+                </div>
+              </div>
+
+              {/* Cuota */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Cuota a pagar</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  value={pago.cuota_id}
+                  onChange={e => {
+                    const cuotaId = e.target.value
+                    const cuota = cuotas.find(q => String(q.id) === cuotaId)
+                    const saldoCuota = cuota ? (parseFloat(cuota.monto_esperado) - parseFloat(cuota.monto_pagado || 0)).toFixed(2) : ''
+                    setPago(p => ({ ...p, cuota_id: cuotaId, valor: saldoCuota || p.valor }))
+                  }}
+                >
+                  <option value="">💸 Pago libre (sin asignar cuota)</option>
+                  {cuotas
+                    .filter(q => q.estado !== 'pagado')
+                    .map(q => {
+                      const saldo = (parseFloat(q.monto_esperado) - parseFloat(q.monto_pagado || 0)).toFixed(2)
+                      return (
+                        <option key={q.id} value={q.id}>
+                          Cuota #{q.numero_cuota} — Saldo: ${saldo} ({q.estado})
+                        </option>
+                      )
+                    })
+                  }
+                </select>
+              </div>
+
+              {/* Monto */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Monto *</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <input required type="number" min="0.01" step="0.01"
+                    className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="0.00"
+                    value={pago.valor}
+                    onChange={e => setPago(p => ({ ...p, valor: e.target.value }))} />
+                </div>
+              </div>
+
+              {/* Forma de pago */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Forma de pago</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  value={pago.forma_pago_id}
+                  onChange={e => setPago(p => ({ ...p, forma_pago_id: e.target.value }))}>
+                  <option value="">Seleccionar...</option>
+                  {formasPago.map(fp => <option key={fp.id} value={fp.id}>{fp.nombre}</option>)}
+                </select>
+              </div>
+
+              {/* Fecha */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Fecha de pago</label>
+                <input type="date"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  value={pago.fecha_pago}
+                  onChange={e => setPago(p => ({ ...p, fecha_pago: e.target.value }))} />
+              </div>
+
+              {/* Referencia */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Referencia <span className="font-normal text-gray-400">(opcional)</span></label>
+                <input type="text"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder="N° transferencia, cheque, etc."
+                  value={pago.referencia_pago}
+                  onChange={e => setPago(p => ({ ...p, referencia_pago: e.target.value }))} />
+              </div>
+
+              {/* Observación */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Observación <span className="font-normal text-gray-400">(opcional)</span></label>
+                <textarea rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                  placeholder="Notas sobre el pago..."
+                  value={pago.observacion}
+                  onChange={e => setPago(p => ({ ...p, observacion: e.target.value }))} />
+              </div>
+
+              {errorPago && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">⚠️ {errorPago}</div>
+              )}
+            </form>
+          </div>
+
+          {/* Footer */}
+          <div className="px-6 py-4 border-t border-gray-200 flex gap-3 bg-white">
+            <button type="button" onClick={() => setMostrarPago(false)}
+              className="flex-1 border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50">
+              Cancelar
+            </button>
+            <button type="submit" form="form-pago" disabled={guardandoPago}
+              className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white px-4 py-2.5 rounded-lg text-sm font-medium">
+              {guardandoPago ? 'Guardando...' : '✓ Registrar Pago'}
+            </button>
+          </div>
+        </div>
+      </>
+    )}
+    </>
   )
 }

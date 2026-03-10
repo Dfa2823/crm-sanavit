@@ -17,6 +17,7 @@ import OutsourcingPage from './pages/Outsourcing/OutsourcingPage'
 import ComisionesPage from './pages/Comisiones/ComisionesPage'
 import VentasPage from './pages/Ventas/VentasPage'
 import Venta360Page from './pages/Ventas/Venta360Page'
+import NuevaVentaPage from './pages/Ventas/NuevaVentaPage'
 
 // Rutas protegidas: solo usuarios autenticados
 function PrivateRoute({ children }) {
@@ -61,6 +62,7 @@ function AppRoutes() {
         <Route path="outsourcing" element={<OutsourcingPage />} />
         <Route path="comisiones" element={<ComisionesPage />} />
         <Route path="ventas" element={<VentasPage />} />
+        <Route path="ventas/nueva" element={<NuevaVentaPage />} />
         <Route path="ventas/:id" element={<Venta360Page />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
