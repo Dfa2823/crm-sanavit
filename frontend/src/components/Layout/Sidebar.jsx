@@ -14,6 +14,7 @@ const MENU_POR_ROL = {
     { label: 'Outsourcing', path: '/outsourcing', icon: '🏢' },
     { label: 'Comisiones', path: '/comisiones', icon: '💰' },
     { label: 'SAC / PQR', path: '/sac', icon: '🎫' },
+    { label: 'Inventario', path: '/inventario', icon: '📦' },
     { label: 'Administración', path: '/admin', icon: '⚙️' },
   ],
   director: [
@@ -28,6 +29,7 @@ const MENU_POR_ROL = {
     { label: 'Outsourcing', path: '/outsourcing', icon: '🏢' },
     { label: 'Comisiones', path: '/comisiones', icon: '💰' },
     { label: 'SAC / PQR', path: '/sac', icon: '🎫' },
+    { label: 'Inventario', path: '/inventario', icon: '📦' },
   ],
   supervisor_cc: [
     { label: 'Mi Equipo TMK', path: '/mercadeo/supervisor', icon: '🎯' },
@@ -120,7 +122,7 @@ export default function Sidebar() {
           Próximamente
         </p>
         {[
-          { label: 'Inventario', icon: '📦' },
+          { label: 'WhatsApp', icon: '💬' },
         ].map((item) => (
           <div
             key={item.label}

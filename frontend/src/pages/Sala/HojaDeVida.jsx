@@ -1,43 +1,73 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { apiPersonas } from '../../api/personas'
 import { useAuth } from '../../context/AuthContext'
+import client from '../../api/client'
 
-const SEGURIDAD_SOCIAL = ['Cotizante','Beneficiario','Subsidiado','Retirado']
-const SITUACION_LABORAL = ['Empleado público','Empleado privado','Independiente','Jubilado']
-const ESTADO_CIVIL = ['Soltero/a','Casado/a','Divorciado/a','Viudo/a','Unión libre']
-const GENERO = ['Masculino','Femenino','Otro']
-const TIPO_DOCUMENTO = ['Cédula de identidad','Pasaporte','RUC','Otro']
+const SEGURIDAD_SOCIAL  = ['Cotizante', 'Beneficiario', 'Subsidiado', 'Retirado']
+const SITUACION_LABORAL = ['Empleado público', 'Empleado privado', 'Independiente', 'Jubilado']
+const ESTADO_CIVIL      = ['Soltero/a', 'Casado/a', 'Divorciado/a', 'Viudo/a', 'Unión libre']
+const GENERO            = ['Masculino', 'Femenino', 'Otro']
+const TIPO_DOCUMENTO    = ['Cédula de identidad', 'Pasaporte', 'RUC', 'Otro']
+
+const ESTADO_LEAD_COLOR = {
+  confirmada: 'bg-green-100 text-green-800',
+  tour:       'bg-teal-100 text-teal-800',
+  no_tour:    'bg-orange-100 text-orange-800',
+  cancelada:  'bg-red-100 text-red-800',
+  no_show:    'bg-gray-100 text-gray-800',
+  pendiente:  'bg-blue-100 text-blue-800',
+  tentativa:  'bg-yellow-100 text-yellow-800',
+  inasistencia: 'bg-red-100 text-red-800',
+}
+
+const ESTADO_CONTRATO_COLOR = {
+  activo:     'bg-green-100 text-green-800',
+  cancelado:  'bg-red-100 text-red-800',
+  completado: 'bg-teal-100 text-teal-800',
+  suspendido: 'bg-yellow-100 text-yellow-800',
+}
+
+const TIPO_TICKET_COLOR = {
+  queja:        'bg-red-100 text-red-800',
+  reclamo:      'bg-orange-100 text-orange-800',
+  peticion:     'bg-blue-100 text-blue-800',
+  felicitacion: 'bg-green-100 text-green-800',
+}
+
+const ESTADO_TICKET_COLOR = {
+  abierto:    'bg-yellow-100 text-yellow-800',
+  en_proceso: 'bg-blue-100 text-blue-800',
+  resuelto:   'bg-green-100 text-green-800',
+  cerrado:    'bg-gray-100 text-gray-800',
+}
 
 export default function HojaDeVida() {
-  const { id } = useParams()
-  const navigate = useNavigate()
+  const { id }    = useParams()
+  const navigate  = useNavigate()
   const { usuario } = useAuth()
 
-  const [datos, setDatos] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState('info')
-  const [editandoContrato, setEditandoContrato] = useState(false)
-  const [formContrato, setFormContrato] = useState({})
-  const [guardando, setGuardando] = useState(false)
-  const [mensaje, setMensaje] = useState('')
+  const [historia,   setHistoria]   = useState(null)
+  const [loading,    setLoading]    = useState(true)
+  const [tab,        setTab]        = useState('datos')
+  const [editando,   setEditando]   = useState(false)
+  const [form,       setForm]       = useState({})
+  const [guardando,  setGuardando]  = useState(false)
+  const [mensaje,    setMensaje]    = useState('')
 
   const cargar = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await apiPersonas.obtener(id)
-      setDatos(data)
-      setFormContrato({
-        tipo_documento: data.persona.tipo_documento || '',
-        num_documento:  data.persona.num_documento  || '',
-        estado_civil:   data.persona.estado_civil   || '',
-        genero:         data.persona.genero         || '',
-        direccion:      data.persona.direccion       || '',
-        email:          data.persona.email           || '',
-        fecha_nacimiento: data.persona.fecha_nacimiento
-          ? data.persona.fecha_nacimiento.split('T')[0]
-          : '',
-        situacion_laboral:   data.persona.situacion_laboral   || '',
+      const data = await client.get(`/api/personas/${id}/historia`).then(r => r.data)
+      setHistoria(data)
+      setForm({
+        tipo_documento:        data.persona.tipo_documento        || '',
+        num_documento:         data.persona.num_documento         || '',
+        estado_civil:          data.persona.estado_civil          || '',
+        genero:                data.persona.genero                || '',
+        direccion:             data.persona.direccion             || '',
+        email:                 data.persona.email                 || '',
+        fecha_nacimiento:      data.persona.fecha_nacimiento?.split('T')[0] || '',
+        situacion_laboral:     data.persona.situacion_laboral     || '',
         tipo_seguridad_social: data.persona.tipo_seguridad_social || '',
       })
     } catch (err) {
@@ -49,20 +79,22 @@ export default function HojaDeVida() {
 
   useEffect(() => { cargar() }, [cargar])
 
-  async function guardarContrato() {
+  async function guardarDatos() {
     setGuardando(true)
     try {
-      await apiPersonas.actualizar(id, formContrato)
-      setMensaje('✅ Datos del contrato guardados')
-      setEditandoContrato(false)
+      await client.patch(`/api/personas/${id}`, form)
+      setMensaje('✅ Datos guardados correctamente')
+      setEditando(false)
       cargar()
     } catch (err) {
       console.error(err)
+      setMensaje('❌ Error al guardar')
     } finally {
       setGuardando(false)
     }
   }
 
+  // ─── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -71,7 +103,7 @@ export default function HojaDeVida() {
     )
   }
 
-  if (!datos) {
+  if (!historia) {
     return (
       <div className="text-center p-12 text-gray-400">
         <p className="text-4xl mb-3">❓</p>
@@ -81,56 +113,70 @@ export default function HojaDeVida() {
     )
   }
 
-  const { persona, visita } = datos
-  const puedeEditarContrato = ['admin','director','hostess','consultor'].includes(usuario.rol)
+  const { persona, leads, visitas, contratos, tickets } = historia
+  const puedeEditar = ['admin', 'director', 'hostess', 'consultor'].includes(usuario?.rol)
+
+  const TABS = [
+    { key: 'datos',     label: '👤 Datos Personales' },
+    { key: 'historia',  label: '📋 Historia' },
+    { key: 'contratos', label: '💼 Contratos' },
+    { key: 'sac',       label: '🎫 SAC' },
+  ]
 
   return (
-    <div className="max-w-4xl mx-auto space-y-5">
+    <div className="max-w-4xl mx-auto space-y-5 pb-10">
 
-      {/* Encabezado */}
-      <div className="flex items-start gap-4">
-        <button onClick={() => navigate(-1)} className="btn-secondary btn-sm mt-1">← Volver</button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-800">
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-4">
+        <div className="w-14 h-14 bg-teal-100 rounded-full flex items-center justify-center text-2xl font-bold text-teal-600 flex-shrink-0">
+          {persona.nombres?.[0] || '?'}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl font-bold text-gray-900 truncate">
             {persona.nombres} {persona.apellidos}
           </h1>
-          <p className="text-gray-400 text-sm">
-            📞 {persona.telefono} · 📍 {persona.ciudad} · 🎂 {persona.edad} años
+          <p className="text-sm text-gray-500">
+            📞 {persona.telefono || '—'} · 📍 {persona.ciudad || '—'}
+            {persona.num_documento && ` · 🪪 ${persona.num_documento}`}
           </p>
-        </div>
-        {visita?.calificacion && (
-          <div className={`px-4 py-2 rounded-xl font-bold text-lg
-            ${visita.calificacion === 'TOUR'    ? 'bg-green-100 text-green-700' :
-              visita.calificacion === 'NO_TOUR' ? 'bg-red-100 text-red-700' :
-                                                  'bg-gray-100 text-gray-700'}`}>
-            {visita.calificacion === 'TOUR' ? '🟢' : visita.calificacion === 'NO_TOUR' ? '🔴' : '⚫'}
-            {' '}{visita.calificacion}
+          <div className="flex gap-2 mt-1 flex-wrap">
+            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+              {leads.length} leads
+            </span>
+            <span className="text-xs bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full">
+              {contratos.length} contratos
+            </span>
+            <span className="text-xs bg-violet-100 text-violet-800 px-2 py-0.5 rounded-full">
+              {visitas.length} visitas
+            </span>
           </div>
-        )}
+        </div>
+        <button
+          onClick={() => navigate(-1)}
+          className="ml-auto text-gray-400 hover:text-gray-600 text-sm flex-shrink-0"
+        >
+          ← Volver
+        </button>
       </div>
 
-      {/* Mensaje */}
+      {/* ── Mensaje feedback ───────────────────────────────────────────────── */}
       {mensaje && (
         <div className="p-4 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex justify-between">
           {mensaje}
-          <button onClick={() => setMensaje('')} className="text-green-500">×</button>
+          <button onClick={() => setMensaje('')} className="text-green-500 ml-4">×</button>
         </div>
       )}
 
-      {/* Tabs */}
+      {/* ── Tabs container ─────────────────────────────────────────────────── */}
       <div className="card overflow-hidden">
-        <div className="border-b border-gray-200 flex">
-          {[
-            { key: 'info',     label: '📞 Lead / TMK' },
-            { key: 'visita',   label: '🏥 Visita a Sala' },
-            { key: 'contrato', label: '📄 Datos del Contrato' },
-          ].map(t => (
+        <div className="border-b border-gray-200 flex overflow-x-auto">
+          {TABS.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
                 ${tab === t.key
-                  ? 'border-blue-500 text-blue-700'
+                  ? 'border-teal-500 text-teal-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               {t.label}
@@ -138,174 +184,358 @@ export default function HojaDeVida() {
           ))}
         </div>
 
-        {/* TAB: Info del Lead (TMK) */}
-        {tab === 'info' && (
+        {/* ══ TAB 1: Datos Personales ═══════════════════════════════════════ */}
+        {tab === 'datos' && (
           <div className="p-6">
-            <div className="grid grid-cols-2 gap-6">
-              <Campo label="Nombres y apellidos" valor={`${persona.nombres} ${persona.apellidos}`} />
-              <Campo label="Teléfono" valor={persona.telefono} />
-              <Campo label="Ciudad" valor={persona.ciudad} />
-              <Campo label="Edad" valor={persona.edad ? `${persona.edad} años` : '—'} />
-              <Campo label="Motivo / Patología" valor={persona.patologia || persona.lead_patologia || '—'} span />
-              <Campo label="Fuente del lead" valor={persona.fuente_nombre || '—'} />
-              <Campo label="Tipificación" valor={persona.tipificacion_nombre || '—'} />
-              <Campo label="TMK que llamó" valor={persona.tmk_nombre || '—'} />
-              <Campo
-                label="Fecha cita"
-                valor={persona.fecha_cita
-                  ? new Date(persona.fecha_cita).toLocaleString('es-EC', {
-                      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
-                    })
-                  : '—'}
-              />
-              <Campo label="Estado del lead" valor={persona.lead_estado || '—'} />
-            </div>
-          </div>
-        )}
 
-        {/* TAB: Visita a Sala */}
-        {tab === 'visita' && (
-          <div className="p-6">
-            {!visita ? (
-              <div className="text-center py-8 text-gray-400">
-                <p className="text-3xl mb-2">🏥</p>
-                <p>El cliente aún no ha llegado a sala o no hay registro de visita.</p>
-              </div>
-            ) : (
+            {/* Sección A: Info del lead */}
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                Información del Lead
+              </h3>
               <div className="grid grid-cols-2 gap-6">
-                <div className="col-span-2">
-                  <div className={`p-4 rounded-xl text-center font-bold text-xl
-                    ${visita.calificacion === 'TOUR'    ? 'bg-green-100 text-green-700' :
-                      visita.calificacion === 'NO_TOUR' ? 'bg-red-100 text-red-700' :
-                                                          'bg-gray-100 text-gray-600'}`}>
-                    {visita.calificacion === 'TOUR'    ? '🟢 TOUR' :
-                     visita.calificacion === 'NO_TOUR' ? '🔴 NO TOUR' : '⚫ NO SHOW'}
+                <Campo label="Nombres y apellidos" valor={`${persona.nombres} ${persona.apellidos}`} />
+                <Campo label="Teléfono" valor={persona.telefono} />
+                <Campo label="Ciudad" valor={persona.ciudad} />
+                <Campo label="Edad" valor={persona.edad ? `${persona.edad} años` : '—'} />
+                <Campo label="Patología" valor={persona.patologia || '—'} />
+                <Campo label="Fuente del último lead" valor={leads[0]?.fuente_nombre || '—'} />
+                <Campo label="Tipificación" valor={leads[0]?.tipificacion_nombre || '—'} />
+                <Campo label="TMK que llamó" valor={leads[0]?.tmk_nombre || '—'} />
+              </div>
+            </div>
+
+            {/* Sección B: Datos del contrato */}
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                  Datos del Contrato
+                </h3>
+                {puedeEditar && !editando && (
+                  <button onClick={() => setEditando(true)} className="btn-secondary btn-sm">
+                    ✏️ Editar
+                  </button>
+                )}
+              </div>
+
+              {!editando ? (
+                <div className="grid grid-cols-2 gap-6">
+                  <Campo label="Tipo de documento"  valor={persona.tipo_documento        || '—'} />
+                  <Campo label="N° de documento"    valor={persona.num_documento          || '—'} />
+                  <Campo label="Estado civil"        valor={persona.estado_civil           || '—'} />
+                  <Campo label="Género"              valor={persona.genero                 || '—'} />
+                  <Campo label="Email"               valor={persona.email                  || '—'} />
+                  <Campo label="Fecha de nacimiento" valor={persona.fecha_nacimiento?.split('T')[0] || '—'} />
+                  <Campo label="Situación laboral"   valor={persona.situacion_laboral      || '—'} />
+                  <Campo label="Seguridad social"    valor={persona.tipo_seguridad_social  || '—'} />
+                  <Campo label="Dirección"           valor={persona.direccion              || '—'} span />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="label">Tipo de documento</label>
+                      <select className="input" value={form.tipo_documento}
+                        onChange={e => setForm(f => ({ ...f, tipo_documento: e.target.value }))}>
+                        <option value="">Seleccionar...</option>
+                        {TIPO_DOCUMENTO.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">N° de documento</label>
+                      <input className="input" value={form.num_documento}
+                        onChange={e => setForm(f => ({ ...f, num_documento: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label">Estado civil</label>
+                      <select className="input" value={form.estado_civil}
+                        onChange={e => setForm(f => ({ ...f, estado_civil: e.target.value }))}>
+                        <option value="">Seleccionar...</option>
+                        {ESTADO_CIVIL.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Género</label>
+                      <select className="input" value={form.genero}
+                        onChange={e => setForm(f => ({ ...f, genero: e.target.value }))}>
+                        <option value="">Seleccionar...</option>
+                        {GENERO.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Email</label>
+                      <input type="email" className="input" value={form.email}
+                        onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label">Fecha de nacimiento</label>
+                      <input type="date" className="input" value={form.fecha_nacimiento}
+                        onChange={e => setForm(f => ({ ...f, fecha_nacimiento: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label">Situación laboral</label>
+                      <select className="input" value={form.situacion_laboral}
+                        onChange={e => setForm(f => ({ ...f, situacion_laboral: e.target.value }))}>
+                        <option value="">Seleccionar...</option>
+                        {SITUACION_LABORAL.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Seguridad social</label>
+                      <select className="input" value={form.tipo_seguridad_social}
+                        onChange={e => setForm(f => ({ ...f, tipo_seguridad_social: e.target.value }))}>
+                        <option value="">Seleccionar...</option>
+                        {SEGURIDAD_SOCIAL.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label">Dirección</label>
+                    <input className="input" value={form.direccion}
+                      onChange={e => setForm(f => ({ ...f, direccion: e.target.value }))} />
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button onClick={() => setEditando(false)} className="btn-secondary">
+                      Cancelar
+                    </button>
+                    <button onClick={guardarDatos} disabled={guardando} className="btn-primary">
+                      {guardando ? 'Guardando...' : 'Guardar datos'}
+                    </button>
                   </div>
                 </div>
-                <Campo label="Hora de cita agendada" valor={visita.hora_cita_agendada || '—'} />
-                <Campo label="Hora de llegada real" valor={visita.hora_llegada || '—'} />
-                <Campo label="Consultor asignado" valor={visita.consultor_nombre || '—'} />
-                <Campo label="Hostess / Recepcionista" valor={visita.hostess_nombre || '—'} />
-                <Campo label="Acompañante" valor={visita.acompanante || '—'} />
-                <Campo label="Fecha de visita" valor={visita.fecha || '—'} />
-              </div>
-            )}
-          </div>
-        )}
+              )}
 
-        {/* TAB: Datos del Contrato */}
-        {tab === 'contrato' && (
-          <div className="p-6">
-            <div className="flex justify-between items-center mb-5">
-              <h3 className="font-semibold text-gray-700">Información para el contrato</h3>
-              {puedeEditarContrato && !editandoContrato && (
-                <button
-                  onClick={() => setEditandoContrato(true)}
-                  className="btn-secondary btn-sm"
-                >
-                  ✏️ Editar
-                </button>
+              {/* Placeholder contrato */}
+              {!editando && (
+                <div className="mt-6 p-4 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl text-center">
+                  <p className="text-gray-500 text-sm">
+                    📄 La generación del contrato SQT/SQM estará disponible en la siguiente versión.
+                  </p>
+                  <button className="btn-secondary btn-sm mt-3 opacity-50 cursor-not-allowed" disabled>
+                    Generar contrato (próximamente)
+                  </button>
+                </div>
               )}
             </div>
+          </div>
+        )}
 
-            {!editandoContrato ? (
-              <div className="grid grid-cols-2 gap-6">
-                <Campo label="Tipo de documento" valor={persona.tipo_documento || '—'} />
-                <Campo label="Número de documento" valor={persona.num_documento || '—'} />
-                <Campo label="Estado civil" valor={persona.estado_civil || '—'} />
-                <Campo label="Género" valor={persona.genero || '—'} />
-                <Campo label="Email" valor={persona.email || '—'} />
-                <Campo label="Fecha de nacimiento" valor={persona.fecha_nacimiento?.split('T')[0] || '—'} />
-                <Campo label="Situación laboral" valor={persona.situacion_laboral || '—'} />
-                <Campo label="Seguridad social" valor={persona.tipo_seguridad_social || '—'} />
-                <Campo label="Dirección" valor={persona.direccion || '—'} span />
+        {/* ══ TAB 2: Historia ═══════════════════════════════════════════════ */}
+        {tab === 'historia' && (
+          <div className="p-6">
+
+            {/* Timeline de leads */}
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">
+              Historial de llamadas ({leads.length})
+            </h3>
+
+            {leads.length === 0 ? (
+              <div className="text-center py-10 text-gray-400">
+                <p className="text-3xl mb-2">📋</p>
+                <p className="text-sm">Sin leads registrados</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="label">Tipo de documento</label>
-                    <select className="input" value={formContrato.tipo_documento}
-                      onChange={e => setFormContrato(f => ({ ...f, tipo_documento: e.target.value }))}>
-                      <option value="">Seleccionar...</option>
-                      {TIPO_DOCUMENTO.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
+              <div className="relative">
+                {leads.map((lead, i) => (
+                  <div key={lead.id} className="flex gap-4 mb-2">
+                    {/* Línea vertical + punto */}
+                    <div className="flex flex-col items-center">
+                      <div className="w-3 h-3 bg-teal-500 rounded-full mt-1 flex-shrink-0" />
+                      {i < leads.length - 1 && (
+                        <div className="w-0.5 bg-gray-200 flex-1 mt-1" />
+                      )}
+                    </div>
+                    {/* Card del lead */}
+                    <div className="bg-white rounded-lg shadow-sm border p-3 flex-1 mb-2">
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ESTADO_LEAD_COLOR[lead.estado] || 'bg-gray-100 text-gray-800'}`}>
+                            {lead.estado}
+                          </span>
+                          {lead.tipificacion_nombre && (
+                            <span className="text-xs text-gray-500">{lead.tipificacion_nombre}</span>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-400 flex-shrink-0 ml-2">
+                          {new Date(lead.created_at).toLocaleDateString('es-EC')}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-700 mt-1">
+                        <span className="font-medium">TMK:</span> {lead.tmk_nombre || '—'} ·{' '}
+                        <span className="font-medium">Fuente:</span> {lead.fuente_nombre || '—'} ·{' '}
+                        <span className="font-medium">Sala:</span> {lead.sala_nombre || '—'}
+                      </p>
+                      {lead.patologia && (
+                        <p className="text-xs text-gray-500 mt-1">Patología: {lead.patologia}</p>
+                      )}
+                      {lead.observacion && (
+                        <p className="text-xs text-gray-500 mt-0.5 italic">"{lead.observacion}"</p>
+                      )}
+                      {lead.fecha_cita && (
+                        <p className="text-xs text-blue-600 mt-1">
+                          📅 Cita: {new Date(lead.fecha_cita).toLocaleString('es-EC')}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <label className="label">N° de documento</label>
-                    <input className="input" value={formContrato.num_documento}
-                      onChange={e => setFormContrato(f => ({ ...f, num_documento: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="label">Estado civil</label>
-                    <select className="input" value={formContrato.estado_civil}
-                      onChange={e => setFormContrato(f => ({ ...f, estado_civil: e.target.value }))}>
-                      <option value="">Seleccionar...</option>
-                      {ESTADO_CIVIL.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label">Género</label>
-                    <select className="input" value={formContrato.genero}
-                      onChange={e => setFormContrato(f => ({ ...f, genero: e.target.value }))}>
-                      <option value="">Seleccionar...</option>
-                      {GENERO.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label">Email</label>
-                    <input type="email" className="input" value={formContrato.email}
-                      onChange={e => setFormContrato(f => ({ ...f, email: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="label">Fecha de nacimiento</label>
-                    <input type="date" className="input" value={formContrato.fecha_nacimiento}
-                      onChange={e => setFormContrato(f => ({ ...f, fecha_nacimiento: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="label">Situación laboral</label>
-                    <select className="input" value={formContrato.situacion_laboral}
-                      onChange={e => setFormContrato(f => ({ ...f, situacion_laboral: e.target.value }))}>
-                      <option value="">Seleccionar...</option>
-                      {SITUACION_LABORAL.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label">Seguridad social</label>
-                    <select className="input" value={formContrato.tipo_seguridad_social}
-                      onChange={e => setFormContrato(f => ({ ...f, tipo_seguridad_social: e.target.value }))}>
-                      <option value="">Seleccionar...</option>
-                      {SEGURIDAD_SOCIAL.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="label">Dirección</label>
-                  <input className="input" value={formContrato.direccion}
-                    onChange={e => setFormContrato(f => ({ ...f, direccion: e.target.value }))} />
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setEditandoContrato(false)} className="btn-secondary">
-                    Cancelar
-                  </button>
-                  <button onClick={guardarContrato} disabled={guardando} className="btn-primary">
-                    {guardando ? 'Guardando...' : 'Guardar datos'}
-                  </button>
-                </div>
+                ))}
               </div>
             )}
 
-            {/* Placeholder generación de contrato */}
-            {!editandoContrato && (
-              <div className="mt-6 p-4 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl text-center">
-                <p className="text-gray-500 text-sm">
-                  📄 La generación del contrato SQT/SQM estará disponible en la siguiente versión.
-                </p>
-                <button className="btn-secondary btn-sm mt-3 opacity-50 cursor-not-allowed" disabled>
-                  Generar contrato (próximamente)
-                </button>
+            {/* Visitas a sala */}
+            <h3 className="text-sm font-semibold text-gray-700 mb-3 mt-6">
+              Visitas a sala ({visitas.length})
+            </h3>
+            {visitas.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">
+                <p className="text-3xl mb-2">🏥</p>
+                <p className="text-sm">Sin visitas registradas</p>
               </div>
+            ) : (
+              visitas.map(v => (
+                <div key={v.id} className="bg-white rounded-lg border p-3 mb-2 flex justify-between items-center">
+                  <div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      v.calificacion === 'TOUR'    ? 'bg-teal-100 text-teal-800' :
+                      v.calificacion === 'NO_TOUR' ? 'bg-orange-100 text-orange-800' :
+                                                     'bg-gray-100 text-gray-800'
+                    }`}>
+                      {v.calificacion || 'Sin calificar'}
+                    </span>
+                    <span className="text-sm text-gray-700 ml-2">
+                      {v.sala_nombre} · {v.consultor_nombre || 'Sin consultor'}
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{v.fecha}</span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* ══ TAB 3: Contratos ══════════════════════════════════════════════ */}
+        {tab === 'contratos' && (
+          <div className="p-6">
+            {contratos.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <p className="text-4xl mb-2">💼</p>
+                <p className="text-sm">Sin contratos registrados</p>
+              </div>
+            ) : (
+              contratos.map(c => {
+                const monto   = Number(c.monto_total)   || 0
+                const pagado  = Number(c.total_pagado)  || 0
+                const vencidas = Number(c.cuotas_vencidas) || 0
+                const pct     = monto > 0 ? Math.round((pagado / monto) * 100) : 0
+                return (
+                  <div key={c.id} className="bg-white rounded-lg shadow-sm border p-4 mb-3">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="font-semibold text-gray-900">{c.numero_contrato}</p>
+                        <p className="text-xs text-gray-500">
+                          {c.tipo_plan || '—'} · {c.n_cuotas || 0} cuotas · {c.consultor_nombre || '—'}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0 ml-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${ESTADO_CONTRATO_COLOR[c.estado] || 'bg-gray-100 text-gray-800'}`}>
+                          {c.estado}
+                        </span>
+                        {vencidas > 0 && (
+                          <p className="text-xs text-red-600 mt-1">⚠️ {vencidas} cuotas vencidas</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Barra de progreso de pago */}
+                    <div className="mb-2">
+                      <div className="flex justify-between text-xs text-gray-600 mb-1">
+                        <span>
+                          Pagado: ${pagado.toLocaleString('es-EC', { minimumFractionDigits: 2 })}
+                        </span>
+                        <span>
+                          Total: ${monto.toLocaleString('es-EC', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="bg-gray-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            pct >= 100 ? 'bg-teal-500' :
+                            pct >= 30  ? 'bg-blue-500' :
+                                         'bg-orange-400'
+                          }`}
+                          style={{ width: `${Math.min(pct, 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5 text-right">
+                        {pct}% cobrado
+                        {pct >= 30 && (
+                          <span className="text-green-600 ml-1">✅ Comisión desbloqueada</span>
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-xs text-gray-400">
+                        {c.fecha_contrato
+                          ? new Date(c.fecha_contrato).toLocaleDateString('es-EC')
+                          : '—'}
+                        {c.sala_nombre && ` · ${c.sala_nombre}`}
+                      </p>
+                      <button
+                        onClick={() => navigate(`/ventas/${c.id}`)}
+                        className="text-teal-600 text-xs font-medium hover:underline"
+                      >
+                        Ver detalle →
+                      </button>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
+
+        {/* ══ TAB 4: SAC ════════════════════════════════════════════════════ */}
+        {tab === 'sac' && (
+          <div className="p-6">
+            {!tickets || tickets.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <p className="text-4xl mb-2">🎫</p>
+                <p className="text-sm">Sin tickets SAC registrados</p>
+              </div>
+            ) : (
+              tickets.map(t => (
+                <div key={t.id} className="bg-white rounded-lg border p-4 mb-3">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1 min-w-0 mr-3">
+                      <p className="font-medium text-sm text-gray-900">{t.numero_ticket}</p>
+                      {t.descripcion && (
+                        <p className="text-xs text-gray-500 mt-0.5">{t.descripcion}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-1 flex-col items-end flex-shrink-0">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${TIPO_TICKET_COLOR[t.tipo] || 'bg-gray-100 text-gray-800'}`}>
+                        {t.tipo}
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${ESTADO_TICKET_COLOR[t.estado] || 'bg-gray-100 text-gray-800'}`}>
+                        {t.estado}
+                      </span>
+                      {t.prioridad && (
+                        <span className="text-xs text-gray-500">{t.prioridad}</span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Apertura:{' '}
+                    {t.fecha_apertura
+                      ? new Date(t.fecha_apertura).toLocaleDateString('es-EC')
+                      : '—'}
+                    {t.fecha_cierre &&
+                      ` · Cierre: ${new Date(t.fecha_cierre).toLocaleDateString('es-EC')}`}
+                    {t.asignado_nombre && ` · Asignado: ${t.asignado_nombre}`}
+                  </p>
+                </div>
+              ))
             )}
           </div>
         )}

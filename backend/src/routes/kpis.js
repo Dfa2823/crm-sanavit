@@ -143,4 +143,66 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+// GET /api/kpis/tendencia?sala_id=X&semanas=8
+// Retorna ventas (contratos creados) por semana, últimas N semanas
+router.get('/tendencia', auth, async (req, res) => {
+  const { sala_id, semanas = 8 } = req.query;
+  const { sala_id: userSalaId, rol } = req.user;
+  const salaId = sala_id || (['admin','director'].includes(rol) ? null : userSalaId);
+  const n = Math.min(parseInt(semanas), 52);
+  try {
+    const result = await pool.query(`
+      SELECT
+        DATE_TRUNC('week', fecha_contrato)::date AS semana_inicio,
+        COUNT(*)                                  AS total_contratos,
+        COALESCE(SUM(monto_total), 0)             AS monto_total
+      FROM contratos
+      WHERE fecha_contrato >= NOW() - INTERVAL '${n} weeks'
+        AND ($1::integer IS NULL OR sala_id = $1)
+        AND estado NOT IN ('cancelado')
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `, [salaId || null]);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/kpis/top-consultores?sala_id=X&periodo=YYYY-MM
+// Top 5 consultores por número de contratos y monto en el período
+router.get('/top-consultores', auth, async (req, res) => {
+  const { sala_id, periodo } = req.query;
+  const { sala_id: userSalaId, rol } = req.user;
+  const salaId = sala_id || (['admin','director'].includes(rol) ? null : userSalaId);
+  const now = new Date();
+  let fechaInicio, fechaFin;
+  if (periodo) {
+    const [y, m] = periodo.split('-');
+    fechaInicio = `${y}-${m}-01`;
+    fechaFin    = `${y}-${m}-${new Date(y, m, 0).getDate()}`;
+  } else {
+    const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
+    fechaInicio = `${y}-${m}-01`;
+    fechaFin    = `${y}-${m}-${new Date(y, now.getMonth()+1, 0).getDate()}`;
+  }
+  try {
+    const result = await pool.query(`
+      SELECT
+        u.nombre                             AS consultor,
+        u.id                                 AS consultor_id,
+        COUNT(c.id)                          AS total_contratos,
+        COALESCE(SUM(c.monto_total), 0)      AS monto_total,
+        COALESCE(SUM(CASE WHEN c.segunda_venta THEN 1 ELSE 0 END), 0) AS segundas_ventas
+      FROM contratos c
+      JOIN usuarios u ON c.consultor_id = u.id
+      WHERE DATE(c.fecha_contrato) BETWEEN $1::date AND $2::date
+        AND ($3::integer IS NULL OR c.sala_id = $3)
+        AND c.estado NOT IN ('cancelado')
+      GROUP BY u.id, u.nombre
+      ORDER BY total_contratos DESC, monto_total DESC
+      LIMIT 5
+    `, [fechaInicio, fechaFin, salaId || null]);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

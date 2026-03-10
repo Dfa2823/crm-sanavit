@@ -230,4 +230,111 @@ router.get('/tmk', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// GET /api/reportes/ventas?sala_id=X&fecha_inicio=Y&fecha_fin=Z
+// Contratos firmados con cartera, cobrado y saldo pendiente
+// ═══════════════════════════════════════════════════════════════
+router.get('/ventas', async (req, res) => {
+  const { sala_id, fecha_inicio, fecha_fin } = req.query;
+  const { sala_id: userSalaId, rol } = req.user;
+  const { inicio, fin } = parseFechas(fecha_inicio, fecha_fin);
+  const salaFiltro = sala_id || (['admin', 'director'].includes(rol) ? null : userSalaId);
+  try {
+    const result = await pool.query(`
+      SELECT
+        c.id                   AS "ID Contrato",
+        c.numero_contrato      AS "Número Contrato",
+        TO_CHAR(c.fecha_contrato,'YYYY-MM-DD') AS "Fecha Contrato",
+        p.nombres || ' ' || COALESCE(p.apellidos,'') AS "Cliente",
+        p.num_documento        AS "Cédula",
+        p.telefono             AS "Teléfono",
+        c.tipo_plan            AS "Tipo Plan",
+        c.monto_total          AS "Monto Total",
+        COALESCE(SUM(r.valor) FILTER (WHERE r.estado='activo'),0) AS "Total Cobrado",
+        c.monto_total - COALESCE(SUM(r.valor) FILTER (WHERE r.estado='activo'),0) AS "Saldo",
+        c.n_cuotas             AS "N Cuotas",
+        c.estado               AS "Estado",
+        s.nombre               AS "Sala",
+        u.nombre               AS "Consultor"
+      FROM contratos c
+      JOIN personas p ON c.persona_id = p.id
+      LEFT JOIN salas s ON c.sala_id = s.id
+      LEFT JOIN usuarios u ON c.consultor_id = u.id
+      LEFT JOIN recibos r ON r.contrato_id = c.id
+      WHERE DATE(c.fecha_contrato) BETWEEN $1::date AND $2::date
+        AND ($3::integer IS NULL OR c.sala_id = $3)
+      GROUP BY c.id, p.id, s.id, u.id
+      ORDER BY c.fecha_contrato DESC
+    `, [inicio, fin, salaFiltro || null]);
+    res.json({
+      meta: {
+        total: result.rows.length,
+        fecha_inicio: inicio,
+        fecha_fin: fin,
+        monto_total: result.rows.reduce((s, r) => s + parseFloat(r['Monto Total'] || 0), 0).toFixed(2),
+        total_cobrado: result.rows.reduce((s, r) => s + parseFloat(r['Total Cobrado'] || 0), 0).toFixed(2),
+        sala_id: salaFiltro || 'todas',
+        generado_en: new Date().toISOString(),
+      },
+      data: result.rows,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// GET /api/reportes/cartera?sala_id=X
+// Cuotas vencidas / en mora con aging por tramos
+// ═══════════════════════════════════════════════════════════════
+router.get('/cartera', async (req, res) => {
+  const { sala_id } = req.query;
+  const { sala_id: userSalaId, rol } = req.user;
+  const salaFiltro = sala_id || (['admin', 'director', 'asesor_cartera'].includes(rol) ? null : userSalaId);
+  try {
+    const result = await pool.query(`
+      SELECT
+        cu.id                  AS "ID Cuota",
+        c.numero_contrato      AS "Contrato",
+        p.nombres || ' ' || COALESCE(p.apellidos,'') AS "Cliente",
+        p.telefono             AS "Teléfono",
+        cu.numero_cuota        AS "N° Cuota",
+        cu.monto_esperado      AS "Monto Esperado",
+        COALESCE(cu.monto_pagado,0) AS "Monto Pagado",
+        cu.monto_esperado - COALESCE(cu.monto_pagado,0) AS "Saldo Cuota",
+        TO_CHAR(cu.fecha_vencimiento,'YYYY-MM-DD') AS "Fecha Vencimiento",
+        NOW()::date - cu.fecha_vencimiento::date AS "Días Mora",
+        cu.estado              AS "Estado",
+        s.nombre               AS "Sala",
+        u.nombre               AS "Consultor"
+      FROM cuotas cu
+      JOIN contratos c ON cu.contrato_id = c.id
+      JOIN personas p ON c.persona_id = p.id
+      LEFT JOIN salas s ON c.sala_id = s.id
+      LEFT JOIN usuarios u ON c.consultor_id = u.id
+      WHERE cu.estado IN ('vencido','pendiente')
+        AND cu.fecha_vencimiento < CURRENT_DATE
+        AND ($1::integer IS NULL OR c.sala_id = $1)
+      ORDER BY cu.fecha_vencimiento ASC
+    `, [salaFiltro || null]);
+    const rows = result.rows;
+    res.json({
+      meta: {
+        total: rows.length,
+        monto_vencido: rows.reduce((s, r) => s + parseFloat(r['Saldo Cuota'] || 0), 0).toFixed(2),
+        mora_30: rows.filter(r => r['Días Mora'] <= 30).length,
+        mora_60: rows.filter(r => r['Días Mora'] > 30 && r['Días Mora'] <= 60).length,
+        mora_90: rows.filter(r => r['Días Mora'] > 60).length,
+        sala_id: salaFiltro || 'todas',
+        generado_en: new Date().toISOString(),
+      },
+      data: rows,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

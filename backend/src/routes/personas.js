@@ -164,4 +164,85 @@ router.patch('/:id', auth, async (req, res) => {
   }
 });
 
+// GET /api/personas/:id/historia — historial 360° de una persona
+router.get('/:id/historia', auth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    // 1. Datos de la persona
+    const personaRes = await pool.query(
+      `SELECT * FROM personas WHERE id = $1`, [id]
+    );
+    if (personaRes.rows.length === 0) return res.status(404).json({ error: 'Persona no encontrada' });
+
+    // 2. Leads (historial completo de llamadas)
+    const leadsRes = await pool.query(`
+      SELECT l.*,
+        f.nombre AS fuente_nombre,
+        t.nombre AS tipificacion_nombre,
+        s.nombre AS sala_nombre,
+        u_tmk.nombre AS tmk_nombre
+      FROM leads l
+      LEFT JOIN fuentes f ON l.fuente_id = f.id
+      LEFT JOIN tipificaciones t ON l.tipificacion_id = t.id
+      LEFT JOIN salas s ON l.sala_id = s.id
+      LEFT JOIN usuarios u_tmk ON l.tmk_id = u_tmk.id
+      WHERE l.persona_id = $1
+      ORDER BY l.created_at DESC
+    `, [id]);
+
+    // 3. Visitas a sala
+    const visitasRes = await pool.query(`
+      SELECT vs.*,
+        s.nombre AS sala_nombre,
+        u.nombre AS consultor_nombre
+      FROM visitas_sala vs
+      LEFT JOIN salas s ON vs.sala_id = s.id
+      LEFT JOIN usuarios u ON vs.consultor_id = u.id
+      WHERE vs.persona_id = $1
+      ORDER BY vs.fecha DESC
+    `, [id]);
+
+    // 4. Contratos con resumen financiero
+    const contratosRes = await pool.query(`
+      SELECT c.*,
+        s.nombre AS sala_nombre,
+        u.nombre AS consultor_nombre,
+        COALESCE(SUM(r.valor) FILTER (WHERE r.estado='activo'), 0) AS total_pagado,
+        COUNT(cu.id) FILTER (WHERE cu.estado='vencido') AS cuotas_vencidas
+      FROM contratos c
+      LEFT JOIN salas s ON c.sala_id = s.id
+      LEFT JOIN usuarios u ON c.consultor_id = u.id
+      LEFT JOIN recibos r ON r.contrato_id = c.id
+      LEFT JOIN cuotas cu ON cu.contrato_id = c.id
+      WHERE c.persona_id = $1
+      GROUP BY c.id, s.id, u.id
+      ORDER BY c.fecha_contrato DESC
+    `, [id]);
+
+    // 5. Tickets SAC (si la tabla existe)
+    let ticketsData = [];
+    try {
+      const ticketsRes = await pool.query(`
+        SELECT pt.*, u.nombre AS asignado_nombre
+        FROM pqr_tickets pt
+        LEFT JOIN usuarios u ON pt.asignado_a = u.id
+        WHERE pt.persona_id = $1
+        ORDER BY pt.fecha_apertura DESC
+      `, [id]);
+      ticketsData = ticketsRes.rows;
+    } catch (e) { /* tabla no existe aún */ }
+
+    res.json({
+      persona:   personaRes.rows[0],
+      leads:     leadsRes.rows,
+      visitas:   visitasRes.rows,
+      contratos: contratosRes.rows,
+      tickets:   ticketsData,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

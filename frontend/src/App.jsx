@@ -20,6 +20,7 @@ import Venta360Page from './pages/Ventas/Venta360Page'
 import NuevaVentaPage from './pages/Ventas/NuevaVentaPage'
 import SACPage from './pages/SAC/SACPage'
 import SupervisorDashboard from './pages/Mercadeo/SupervisorDashboard'
+import InventarioPage from './pages/Inventario/InventarioPage'
 
 // Rutas protegidas: solo usuarios autenticados
 function PrivateRoute({ children }) {
@@ -68,6 +69,7 @@ function AppRoutes() {
         <Route path="ventas/:id" element={<Venta360Page />} />
         <Route path="sac" element={<SACPage />} />
         <Route path="mercadeo/supervisor" element={<SupervisorDashboard />} />
+        <Route path="inventario" element={<InventarioPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
