@@ -52,12 +52,13 @@ app.get('/health', (req, res) => {
     status: 'ok',
     sistema: 'CRM Sanavit Ecuador',
     version: '2.0.0',
-    fase: 'Fase 8 - Busqueda Global, Estado Contrato, Mi Perfil, Mejoras UI',
+    fase: 'Fase 10 - Sidebar Colapsable, Exportación PDF/CSV, Reportes Completos',
     timestamp: new Date().toISOString(),
     rutas: ['/api/auth','/api/personas','/api/leads','/api/citas','/api/kpis',
             '/api/admin','/api/cartera','/api/reportes','/api/outsourcing',
             '/api/comisiones','/api/sac','/api/supervisor','/api/inventario',
-            '/api/productos','/api/ventas','/api/recibos'],
+            '/api/productos','/api/ventas','/api/recibos',
+            '/api/alertas','/api/liquidaciones','/api/perfil'],
   });
 });
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import client from '../../api/client'
-import { getReportLeads, getReportVentas, getReportCartera } from '../../api/reportes'
+import { getReportLeads, getReportVentas, getReportCartera, getReporteAsistencias, getReporteTMK } from '../../api/reportes'
 
 // ─────────────────────────────── Helpers ────────────────────────────────────
 
@@ -128,6 +128,29 @@ function MiniCards({ tabActivo, meta, data }) {
       { label: 'Mora 1-30 días',   valor: mora30,        color: 'bg-yellow-50 text-yellow-700' },
       { label: 'Mora 31+ días',    valor: (meta?.mora_60 ?? 0) + (meta?.mora_90 ?? mora60), color: 'bg-red-50 text-red-800' },
     ]
+  } else if (tabActivo === 'asistencias') {
+    const tours   = data.filter(r => r['Calificación Sala'] === 'TOUR').length
+    const noTours = data.filter(r => r['Calificación Sala'] === 'NO_TOUR').length
+    const noShows = data.filter(r => r['Calificación Sala'] === 'NO_SHOW').length
+    const conv    = data.length > 0 ? ((tours / data.length) * 100).toFixed(1) : 0
+    cards = [
+      { label: 'Total Asistencias', valor: data.length, color: 'bg-blue-50 text-blue-700' },
+      { label: 'TOUR ✅',           valor: tours,        color: 'bg-green-50 text-green-700' },
+      { label: 'NO TOUR ❌',        valor: noTours,      color: 'bg-red-50 text-red-700' },
+      { label: 'Conversión Tour',   valor: `${conv}%`,   color: 'bg-purple-50 text-purple-700' },
+    ]
+  } else if (tabActivo === 'tmk') {
+    const totalLeads = data.reduce((s, r) => s + Number(r['Total Leads'] || 0), 0)
+    const totalCitas = data.reduce((s, r) => s + Number(r['Citas Agendadas'] || 0), 0)
+    const totalTours = data.reduce((s, r) => s + Number(r['Tours'] || 0), 0)
+    const efectividad = totalLeads > 0 ? ((totalCitas / totalLeads) * 100).toFixed(1) : 0
+    cards = [
+      { label: 'TMKs activos',   valor: data.length,    color: 'bg-blue-50 text-blue-700' },
+      { label: 'Total Leads',    valor: totalLeads,     color: 'bg-teal-50 text-teal-700' },
+      { label: 'Total Citas',    valor: totalCitas,     color: 'bg-yellow-50 text-yellow-700' },
+      { label: 'Total Tours',    valor: totalTours,     color: 'bg-green-50 text-green-700' },
+    ]
+    void efectividad
   }
 
   if (cards.length === 0) return null
@@ -221,9 +244,11 @@ function exportarCSV(tabActivo, data) {
 const POR_PAGINA = 50
 
 const TABS = [
-  { key: 'leads',   label: 'Leads' },
-  { key: 'ventas',  label: 'Ventas' },
-  { key: 'cartera', label: 'Cartera' },
+  { key: 'leads',       label: 'Leads' },
+  { key: 'ventas',      label: 'Ventas' },
+  { key: 'cartera',     label: 'Cartera' },
+  { key: 'asistencias', label: 'Asistencias' },
+  { key: 'tmk',         label: 'Productividad TMK' },
 ]
 
 export default function ReportesPage() {
@@ -256,9 +281,11 @@ export default function ReportesPage() {
         fecha_fin:    fechaFin    || undefined,
       }
       let resultado
-      if (tabActivo === 'leads')   resultado = await getReportLeads(params)
-      if (tabActivo === 'ventas')  resultado = await getReportVentas(params)
-      if (tabActivo === 'cartera') resultado = await getReportCartera(params)
+      if (tabActivo === 'leads')       resultado = await getReportLeads(params)
+      if (tabActivo === 'ventas')      resultado = await getReportVentas(params)
+      if (tabActivo === 'cartera')     resultado = await getReportCartera(params)
+      if (tabActivo === 'asistencias') resultado = await getReporteAsistencias(params)
+      if (tabActivo === 'tmk')         resultado = await getReporteTMK(params)
       setDatos(resultado)
     } catch (err) {
       console.error(err)

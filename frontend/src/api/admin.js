@@ -4,8 +4,11 @@ export const getUsuarios    = ()         => api.get('/api/admin/usuarios').then(
 export const createUsuario  = (data)     => api.post('/api/admin/usuarios', data).then(r => r.data)
 export const updateUsuario  = (id, data) => api.patch(`/api/admin/usuarios/${id}`, data).then(r => r.data)
 
-export const getSalas       = ()     => api.get('/api/admin/salas').then(r => r.data)
-export const createSala     = (data) => api.post('/api/admin/salas', data).then(r => r.data)
+export const toggleUsuario  = (id, activo) => api.patch(`/api/admin/usuarios/${id}`, { activo }).then(r => r.data)
+
+export const getSalas       = ()         => api.get('/api/admin/salas').then(r => r.data)
+export const createSala     = (data)     => api.post('/api/admin/salas', data).then(r => r.data)
+export const updateSala     = (id, data) => api.patch(`/api/admin/salas/${id}`, data).then(r => r.data)
 
 export const getTipificaciones  = ()     => api.get('/api/admin/tipificaciones').then(r => r.data)
 export const createTipificacion = (data) => api.post('/api/admin/tipificaciones', data).then(r => r.data)

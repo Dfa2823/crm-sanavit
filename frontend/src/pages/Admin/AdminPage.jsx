@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  getUsuarios, createUsuario, updateUsuario,
+  getUsuarios, createUsuario, updateUsuario, toggleUsuario,
   getSalas, createSala,
   getTipificaciones, createTipificacion, updateTipificacion,
   getFuentes, createFuente, updateFuente,
@@ -141,6 +141,15 @@ function TabUsuarios({ salas, roles }) {
     }
   }
 
+  async function handleToggle(u) {
+    try {
+      await toggleUsuario(u.id, !u.activo)
+      cargar()
+    } catch (err) {
+      setError('Error al cambiar estado: ' + (err.response?.data?.error || err.message))
+    }
+  }
+
   function abrirEditar(u) {
     setFormEditar({
       nombre:  u.nombre  || '',
@@ -215,7 +224,17 @@ function TabUsuarios({ salas, roles }) {
                   </td>
                   <td className="px-4 py-3 text-gray-500">{u.sala_nombre || '—'}</td>
                   <td className="px-4 py-3"><BadgeActivo activo={u.activo !== false} /></td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => handleToggle(u)}
+                      className={`px-3 py-1.5 rounded-lg text-xs border ${
+                        u.activo !== false
+                          ? 'border-red-200 text-red-600 hover:bg-red-50'
+                          : 'border-green-200 text-green-700 hover:bg-green-50'
+                      }`}
+                    >
+                      {u.activo !== false ? 'Desactivar' : 'Activar'}
+                    </button>
                     <button
                       onClick={() => abrirEditar(u)}
                       className="border border-gray-300 text-gray-700 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-50"
