@@ -32,6 +32,14 @@ app.use('/api/reportes',  authMiddleware, require('./routes/reportes'));
 app.use('/api/outsourcing', authMiddleware, require('./routes/outsourcing'));
 app.use('/api/comisiones', authMiddleware, require('./routes/comisiones'));
 
+const productosRouter = require('./routes/productos');
+const ventasRouter = require('./routes/ventas');
+const recibosRouter = require('./routes/recibos');
+
+app.use('/api/productos', productosRouter);
+app.use('/api/ventas', ventasRouter);
+app.use('/api/recibos', recibosRouter);
+
 // ── Health check ───────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({
