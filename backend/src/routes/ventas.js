@@ -270,4 +270,23 @@ router.patch('/:id/estado', auth, async (req, res) => {
   }
 });
 
+// PATCH /api/ventas/:id/notas — actualizar observaciones del contrato
+router.patch('/:id/notas', auth, async (req, res) => {
+  const { rol } = req.user;
+  if (!['admin','director','consultor','hostess'].includes(rol)) {
+    return res.status(403).json({ error: 'Sin permiso' });
+  }
+  const { texto } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE contratos SET observaciones = $1, updated_at = NOW() WHERE id = $2 RETURNING id, observaciones`,
+      [texto !== undefined ? texto : null, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Contrato no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

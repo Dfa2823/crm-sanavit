@@ -120,6 +120,23 @@ export default function Sidebar() {
         ))}
       </nav>
 
+      {/* Mi Perfil */}
+      <div className="px-3 py-2 border-t border-slate-700">
+        <NavLink
+          to="/perfil"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
+            ${isActive
+              ? 'bg-teal-600 text-white font-medium'
+              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`
+          }
+        >
+          <span className="text-base">👤</span>
+          Mi Perfil
+        </NavLink>
+      </div>
+
       {/* Próximamente */}
       <div className="px-3 py-3 border-t border-slate-700">
         <p className="text-xs text-slate-500 px-3 mb-2 font-semibold uppercase tracking-wide">

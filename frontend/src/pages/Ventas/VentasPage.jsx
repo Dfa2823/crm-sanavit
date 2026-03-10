@@ -40,6 +40,7 @@ export default function VentasPage() {
   const [estado, setEstado]       = useState('activo')
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
+  const [busqueda, setBusqueda]   = useState('')
 
   const cargar = useCallback(async () => {
     setLoading(true); setError('')
@@ -62,6 +63,20 @@ export default function VentasPage() {
   const totalMonto  = ventas.reduce((s, v) => s + parseFloat(v.monto_total || 0), 0)
   const totalPagado = ventas.reduce((s, v) => s + parseFloat(v.total_pagado || 0), 0)
   const porcentaje  = totalMonto > 0 ? Math.round(totalPagado / totalMonto * 100) : 0
+
+  // Filtro de texto local (sin llamada extra al backend)
+  const ventasFiltradas = busqueda.trim().length < 2
+    ? ventas
+    : ventas.filter(v => {
+        const q = busqueda.toLowerCase()
+        return (
+          (v.nombres + ' ' + v.apellidos).toLowerCase().includes(q) ||
+          (v.numero_contrato || '').toLowerCase().includes(q) ||
+          (v.telefono || '').includes(q) ||
+          (v.num_documento || '').includes(q) ||
+          (v.consultor_nombre || '').toLowerCase().includes(q)
+        )
+      })
 
   return (
     <div className="p-6 space-y-6">
@@ -94,7 +109,18 @@ export default function VentasPage() {
             <option value="inactivo">Inactivo</option>
             <option value="completado">Completado</option>
             <option value="cancelado">Cancelado</option>
+            <option value="suspendido">Suspendido</option>
           </select>
+        </div>
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-xs font-medium text-gray-500 mb-1">Buscar</label>
+          <input
+            type="text"
+            placeholder="Nombre, N° contrato, teléfono, cédula..."
+            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+          />
         </div>
         <div className="mt-4">
           <button onClick={cargar} className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
@@ -115,7 +141,7 @@ export default function VentasPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="rounded-xl border bg-teal-50 border-teal-200 p-4">
               <p className="text-xs font-semibold uppercase text-teal-600 opacity-70">Contratos</p>
-              <p className="text-3xl font-bold text-teal-700 mt-1">{ventas.length}</p>
+              <p className="text-3xl font-bold text-teal-700 mt-1">{ventasFiltradas.length}</p>
             </div>
             <div className="rounded-xl border bg-blue-50 border-blue-200 p-4">
               <p className="text-xs font-semibold uppercase text-blue-600 opacity-70">Cartera Total</p>
@@ -135,9 +161,9 @@ export default function VentasPage() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="font-semibold text-gray-700">Detalle de contratos</h2>
-              <span className="text-sm text-gray-400">{ventas.length} registros</span>
+              <span className="text-sm text-gray-400">{ventasFiltradas.length} registros</span>
             </div>
-            {ventas.length === 0 ? (
+            {ventasFiltradas.length === 0 ? (
               <div className="p-12 text-center text-gray-400">
                 <div className="text-4xl mb-3">💼</div>
                 <p className="font-medium">No hay contratos para esta selección</p>
@@ -160,7 +186,7 @@ export default function VentasPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {ventas.map((v, i) => (
+                    {ventasFiltradas.map((v, i) => (
                       <tr key={v.id}
                         className={`border-b border-gray-50 hover:bg-gray-50 cursor-pointer ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
                         onClick={() => navigate(`/ventas/${v.id}`)}
@@ -169,6 +195,7 @@ export default function VentasPage() {
                         <td className="px-4 py-3">
                           <div className="font-medium text-gray-800">{v.nombres} {v.apellidos}</div>
                           {v.telefono && <div className="text-xs text-gray-400 font-mono">{v.telefono}</div>}
+                          {v.segunda_venta && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-medium">2da venta</span>}
                         </td>
                         <td className="px-4 py-3 text-gray-600 text-xs">{v.consultor_nombre || '—'}</td>
                         <td className="px-4 py-3 text-gray-600 text-xs">{v.sala_nombre || '—'}</td>

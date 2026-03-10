@@ -24,6 +24,7 @@ import SupervisorDashboard from './pages/Mercadeo/SupervisorDashboard'
 import InventarioPage from './pages/Inventario/InventarioPage'
 import LiquidacionesPage from './pages/Comisiones/LiquidacionesPage'
 import AlertasPage from './pages/Alertas/AlertasPage'
+import PerfilPage from './pages/Perfil/PerfilPage'
 
 // Rutas protegidas: solo usuarios autenticados
 function PrivateRoute({ children }) {
@@ -76,6 +77,7 @@ function AppRoutes() {
         <Route path="inventario" element={<InventarioPage />} />
         <Route path="liquidaciones" element={<LiquidacionesPage />} />
         <Route path="alertas" element={<AlertasPage />} />
+        <Route path="perfil" element={<PerfilPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

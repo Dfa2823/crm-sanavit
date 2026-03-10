@@ -1,5 +1,7 @@
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
+import client from '../../api/client'
 
 const ROL_COLORS = {
   admin:          'bg-purple-100 text-purple-800',
@@ -18,6 +20,13 @@ export default function Topbar({ title }) {
   const { usuario, logout } = useAuth()
   const navigate = useNavigate()
 
+  const [query, setQuery]       = useState('')
+  const [results, setResults]   = useState([])
+  const [searching, setSearching] = useState(false)
+  const [showDrop, setShowDrop] = useState(false)
+  const wrapperRef = useRef(null)
+  const timerRef   = useRef(null)
+
   function handleLogout() {
     logout()
     navigate('/login')
@@ -27,16 +36,110 @@ export default function Topbar({ title }) {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   })
 
+  // Cerrar dropdown al hacer clic fuera
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setShowDrop(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Búsqueda con debounce
+  const buscar = useCallback((q) => {
+    clearTimeout(timerRef.current)
+    if (q.trim().length < 2) { setResults([]); setShowDrop(false); return }
+    timerRef.current = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const { data } = await client.get('/api/personas', { params: { q: q.trim() } })
+        setResults(data.slice(0, 5))
+        setShowDrop(true)
+      } catch (e) {
+        setResults([])
+      } finally {
+        setSearching(false)
+      }
+    }, 400)
+  }, [])
+
+  function handleChange(e) {
+    const val = e.target.value
+    setQuery(val)
+    buscar(val)
+  }
+
+  function handleSelectResult(persona) {
+    setQuery('')
+    setResults([])
+    setShowDrop(false)
+    navigate(`/sala/cliente/${persona.id}`)
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Escape') { setShowDrop(false); setQuery('') }
+  }
+
   return (
     <header className="h-14 bg-white border-b border-gray-200 px-6 flex items-center justify-between sticky top-0 z-10">
       {/* Título de la página */}
-      <div>
+      <div className="min-w-[180px]">
         <h1 className="font-semibold text-gray-800 text-base">{title}</h1>
         <p className="text-xs text-gray-400 capitalize">{hoy}</p>
       </div>
 
+      {/* Búsqueda global — centro */}
+      <div ref={wrapperRef} className="relative flex-1 max-w-sm mx-6">
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">🔍</span>
+          <input
+            type="text"
+            value={query}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onFocus={() => results.length > 0 && setShowDrop(true)}
+            placeholder="Buscar cliente por nombre, tel, cédula..."
+            className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-1.5 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
+          />
+          {searching && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2">
+              <span className="w-4 h-4 border-2 border-teal-500 border-t-transparent rounded-full animate-spin inline-block" />
+            </span>
+          )}
+        </div>
+
+        {/* Dropdown resultados */}
+        {showDrop && results.length > 0 && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+            {results.map(p => (
+              <button
+                key={p.id}
+                onClick={() => handleSelectResult(p)}
+                className="w-full text-left px-4 py-2.5 hover:bg-teal-50 flex items-center gap-3 border-b border-gray-50 last:border-0"
+              >
+                <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-sm font-bold shrink-0">
+                  {(p.nombres || '?')[0].toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="font-medium text-gray-800 text-sm truncate">{p.nombres} {p.apellidos}</div>
+                  <div className="text-xs text-gray-400 font-mono">{p.telefono || p.num_documento || '—'}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {showDrop && results.length === 0 && query.trim().length >= 2 && !searching && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 px-4 py-3 text-sm text-gray-400">
+            No se encontraron clientes
+          </div>
+        )}
+      </div>
+
       {/* Usuario y logout */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-fit">
         <span className={`badge text-xs font-medium px-2 py-1 rounded-full ${ROL_COLORS[usuario?.rol] || 'bg-gray-100 text-gray-700'}`}>
           {usuario?.rol_label || usuario?.rol}
         </span>

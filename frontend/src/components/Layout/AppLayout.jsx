@@ -8,8 +8,21 @@ const TITULOS = {
   '/mercadeo/captura':      'Leads del Día — TMK',
   '/mercadeo/calendario':   'Calendario de Seguimiento',
   '/mercadeo/premanifiesto':'Pre-manifiesto',
+  '/mercadeo/supervisor':   'Supervisor Call Center',
   '/sala/recepcion':        'Recepción / Manifiesto del Día',
   '/kpis':                  'Dashboard de KPIs',
+  '/ventas':                'Contratos de Venta',
+  '/ventas/nueva':          'Nueva Venta',
+  '/cartera':               'Cartera / Cobros',
+  '/comisiones':            'Comisiones del Equipo',
+  '/liquidaciones':         'Liquidaciones de Comisiones',
+  '/reportes':              'Reportes y Analíticas',
+  '/outsourcing':           'Gestión de Outsourcing',
+  '/sac':                   'SAC / PQR',
+  '/inventario':            'Inventario de Productos',
+  '/alertas':               'Alertas y Notificaciones',
+  '/admin':                 'Administración del Sistema',
+  '/perfil':                'Mi Perfil',
 }
 
 export default function AppLayout() {
@@ -30,9 +43,10 @@ export default function AppLayout() {
     return () => clearInterval(interval)
   }, [])
 
-  // Detectar HojaDeVida dinámico
   let title = TITULOS[pathname]
   if (!title && pathname.startsWith('/sala/cliente/')) title = 'Hoja de Vida del Cliente'
+  if (!title && pathname.startsWith('/ventas/') && !pathname.endsWith('/imprimir')) title = 'Vista 360° del Contrato'
+  if (!title && pathname.startsWith('/ventas/') && pathname.endsWith('/imprimir')) title = 'Imprimir Contrato'
   if (!title) title = 'CRM Sanavit Ecuador'
 
   return (

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { getVenta360 } from '../../api/ventas'
+import { getVenta360, updateEstadoVenta, updateNotasVenta } from '../../api/ventas'
 import { createRecibo, anularRecibo } from '../../api/recibos'
 import { getFormasPago } from '../../api/admin'
 
@@ -48,6 +48,12 @@ export default function Venta360Page() {
   })
   const [guardandoPago, setGuardandoPago] = useState(false)
   const [errorPago, setErrorPago]         = useState('')
+  // ── Notas del contrato ─────────────────────────────────────
+  const [notasEdit, setNotasEdit]     = useState('')
+  const [guardandoNotas, setGuardandoNotas] = useState(false)
+  const [notasMsg, setNotasMsg]       = useState('')
+  // ── Cambio de estado ──────────────────────────────────────
+  const [cambiandoEstado, setCambiandoEstado] = useState(false)
 
   const cargar = async () => {
     setLoading(true); setError('')
@@ -63,6 +69,11 @@ export default function Venta360Page() {
 
   useEffect(() => { cargar() }, [id])
   useEffect(() => { getFormasPago().then(fps => setFormasPago(fps.filter(f => f.activo))).catch(console.error) }, [])
+  useEffect(() => {
+    if (data?.contrato?.observaciones !== undefined) {
+      setNotasEdit(data.contrato.observaciones || '')
+    }
+  }, [data])
 
   async function handleGuardarPago(e) {
     e.preventDefault()
@@ -101,6 +112,36 @@ export default function Venta360Page() {
     }
   }
 
+  async function handleCambiarEstado(nuevoEstado) {
+    const labels = { suspendido: 'suspender', cancelado: 'cancelar', activo: 'reactivar', completado: 'marcar como completado' }
+    const msg = `¿Estás seguro de ${labels[nuevoEstado] || nuevoEstado} este contrato?`
+    if (!window.confirm(msg)) return
+    setCambiandoEstado(true)
+    try {
+      await updateEstadoVenta(id, { estado: nuevoEstado })
+      cargar()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al cambiar estado')
+    } finally {
+      setCambiandoEstado(false)
+    }
+  }
+
+  async function handleGuardarNotas(e) {
+    e.preventDefault()
+    setGuardandoNotas(true); setNotasMsg('')
+    try {
+      await updateNotasVenta(id, notasEdit)
+      setNotasMsg('✅ Notas guardadas')
+      setTimeout(() => setNotasMsg(''), 3000)
+      cargar()
+    } catch (err) {
+      setNotasMsg('❌ Error al guardar notas')
+    } finally {
+      setGuardandoNotas(false)
+    }
+  }
+
   if (loading) return <div className="p-6"><Spinner /></div>
   if (error) return (
     <div className="p-6">
@@ -128,9 +169,60 @@ export default function Venta360Page() {
           >
             🖨️ Imprimir contrato
           </button>
+          {/* Botones de cambio de estado — solo admin/director */}
+          {['admin','director'].includes(usuario?.rol) && (
+            <div className="flex items-center gap-2">
+              {contrato.estado === 'activo' && (
+                <>
+                  <button
+                    disabled={cambiandoEstado}
+                    onClick={() => handleCambiarEstado('suspendido')}
+                    className="border border-yellow-400 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 px-3 py-1.5 rounded-lg text-sm disabled:opacity-60"
+                  >
+                    ⏸ Suspender
+                  </button>
+                  <button
+                    disabled={cambiandoEstado}
+                    onClick={() => handleCambiarEstado('cancelado')}
+                    className="border border-red-400 text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-sm disabled:opacity-60"
+                  >
+                    ✕ Anular
+                  </button>
+                </>
+              )}
+              {contrato.estado === 'suspendido' && (
+                <>
+                  <button
+                    disabled={cambiandoEstado}
+                    onClick={() => handleCambiarEstado('activo')}
+                    className="border border-green-400 text-green-700 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg text-sm disabled:opacity-60"
+                  >
+                    ▶ Reactivar
+                  </button>
+                  <button
+                    disabled={cambiandoEstado}
+                    onClick={() => handleCambiarEstado('cancelado')}
+                    className="border border-red-400 text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-sm disabled:opacity-60"
+                  >
+                    ✕ Anular
+                  </button>
+                </>
+              )}
+              {['cancelado','completado','inactivo'].includes(contrato.estado) && (
+                <button
+                  disabled={cambiandoEstado}
+                  onClick={() => handleCambiarEstado('activo')}
+                  className="border border-green-400 text-green-700 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg text-sm disabled:opacity-60"
+                >
+                  ▶ Reactivar
+                </button>
+              )}
+            </div>
+          )}
           <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
             contrato.estado === 'activo' ? 'bg-green-100 text-green-700' :
             contrato.estado === 'completado' ? 'bg-blue-100 text-blue-700' :
+            contrato.estado === 'suspendido' ? 'bg-yellow-100 text-yellow-700' :
             'bg-gray-100 text-gray-600'
           }`}>{contrato.estado}</span>
         </div>
@@ -255,13 +347,41 @@ export default function Venta360Page() {
                   { label: 'N° cuotas', value: contrato.n_cuotas },
                   { label: 'Valor cuota', value: fmt(contrato.monto_cuota) },
                   { label: 'Día de pago', value: contrato.dia_pago ? `Día ${contrato.dia_pago} de cada mes` : null },
-                  { label: 'Observaciones', value: contrato.observaciones },
                 ].map(f => (
                   <div key={f.label} className="flex gap-3">
                     <span className="text-xs font-medium text-gray-400 w-36 shrink-0">{f.label}</span>
                     <span className="text-sm text-gray-800">{f.value || '—'}</span>
                   </div>
                 ))}
+                {/* Notas / Observaciones editables */}
+                <div className="pt-3 border-t border-gray-100">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    Observaciones / Notas del contrato
+                  </label>
+                  {['admin','director','consultor','hostess'].includes(usuario?.rol) ? (
+                    <form onSubmit={handleGuardarNotas} className="space-y-2">
+                      <textarea
+                        rows={3}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                        placeholder="Agregar notas sobre el contrato..."
+                        value={notasEdit}
+                        onChange={e => setNotasEdit(e.target.value)}
+                      />
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="submit"
+                          disabled={guardandoNotas}
+                          className="bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white px-4 py-1.5 rounded-lg text-sm font-medium"
+                        >
+                          {guardandoNotas ? 'Guardando...' : '💾 Guardar notas'}
+                        </button>
+                        {notasMsg && <span className="text-sm text-gray-600">{notasMsg}</span>}
+                      </div>
+                    </form>
+                  ) : (
+                    <p className="text-sm text-gray-700">{contrato.observaciones || '—'}</p>
+                  )}
+                </div>
               </div>
             </div>
           )}
