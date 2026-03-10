@@ -16,3 +16,7 @@ export const createFuente   = (data) => api.post('/api/admin/fuentes', data).the
 export const updateFuente   = (id, data) => api.patch(`/api/admin/fuentes/${id}`, data).then(r => r.data)
 
 export const getRoles       = ()     => api.get('/api/admin/roles').then(r => r.data)
+
+export const getFormasPago    = ()         => api.get('/api/admin/formas-pago').then(r => r.data)
+export const createFormaPago  = (data)     => api.post('/api/admin/formas-pago', data).then(r => r.data)
+export const updateFormaPago  = (id, data) => api.patch(`/api/admin/formas-pago/${id}`, data).then(r => r.data)

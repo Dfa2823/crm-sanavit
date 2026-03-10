@@ -5,13 +5,34 @@ import {
   getTipificaciones, createTipificacion, updateTipificacion,
   getFuentes, createFuente, updateFuente,
   getRoles,
+  getFormasPago, createFormaPago, updateFormaPago,
 } from '../../api/admin'
+import { getProductos, createProducto, updateProducto } from '../../api/productos'
 
 const TABS = [
-  { key: 'usuarios',      label: 'Usuarios',       icon: '👥' },
-  { key: 'salas',         label: 'Salas',           icon: '🏢' },
-  { key: 'tipificaciones',label: 'Tipificaciones',  icon: '🏷️' },
-  { key: 'fuentes',       label: 'Fuentes',         icon: '📡' },
+  { key: 'usuarios',       label: 'Usuarios',              icon: '👥' },
+  { key: 'salas',          label: 'Salas',                 icon: '🏢' },
+  { key: 'tipificaciones', label: 'Tipificaciones',        icon: '🏷️' },
+  { key: 'fuentes',        label: 'Fuentes',               icon: '📡' },
+  { key: 'formas_pago',    label: 'Formas de Pago',        icon: '💳' },
+  { key: 'productos',      label: 'Productos',             icon: '📦' },
+]
+
+const TIPOS_FORMA_PAGO = [
+  { value: 'efectivo',          label: 'Efectivo' },
+  { value: 'transferencia',     label: 'Transferencia' },
+  { value: 'tarjeta_credito',   label: 'Tarjeta de Crédito' },
+  { value: 'tarjeta_debito',    label: 'Tarjeta de Débito' },
+  { value: 'cheque',            label: 'Cheque' },
+  { value: 'credito_directo',   label: 'Crédito Directo' },
+  { value: 'link_pago',         label: 'Link de Pago' },
+  { value: 'diferido',          label: 'Diferido' },
+]
+
+const TIPOS_PRODUCTO = [
+  { value: 'servicio',  label: 'Servicio' },
+  { value: 'producto',  label: 'Producto' },
+  { value: 'paquete',   label: 'Paquete' },
 ]
 
 // ─────────────────────────────── Spinner ────────────────────────────────────
@@ -647,6 +668,457 @@ function TabCatalogo({ titulo, fetchFn, createFn, updateFn }) {
   )
 }
 
+// ──────────────────────────── TAB FORMAS DE PAGO ────────────────────────────
+function TabFormasPago() {
+  const [items, setItems]           = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [error, setError]           = useState('')
+  const [modalNuevo, setModalNuevo] = useState(false)
+  const [guardando, setGuardando]   = useState(false)
+  const [form, setForm]             = useState({ nombre: '', tipo: 'efectivo' })
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await getFormasPago()
+      setItems(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setError('Error al cargar formas de pago: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  async function handleCrear(e) {
+    e.preventDefault()
+    setGuardando(true)
+    setError('')
+    try {
+      await createFormaPago(form)
+      setModalNuevo(false)
+      setForm({ nombre: '', tipo: 'efectivo' })
+      cargar()
+    } catch (err) {
+      setError('Error al crear forma de pago: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  async function toggleActivo(item) {
+    try {
+      await updateFormaPago(item.id, { activo: !item.activo })
+      cargar()
+    } catch (err) {
+      setError('Error al actualizar: ' + (err.response?.data?.error || err.message))
+    }
+  }
+
+  function labelTipo(tipo) {
+    const found = TIPOS_FORMA_PAGO.find(t => t.value === tipo)
+    return found ? found.label : tipo
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500">{items.length} formas de pago registradas</p>
+        <button
+          onClick={() => setModalNuevo(true)}
+          className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+        >
+          + Nueva Forma de Pago
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          {error}
+          <button onClick={() => setError('')} className="ml-2 text-red-400 hover:text-red-600">×</button>
+        </div>
+      )}
+
+      {loading ? <Spinner /> : (
+        <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">ID</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Nombre</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Tipo</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Estado</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, i) => (
+                <tr
+                  key={item.id}
+                  className={`border-b border-gray-50 hover:bg-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
+                >
+                  <td className="px-4 py-3 text-gray-400 font-mono text-xs">{item.id}</td>
+                  <td className="px-4 py-3 font-medium text-gray-800">{item.nombre}</td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700">
+                      {labelTipo(item.tipo)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3"><BadgeActivo activo={item.activo !== false} /></td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => toggleActivo(item)}
+                      className={`px-3 py-1.5 rounded-lg text-xs border ${
+                        item.activo !== false
+                          ? 'border-red-200 text-red-600 hover:bg-red-50'
+                          : 'border-green-200 text-green-700 hover:bg-green-50'
+                      }`}
+                    >
+                      {item.activo !== false ? 'Desactivar' : 'Activar'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {items.length === 0 && (
+                <tr>
+                  <td colSpan="5" className="px-4 py-12 text-center text-gray-400">
+                    No hay formas de pago registradas
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {modalNuevo && (
+        <Modal title="Nueva Forma de Pago" onClose={() => setModalNuevo(false)}>
+          <form onSubmit={handleCrear} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+              <input
+                type="text" required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={form.nombre}
+                onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo *</label>
+              <select
+                required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={form.tipo}
+                onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}
+              >
+                {TIPOS_FORMA_PAGO.map(t => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+            {error && <p className="text-red-600 text-xs">{error}</p>}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalNuevo(false)}
+                className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={guardando}
+                className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                {guardando ? 'Guardando...' : 'Crear'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ──────────────────────────── TAB PRODUCTOS ─────────────────────────────────
+function TabProductos() {
+  const [items, setItems]           = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [error, setError]           = useState('')
+  const [modalNuevo, setModalNuevo] = useState(false)
+  const [modalEditar, setModalEditar] = useState(null)
+  const [guardando, setGuardando]   = useState(false)
+
+  const formVacio = { codigo: '', nombre: '', tipo: 'servicio', precio_venta: '', tiene_iva: false, descripcion: '' }
+  const [form, setForm] = useState(formVacio)
+  const [formEditar, setFormEditar] = useState(formVacio)
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await getProductos()
+      setItems(Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []))
+    } catch (err) {
+      setError('Error al cargar productos: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  async function handleCrear(e) {
+    e.preventDefault()
+    setGuardando(true)
+    setError('')
+    try {
+      await createProducto({
+        ...form,
+        precio_venta: form.precio_venta === '' ? null : Number(form.precio_venta),
+      })
+      setModalNuevo(false)
+      setForm(formVacio)
+      cargar()
+    } catch (err) {
+      setError('Error al crear producto: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  async function handleEditar(e) {
+    e.preventDefault()
+    setGuardando(true)
+    setError('')
+    try {
+      await updateProducto(modalEditar.id, {
+        ...formEditar,
+        precio_venta: formEditar.precio_venta === '' ? null : Number(formEditar.precio_venta),
+      })
+      setModalEditar(null)
+      cargar()
+    } catch (err) {
+      setError('Error al actualizar producto: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  function abrirEditar(item) {
+    setFormEditar({
+      codigo:       item.codigo      || '',
+      nombre:       item.nombre      || '',
+      tipo:         item.tipo        || 'servicio',
+      precio_venta: item.precio_venta != null ? String(item.precio_venta) : '',
+      tiene_iva:    item.tiene_iva   || false,
+      descripcion:  item.descripcion || '',
+    })
+    setModalEditar(item)
+  }
+
+  function labelTipo(tipo) {
+    const found = TIPOS_PRODUCTO.find(t => t.value === tipo)
+    return found ? found.label : tipo
+  }
+
+  function FormularioProducto({ values, onChange, onSubmit, onCancel, submitLabel }) {
+    return (
+      <form onSubmit={onSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Código</label>
+            <input
+              type="text"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={values.codigo}
+              onChange={e => onChange(f => ({ ...f, codigo: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo *</label>
+            <select
+              required
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={values.tipo}
+              onChange={e => onChange(f => ({ ...f, tipo: e.target.value }))}
+            >
+              {TIPOS_PRODUCTO.map(t => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+          <input
+            type="text" required
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            value={values.nombre}
+            onChange={e => onChange(f => ({ ...f, nombre: e.target.value }))}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Precio de Venta</label>
+            <input
+              type="number" min="0" step="0.01"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={values.precio_venta}
+              onChange={e => onChange(f => ({ ...f, precio_venta: e.target.value }))}
+            />
+          </div>
+          <div className="flex items-end pb-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500"
+                checked={values.tiene_iva}
+                onChange={e => onChange(f => ({ ...f, tiene_iva: e.target.checked }))}
+              />
+              <span className="text-sm font-medium text-gray-700">Incluye IVA</span>
+            </label>
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+          <textarea
+            rows={2}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+            value={values.descripcion}
+            onChange={e => onChange(f => ({ ...f, descripcion: e.target.value }))}
+          />
+        </div>
+        {error && <p className="text-red-600 text-xs">{error}</p>}
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={guardando}
+            className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
+          >
+            {guardando ? 'Guardando...' : submitLabel}
+          </button>
+        </div>
+      </form>
+    )
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500">{items.length} productos registrados</p>
+        <button
+          onClick={() => setModalNuevo(true)}
+          className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+        >
+          + Nuevo Producto
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          {error}
+          <button onClick={() => setError('')} className="ml-2 text-red-400 hover:text-red-600">×</button>
+        </div>
+      )}
+
+      {loading ? <Spinner /> : (
+        <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Código</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Nombre</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Tipo</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Precio</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">IVA</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Estado</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, i) => (
+                <tr
+                  key={item.id}
+                  className={`border-b border-gray-50 hover:bg-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
+                >
+                  <td className="px-4 py-3 font-mono text-xs text-gray-500">{item.codigo || '—'}</td>
+                  <td className="px-4 py-3 font-medium text-gray-800">{item.nombre}</td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700">
+                      {labelTipo(item.tipo)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-700">
+                    {item.precio_venta != null
+                      ? `$${Number(item.precio_venta).toFixed(2)}`
+                      : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    {item.tiene_iva
+                      ? <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700">Sí</span>
+                      : <span className="text-gray-400 text-xs">No</span>
+                    }
+                  </td>
+                  <td className="px-4 py-3"><BadgeActivo activo={item.activo !== false} /></td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => abrirEditar(item)}
+                      className="border border-gray-300 text-gray-700 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-50"
+                    >
+                      Editar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {items.length === 0 && (
+                <tr>
+                  <td colSpan="7" className="px-4 py-12 text-center text-gray-400">
+                    No hay productos registrados
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {modalNuevo && (
+        <Modal title="Nuevo Producto" onClose={() => { setModalNuevo(false); setError('') }}>
+          <FormularioProducto
+            values={form}
+            onChange={setForm}
+            onSubmit={handleCrear}
+            onCancel={() => { setModalNuevo(false); setError('') }}
+            submitLabel="Crear producto"
+          />
+        </Modal>
+      )}
+
+      {modalEditar && (
+        <Modal title={`Editar: ${modalEditar.nombre}`} onClose={() => { setModalEditar(null); setError('') }}>
+          <FormularioProducto
+            values={formEditar}
+            onChange={setFormEditar}
+            onSubmit={handleEditar}
+            onCancel={() => { setModalEditar(null); setError('') }}
+            submitLabel="Guardar cambios"
+          />
+        </Modal>
+      )}
+    </div>
+  )
+}
+
 // ─────────────────────────── Página principal ───────────────────────────────
 export default function AdminPage() {
   const [tabActivo, setTabActivo] = useState('usuarios')
@@ -717,6 +1189,12 @@ export default function AdminPage() {
                   createFn={createFuente}
                   updateFn={updateFuente}
                 />
+              )}
+              {tabActivo === 'formas_pago' && (
+                <TabFormasPago />
+              )}
+              {tabActivo === 'productos' && (
+                <TabProductos />
               )}
             </>
           )}

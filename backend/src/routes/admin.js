@@ -400,4 +400,51 @@ router.get('/roles', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// FORMAS DE PAGO
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/admin/formas-pago
+router.get('/formas-pago', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM formas_pago ORDER BY nombre');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener formas de pago' });
+  }
+});
+
+// POST /api/admin/formas-pago
+router.post('/formas-pago', requireAdmin, async (req, res) => {
+  const { nombre, tipo = 'efectivo' } = req.body;
+  if (!nombre) return res.status(400).json({ error: 'nombre requerido' });
+  try {
+    const result = await pool.query(
+      'INSERT INTO formas_pago (nombre, tipo) VALUES ($1, $2) RETURNING *',
+      [nombre, tipo]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al crear forma de pago' });
+  }
+});
+
+// PATCH /api/admin/formas-pago/:id
+router.patch('/formas-pago/:id', requireAdmin, async (req, res) => {
+  const { nombre, tipo, activo } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE formas_pago SET nombre=COALESCE($1,nombre), tipo=COALESCE($2,tipo), activo=COALESCE($3,activo) WHERE id=$4 RETURNING *',
+      [nombre, tipo, activo, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'No encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar forma de pago' });
+  }
+});
+
 module.exports = router;
