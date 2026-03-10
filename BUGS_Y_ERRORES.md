@@ -226,12 +226,30 @@
 
 ---
 
+### E2E Fase 4 — Formulario Nueva Venta + Registrar Pago ✅ (2026-03-10)
+- [x] `/ventas/nueva` carga correctamente (antes daba 404) ✅
+- [x] Búsqueda por teléfono → banner "✅ Carmen Suárez Morales" ✅
+- [x] Catálogo productos con botón "+" por ítem ✅
+- [x] 2 productos en carrito → total auto-calculado $1.200 ✅
+- [x] Plan mensual, 6 cuotas, cuota inicial $200 ✅
+- [x] Forma pago inicial visible cuando cuota_inicial > 0 ✅
+- [x] Submit → SQT-2477 creado → redirige a `/ventas/3` ✅
+- [x] Tab Pagos → botón "+ Registrar Pago" visible ✅
+- [x] Drawer Registrar Pago → $360 / Transferencia bancaria ✅
+- [x] Resumen actualizado: Pagado=$360, Saldo=$840, **30% → "✅ Comisión desbloqueada"** ✅
+- [x] Botón "Anular" visible para admin/director ✅
+
+### Bug [020] — serial_contrato desincronizado con contratos del seed
+- **Fecha:** 2026-03-10
+- **Síntoma:** POST /api/ventas devolvía 409 "Número de contrato duplicado" en el primer intento
+- **Causa:** `scripts/seed.js` insertaba SQT-2476 directamente en `contratos` sin actualizar `salas.serial_contrato` (se quedaba en 2475). Al hacer POST, el backend calculaba `2475+1=2476` y colisionaba con el contrato ya existente.
+- **Solución:** (1) `admin.js` PATCH /api/admin/salas/:id ahora acepta `serial_contrato`; (2) `seed.js` sincroniza serial tras insertar contratos; (3) Fix en producción via PATCH `{serial_contrato: 2476}` a Sala Quito.
+- **Commits:** `4b2f134` — fix: serial_contrato — corrige duplicado al crear contratos
+
 ### Pendiente para próxima iteración
 - [ ] Módulo SAC/PQR (quejas y reclamos)
 - [ ] Generación PDF contratos (Acta Entrega Recepción + Acta Crédito) — pendiente formatos de Juan Sebastian
 - [ ] Vista Supervisor Call Center con métricas en tiempo real
-- [ ] Formulario "Registrar Venta" en UI (backend ya existe)
-- [ ] Formulario "Registrar Pago/Recibo" en UI (backend ya existe)
 - [ ] Config porcentajes comisión por rol (pendiente tabla de Lizethe)
 - [ ] Notificaciones en tiempo real (WebSockets)
 
@@ -246,10 +264,11 @@
 - **Frontend prod:** https://reasonable-hope-production.up.railway.app (Puerto 8080)
 - **GitHub:** https://github.com/Dfa2823/crm-sanavit
 - **Railway Project:** passionate-healing (ID: 81338afe-6cb9-48c9-a7bc-fd97b3e5ffab)
-- **Último commit backend:** 8d02f9c — feat: Mejoras UX Fase 3
-- **Último commit frontend:** fb2ec8d — chore: bump frontend version to trigger Railway rebuild
-- **Backend version:** 2.0.0 — Fase 3 activa en producción ✅
-- **Frontend bundle:** index-ObB_-HrQ.js (rebuildeado 2026-03-10)
+- **Último commit backend:** 4b2f134 — fix: serial_contrato — corrige duplicado al crear contratos
+- **Último commit frontend:** ee2e7a7 — feat: Fase 4 — Formulario Nueva Venta + Registrar Pago/Recibo
+- **Backend version:** 2.0.0 — Fase 4 activa en producción ✅
+- **Frontend bundle:** index-4unkBS4a.js (rebuildeado 2026-03-10)
 - **Schema v2:** aplicado en Railway DB (10 tablas nuevas + extensiones + telefono2)
 - **E2E Fase 2:** ✅ Todos los módulos verificados (2026-03-10)
 - **E2E Fase 3:** ✅ Todos los módulos verificados (2026-03-10)
+- **E2E Fase 4:** ✅ Todos los módulos verificados (2026-03-10)
