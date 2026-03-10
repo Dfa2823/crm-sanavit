@@ -282,7 +282,20 @@ async function seed() {
         console.log('Contrato ya existe o error:', numero, e.message);
       }
     }
-    console.log('✅ Contratos y cuotas de prueba creados');
+
+    // Actualizar serial_contrato en salas para reflejar los contratos insertados
+    await client.query(`
+      UPDATE salas s
+      SET serial_contrato = (
+        SELECT COALESCE(MAX(
+          CAST(SPLIT_PART(c.numero_contrato, '-', 2) AS INTEGER)
+        ), s.serial_contrato)
+        FROM contratos c
+        WHERE c.sala_id = s.id
+          AND c.numero_contrato ~ '^[A-Z]+-[0-9]+$'
+      )
+    `);
+    console.log('✅ Serial de contratos sincronizado con salas');
 
     console.log('✅ Seed completado exitosamente');
     console.log('');

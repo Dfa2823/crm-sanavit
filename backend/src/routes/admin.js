@@ -197,17 +197,18 @@ router.post('/salas', requireAdmin, async (req, res) => {
 
 // PATCH /api/admin/salas/:id — actualizar sala
 router.patch('/salas/:id', requireAdmin, async (req, res) => {
-  const { nombre, ciudad, direccion, activo } = req.body;
+  const { nombre, ciudad, direccion, activo, serial_contrato } = req.body;
 
   try {
     const updates = [];
     const params = [];
     let idx = 1;
 
-    if (nombre !== undefined)    { updates.push(`nombre = $${idx++}`);    params.push(nombre); }
-    if (ciudad !== undefined)    { updates.push(`ciudad = $${idx++}`);    params.push(ciudad); }
-    if (direccion !== undefined) { updates.push(`direccion = $${idx++}`); params.push(direccion); }
-    if (activo !== undefined)    { updates.push(`activo = $${idx++}`);    params.push(activo); }
+    if (nombre !== undefined)           { updates.push(`nombre = $${idx++}`);           params.push(nombre); }
+    if (ciudad !== undefined)           { updates.push(`ciudad = $${idx++}`);           params.push(ciudad); }
+    if (direccion !== undefined)        { updates.push(`direccion = $${idx++}`);        params.push(direccion); }
+    if (activo !== undefined)           { updates.push(`activo = $${idx++}`);           params.push(activo); }
+    if (serial_contrato !== undefined)  { updates.push(`serial_contrato = $${idx++}`); params.push(serial_contrato); }
 
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No hay campos para actualizar' });
