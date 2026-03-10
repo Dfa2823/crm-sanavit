@@ -74,12 +74,36 @@
 
 ---
 
-## 📋 PENDIENTES / POR REVISAR
+## ✅ RESUELTOS (sesión 2026-03-10 continuación 2)
 
-### [011] Seed de producción — verificar datos
+### [011] Seed de producción — verificado
 - **Fecha:** 2026-03-10
 - **Síntoma:** Verificar que los datos del seed estén presentes en la DB de producción
-- **Solución pendiente:** Probar login con `admin/sanavit123` en https://reasonable-hope-production.up.railway.app
+- **Solución:** ✅ Verificado. Login con `admin/sanavit123` funciona. 15 leads, 8 citas, 13 usuarios en DB.
+
+### [012] Backend `p.cedula` en reportes — columna inexistente
+- **Fecha:** 2026-03-10
+- **Síntoma:** `GET /api/reportes/leads` y `/api/reportes/asistencias` retornaban 500
+- **Causa:** La tabla `personas` no tiene columna `cedula`, tiene `num_documento`
+- **Solución:** `p.cedula` → `p.num_documento AS "Cédula"` en `backend/src/routes/reportes.js`
+- **Commit:** ceb3249
+
+### [013] Backend `p.cedula` en cartera — columna inexistente
+- **Fecha:** 2026-03-10
+- **Síntoma:** `GET /api/cartera` retornaba 500
+- **Causa:** Mismo bug que [012] — `p.cedula` en query de cartera
+- **Solución:** `p.cedula` → `p.num_documento AS cedula` en `backend/src/routes/cartera.js`
+- **Commit:** 2b3d4a3
+
+### [014] Backend inicial atascado en "Publishing image" 38 minutos
+- **Fecha:** 2026-03-10
+- **Síntoma:** El primer deploy del backend quedó bloqueado en la fase "Publishing image" por 38+ minutos
+- **Causa:** Issue de infraestructura Railway (congestión en el registro de imágenes)
+- **Solución:** Abort del deploy atascado → Railway procesó los deploys en cola automáticamente
+
+---
+
+## 📋 PENDIENTES / POR REVISAR
 
 ---
 
@@ -125,4 +149,4 @@
 - **Frontend prod:** https://reasonable-hope-production.up.railway.app (Puerto 8080)
 - **GitHub:** https://github.com/Dfa2823/crm-sanavit
 - **Railway Project:** passionate-healing (ID: 81338afe-6cb9-48c9-a7bc-fd97b3e5ffab)
-- **Último commit desplegado:** ffaf8b8 — feat: Add Admin Panel, Cartera and Reportes modules
+- **Último commit desplegado:** 2b3d4a3 — fix: Corregir columna cedula en cartera y reportes
