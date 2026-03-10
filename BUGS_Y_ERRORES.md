@@ -103,40 +103,61 @@
 
 ---
 
+## ✅ RESUELTOS (sesión 2026-03-10 continuación 3)
+
+### [015] Frontend — COLUMNAS en ReportesPage con keys incorrectas
+- **Fecha:** 2026-03-10
+- **Síntoma:** La tabla de Reportes mostraba "—" en todas las celdas pese a recibir datos del API
+- **Causa:** El objeto `COLUMNAS` usaba keys en snake_case (`nombres`, `telefono`, `tmk_nombre`) pero el API devuelve aliases SQL en español con mayúsculas y tildes (`"Nombre Completo"`, `"Teléfono"`, `"TMK"`)
+- **Solución:** Actualizar todas las keys en `COLUMNAS` para que coincidan exactamente con los aliases del SQL en el backend
+- **Archivo:** `frontend/src/pages/Reportes/ReportesPage.jsx`
+- **Commit:** 40375db
+
+### [016] Frontend — Prefijo `/api/` faltante en outsourcing.js y comisiones.js
+- **Fecha:** 2026-03-10
+- **Síntoma:** Páginas Outsourcing y Comisiones mostraban "Error al cargar empresas" / "Error al cargar comisiones" inmediatamente al cargar
+- **Causa:** `api/outsourcing.js` llamaba `/outsourcing/empresas` y `api/comisiones.js` llamaba `/comisiones` — sin el prefijo `/api/`. El backend registra las rutas bajo `/api/outsourcing` y `/api/comisiones`
+- **Solución:** Agregar `/api/` al inicio de todas las rutas en ambos archivos
+- **Archivos:** `frontend/src/api/outsourcing.js`, `frontend/src/api/comisiones.js`
+- **Commit:** 3210848
+
+---
+
 ## 📋 PENDIENTES / POR REVISAR
 
 ---
 
-## 🗂️ MÓDULOS IMPLEMENTADOS (sesión 2026-03-10)
+## 🗂️ MÓDULOS IMPLEMENTADOS
 
-### Backend (implementado en este commit: ffaf8b8)
+### Backend (commit e2ba599 + anteriores)
 - [x] `GET/POST/PATCH/DELETE /api/admin/usuarios` — CRUD completo con bcrypt
-- [x] `GET/POST/PATCH /api/admin/salas` — CRUD salas
-- [x] `GET/POST/PATCH /api/admin/tipificaciones` — CRUD tipificaciones
-- [x] `GET/POST/PATCH /api/admin/fuentes` — CRUD fuentes
-- [x] `GET /api/admin/roles` — listar roles
-- [x] `GET /api/cartera?sala_id=X` — Cartera con mock data de visitas_sala
-- [x] `GET /api/cartera/resumen?sala_id=X` — Stats mora 30/60/90
-- [x] `GET /api/reportes/leads` — Reporte leads con filtros
+- [x] `GET/POST/PATCH /api/admin/salas`, `/tipificaciones`, `/fuentes`, `/roles`
+- [x] `GET /api/cartera` — Cartera real (tabla contratos/cuotas) con fallback a mock
+- [x] `GET /api/cartera/resumen` — Stats mora 30/60/90
+- [x] `GET /api/reportes/leads` — Reporte leads exportable CSV
 - [x] `GET /api/reportes/asistencias` — Reporte asistencias/tours
-- [x] `GET /api/reportes/tmk` — Productividad por TMK
+- [x] `GET /api/outsourcing/empresas` — CRUD empresas outsourcing
+- [x] `GET /api/outsourcing/stats` — Métricas por empresa (leads, tours, efectividad)
+- [x] `GET /api/comisiones` — Listado de comisiones del período
+- [x] `GET /api/comisiones/resumen` — Cálculo automático por colaborador
 
-### Frontend (implementado en este commit: ffaf8b8)
+### Frontend (commit 3210848 activo)
+- [x] Dashboard KPIs `/kpis`
+- [x] Pre-manifiesto `/premanifiesto`
+- [x] Recepción `/recepcion`
+- [x] Leads `/leads`
+- [x] Cartera `/cartera` (contratos reales, mora 30/60/90)
+- [x] Reportes `/reportes` (CSV export, 3 tipos)
+- [x] Outsourcing `/outsourcing` (CRUD empresas, estadísticas)
+- [x] Comisiones `/comisiones` (cálculo automático por período)
 - [x] Panel de Administración `/admin` (usuarios, salas, tipificaciones, fuentes)
-- [x] Gestión de Cartera `/cartera` (mora 30/60/90, tabla de deudores)
-- [x] Reportes exportables `/reportes` (CSV/Excel, 3 tipos de reporte)
-- [x] Sidebar actualizado por rol
-- [x] Dashboard redirects actualizados
 
 ### Pendiente para próxima iteración
-- [ ] Módulo Comisiones (cálculo por ventas/tours)
 - [ ] Módulo SAC/PQR (quejas y reclamos)
 - [ ] Integración WhatsApp (notificaciones)
 - [ ] Generación de contratos PDF
-- [ ] Módulo Outsourcing (gestión de call centers externos)
 - [ ] Vista Supervisor Call Center con métricas en tiempo real
 - [ ] Notificaciones en tiempo real (WebSockets)
-- [ ] Tablas reales de cartera (contratos, cuotas, pagos) — actualmente usa mock de visitas_sala
 
 ---
 
@@ -149,4 +170,4 @@
 - **Frontend prod:** https://reasonable-hope-production.up.railway.app (Puerto 8080)
 - **GitHub:** https://github.com/Dfa2823/crm-sanavit
 - **Railway Project:** passionate-healing (ID: 81338afe-6cb9-48c9-a7bc-fd97b3e5ffab)
-- **Último commit desplegado:** 2b3d4a3 — fix: Corregir columna cedula en cartera y reportes
+- **Último commit desplegado:** 3210848 — fix: Agregar prefijo /api/ en outsourcing y comisiones
