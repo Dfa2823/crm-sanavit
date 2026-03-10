@@ -137,19 +137,34 @@
 
 ## 🗂️ MÓDULOS IMPLEMENTADOS
 
-### Backend (commit e2ba599 + anteriores)
+### Backend — Fase 2 (commit b0c43fa)
 - [x] `GET/POST/PATCH/DELETE /api/admin/usuarios` — CRUD completo con bcrypt
 - [x] `GET/POST/PATCH /api/admin/salas`, `/tipificaciones`, `/fuentes`, `/roles`
+- [x] `GET/POST/PATCH /api/admin/formas-pago` — CRUD formas de pago ✅ Fase 3
 - [x] `GET /api/cartera` — Cartera real (tabla contratos/cuotas) con fallback a mock
 - [x] `GET /api/cartera/resumen` — Stats mora 30/60/90
 - [x] `GET /api/reportes/leads` — Reporte leads exportable CSV
 - [x] `GET /api/reportes/asistencias` — Reporte asistencias/tours
+- [x] `GET /api/reportes/tmk` — Productividad por agente TMK ✅ Fase 3
 - [x] `GET /api/outsourcing/empresas` — CRUD empresas outsourcing
 - [x] `GET /api/outsourcing/stats` — Métricas por empresa (leads, tours, efectividad)
 - [x] `GET /api/comisiones` — Listado de comisiones del período
 - [x] `GET /api/comisiones/resumen` — Cálculo automático por colaborador
 
-### Frontend (commit b0c43fa activo — E2E ✅ 2026-03-10)
+### Backend — Fase 3 (commit 17ef1da + 8d02f9c)
+- [x] Schema v2: tablas `formas_pago`, `productos`, `bodegas`, `venta_productos`, `despachos`, `recibos`, `refinanciaciones`, `comision_config`, `pqr`, `audit_log`
+- [x] Extensión tabla `contratos`: 11 nuevas columnas (valor_bruto, iva_porcentaje, segunda_venta, etc.)
+- [x] Migración `telefono2` y `notas_internas` en tabla `personas`
+- [x] `GET/POST/PATCH /api/productos` — Catálogo de productos/servicios Sanavit
+- [x] `GET /api/ventas` — Lista contratos con total pagado y saldo calculado
+- [x] `GET /api/ventas/:id` — Vista 360° con regla 30% comisión
+- [x] `POST /api/ventas` — Crear contrato (transaccional: serial + productos + plan cuotas)
+- [x] `PATCH /api/ventas/:id/estado` — Cambiar estado contrato
+- [x] `GET/POST /api/recibos` — Registrar pagos con actualización cuotas
+- [x] `PATCH /api/recibos/:id/anular` — Anular recibo
+- [x] `GET/POST/PATCH /api/personas` — Soporte completo telefono2, búsqueda por tel2
+
+### Frontend — Fase 2 (commit b0c43fa — E2E ✅)
 - [x] Dashboard KPIs `/kpis` — Tours/No Tours/No Shows, funnel, efectividad ✅
 - [x] Pre-manifiesto `/premanifiesto` — 4 tabs (confirmadas/tentativas/canceladas/inasistencias) ✅
 - [x] Recepción `/recepcion` — lista citas del día, registrar llegada ✅
@@ -160,11 +175,22 @@
 - [x] Comisiones `/comisiones` — cálculo automático por período ($250 en demo) ✅
 - [x] Panel de Administración `/admin` — usuarios, salas, tipificaciones, fuentes ✅
 
+### Frontend — Fase 3 (commits cdaf4e0 + c84cb4d + 8d02f9c)
+- [x] **Ventas** `/ventas` — lista contratos con stats financieros (cartera/cobrado/saldo) ✅
+- [x] **Vista 360° contrato** `/ventas/:id` — 5 tabs: Cliente/Contrato/Productos/Cartera/Pagos + indicador 30% ✅
+- [x] Admin `/admin` — nuevos tabs: 💳 Formas de Pago, 📦 Catálogo Productos ✅
+- [x] Leads — campo "Teléfono 2" en formulario de captura ✅
+- [x] Leads — botón WhatsApp 📱 en columna teléfono (prefijo 593) ✅
+- [x] Reportes `/reportes` — 4 tipos: Leads / Asistencias / TMK / Contratos+Ventas ✅
+- [x] Reportes — resumen estadístico por tipo (cards financieros, totales) ✅
+
 ### Pendiente para próxima iteración
 - [ ] Módulo SAC/PQR (quejas y reclamos)
-- [ ] Integración WhatsApp (notificaciones)
-- [ ] Generación de contratos PDF
+- [ ] Generación PDF contratos (Acta Entrega Recepción + Acta Crédito) — pendiente formatos de Juan Sebastian
 - [ ] Vista Supervisor Call Center con métricas en tiempo real
+- [ ] Formulario "Registrar Venta" en UI (backend ya existe)
+- [ ] Formulario "Registrar Pago/Recibo" en UI (backend ya existe)
+- [ ] Config porcentajes comisión por rol (pendiente tabla de Lizethe)
 - [ ] Notificaciones en tiempo real (WebSockets)
 
 ---
@@ -178,5 +204,9 @@
 - **Frontend prod:** https://reasonable-hope-production.up.railway.app (Puerto 8080)
 - **GitHub:** https://github.com/Dfa2823/crm-sanavit
 - **Railway Project:** passionate-healing (ID: 81338afe-6cb9-48c9-a7bc-fd97b3e5ffab)
-- **Último commit desplegado:** b0c43fa — docs: Agregar Bug [017] - CarteraPage estructura anidada del API
-- **E2E tests:** ✅ Todos los módulos verificados en producción (2026-03-10)
+- **Último commit backend:** 8d02f9c — feat: Mejoras UX Fase 3 (en deploy)
+- **Último commit frontend:** 8d02f9c — feat: Mejoras UX Fase 3 (en deploy)
+- **Backend version:** 2.0.0 — Fase 3 activa en producción ✅
+- **Schema v2:** aplicado en Railway DB (10 tablas nuevas + extensiones + telefono2)
+- **E2E Fase 2:** ✅ Todos los módulos verificados (2026-03-10)
+- **E2E Fase 3:** 🔄 Deploy en progreso — pendiente verificación /ventas UI
