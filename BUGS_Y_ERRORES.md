@@ -113,6 +113,14 @@
 - **Archivo:** `frontend/src/pages/Reportes/ReportesPage.jsx`
 - **Commit:** 40375db
 
+### [017] Frontend — CarteraPage usa campos planos pero API devuelve estructura anidada
+- **Fecha:** 2026-03-10
+- **Síntoma:** Cartera cargaba sin error pero mostraba Nombre vacío ("—"), estado "Desconocido" y 0 en todos los contadores de mora
+- **Causa:** `CarteraPage.jsx` accedía `item.nombres`, `item.numero_contrato`, `item.dias_mora`, `item.estado` pero el API de cartera devuelve estructura anidada: `item.persona.nombres`, `item.contrato.numero`, `item.mora_dias`, `item.estado_mora`. El resumen también usaba nombres distintos (`total_cartera` vs `total_monto`, `al_dia` vs `al_dia_contratos`)
+- **Solución:** Actualizar todas las referencias en `CarteraPage.jsx` para usar la estructura real del API
+- **Archivo:** `frontend/src/pages/Cartera/CarteraPage.jsx`
+- **Commit:** 278f360
+
 ### [016] Frontend — Prefijo `/api/` faltante en outsourcing.js y comisiones.js
 - **Fecha:** 2026-03-10
 - **Síntoma:** Páginas Outsourcing y Comisiones mostraban "Error al cargar empresas" / "Error al cargar comisiones" inmediatamente al cargar
