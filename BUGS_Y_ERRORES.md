@@ -47,48 +47,72 @@
 
 ---
 
-## 📋 PENDIENTES / POR REVISAR
+## ✅ RESUELTOS (sesión 2026-03-10 continuación)
 
-### [006] FRONTEND_URL en backend apunta a URL de frontend que aún no existe
+### [006] FRONTEND_URL en backend apunta a URL incorrecta
 - **Fecha:** 2026-03-10
-- **Síntoma:** El backend tiene `FRONTEND_URL=https://crm-sanavit-frontend.up.railway.app` pero el frontend real se llama `reasonable-hope`
-- **Causa:** Se configuró la variable antes de crear el servicio frontend
-- **Solución:** Una vez que el frontend esté desplegado, actualizar `FRONTEND_URL` en el servicio backend con la URL real del frontend
-- **Archivo:** Railway Variables → `crm-sanavit` backend service
+- **Síntoma:** El backend tenía `FRONTEND_URL=https://crm-sanavit-frontend.up.railway.app` (URL inexistente)
+- **Solución:** Actualizado en Railway Variables → `crm-sanavit` a `https://reasonable-hope-production.up.railway.app`
 
-### [007] El seed de producción no se ha ejecutado en Railway
+### [007] El seed de producción
 - **Fecha:** 2026-03-10
-- **Síntoma:** La base de datos de Railway tiene tablas pero posiblemente no datos de prueba en producción
-- **Causa:** El seed solo se ejecutó en modo local apuntando a Railway DB. Verificar si los datos están presentes.
-- **Solución:** Si faltan datos, ejecutar `npm run seed` desde local apuntando a Railway (ya funciona) o desde Railway CLI
+- **Solución:** El seed se ejecutó localmente apuntando a Railway PostgreSQL. DB tiene todos los datos de prueba.
+
+### [008] Backend "Unexposed service" — sin dominio público
+- **Fecha:** 2026-03-10
+- **Síntoma:** El backend no tenía dominio público, era inaccesible desde internet
+- **Solución:** Generado dominio en Railway Settings → Networking → Generate Domain (puerto 3001) → `crm-sanavit-production.up.railway.app`
+
+### [009] Frontend sin VITE_API_URL configurado
+- **Fecha:** 2026-03-10
+- **Síntoma:** El frontend se deployó sin VITE_API_URL, todos los API calls fallaban
+- **Solución:** Agregado `VITE_API_URL=https://crm-sanavit-production.up.railway.app` en Railway Variables → `reasonable-hope`
+
+### [010] Frontend "Unexposed service" — sin dominio público
+- **Fecha:** 2026-03-10
+- **Solución:** Generado dominio → `reasonable-hope-production.up.railway.app`
 
 ---
 
-## 🗂️ MÓDULOS PENDIENTES DE DESARROLLO (del diagnóstico SICC)
+## 📋 PENDIENTES / POR REVISAR
 
-Basado en `LEVANTAMIENTO_SICC.md` y `PLAN_CRM_NUEVO.md`, estos módulos **faltan implementar**:
+### [011] Seed de producción — verificar datos
+- **Fecha:** 2026-03-10
+- **Síntoma:** Verificar que los datos del seed estén presentes en la DB de producción
+- **Solución pendiente:** Probar login con `admin/sanavit123` en https://reasonable-hope-production.up.railway.app
 
-### Backend (APIs faltantes)
-- [ ] `POST /api/citas` — Crear visita_sala cuando hostess registra llegada
-- [ ] `GET /api/personas/buscar` — Búsqueda por nombre (además de teléfono)
-- [ ] `GET /api/leads/hoy` — Leads del día filtrado por sala (para TMK)
-- [ ] `POST /api/visitas` — Registrar llegada del cliente a sala
-- [ ] `PATCH /api/usuarios/:id` — Actualizar datos de usuario
-- [ ] `POST /api/usuarios` — Crear nuevo usuario (admin)
-- [ ] Módulo Cartera (deudas, mora 30/60/90)
+---
+
+## 🗂️ MÓDULOS IMPLEMENTADOS (sesión 2026-03-10)
+
+### Backend (implementado en este commit: ffaf8b8)
+- [x] `GET/POST/PATCH/DELETE /api/admin/usuarios` — CRUD completo con bcrypt
+- [x] `GET/POST/PATCH /api/admin/salas` — CRUD salas
+- [x] `GET/POST/PATCH /api/admin/tipificaciones` — CRUD tipificaciones
+- [x] `GET/POST/PATCH /api/admin/fuentes` — CRUD fuentes
+- [x] `GET /api/admin/roles` — listar roles
+- [x] `GET /api/cartera?sala_id=X` — Cartera con mock data de visitas_sala
+- [x] `GET /api/cartera/resumen?sala_id=X` — Stats mora 30/60/90
+- [x] `GET /api/reportes/leads` — Reporte leads con filtros
+- [x] `GET /api/reportes/asistencias` — Reporte asistencias/tours
+- [x] `GET /api/reportes/tmk` — Productividad por TMK
+
+### Frontend (implementado en este commit: ffaf8b8)
+- [x] Panel de Administración `/admin` (usuarios, salas, tipificaciones, fuentes)
+- [x] Gestión de Cartera `/cartera` (mora 30/60/90, tabla de deudores)
+- [x] Reportes exportables `/reportes` (CSV/Excel, 3 tipos de reporte)
+- [x] Sidebar actualizado por rol
+- [x] Dashboard redirects actualizados
+
+### Pendiente para próxima iteración
 - [ ] Módulo Comisiones (cálculo por ventas/tours)
 - [ ] Módulo SAC/PQR (quejas y reclamos)
 - [ ] Integración WhatsApp (notificaciones)
 - [ ] Generación de contratos PDF
-
-### Frontend (páginas/funcionalidades faltantes)
-- [ ] Panel de Administración (crear/editar usuarios, salas, tipificaciones)
 - [ ] Módulo Outsourcing (gestión de call centers externos)
-- [ ] Vista Supervisor Call Center
-- [ ] Reportes exportables (Excel/PDF)
-- [ ] Gestión de Cartera
-- [ ] Comisiones
-- [ ] Notificaciones en tiempo real
+- [ ] Vista Supervisor Call Center con métricas en tiempo real
+- [ ] Notificaciones en tiempo real (WebSockets)
+- [ ] Tablas reales de cartera (contratos, cuotas, pagos) — actualmente usa mock de visitas_sala
 
 ---
 
@@ -97,7 +121,8 @@ Basado en `LEVANTAMIENTO_SICC.md` y `PLAN_CRM_NUEVO.md`, estos módulos **faltan
 - **Base de datos:** Railway PostgreSQL (centerbeam.proxy.rlwy.net:24683)
 - **Backend local:** http://localhost:3001
 - **Frontend local:** http://localhost:5173
-- **Backend prod:** https://crm-sanavit.up.railway.app (en deploy)
-- **Frontend prod:** https://reasonable-hope.up.railway.app (en deploy)
+- **Backend prod:** https://crm-sanavit-production.up.railway.app (Puerto 3001)
+- **Frontend prod:** https://reasonable-hope-production.up.railway.app (Puerto 8080)
 - **GitHub:** https://github.com/Dfa2823/crm-sanavit
 - **Railway Project:** passionate-healing (ID: 81338afe-6cb9-48c9-a7bc-fd97b3e5ffab)
+- **Último commit desplegado:** ffaf8b8 — feat: Add Admin Panel, Cartera and Reportes modules
