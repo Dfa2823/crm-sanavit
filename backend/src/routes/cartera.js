@@ -1,208 +1,202 @@
 const express = require('express');
 const pool = require('../db');
+
 const router = express.Router();
 
-// GET /api/cartera?sala_id=X
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/cartera
+// Query params:
+//   sala_id  — filtra por sala
+//   estado   — 'vencido' | 'pendiente' | 'todos' (default: todos)
+//   aging    — 30 | 60 | 90  — filtra cuotas vencidas hace >= X días
+// ─────────────────────────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
-  const { sala_id } = req.query;
-  const { sala_id: userSalaId, rol } = req.user;
-  const salaFiltro = sala_id || (['admin', 'director'].includes(rol) ? null : userSalaId);
+  const { sala_id, estado = 'todos', aging } = req.query;
+  const { rol, sala_id: userSalaId } = req.user;
 
   try {
-    // Intentar con tabla contratos real
-    const result = await pool.query(`
-      SELECT
-        c.id AS contrato_id,
+    const params = [];
+    let idx = 1;
+    const whereClauses = [
+      `c.estado = 'activo'`,
+      `cu.estado != 'pagado'`,
+    ];
+
+    // Restringir sala para roles no privilegiados
+    const efectivaSalaId =
+      sala_id ||
+      (!['admin', 'director', 'asesor_cartera'].includes(rol) ? userSalaId : null);
+
+    if (efectivaSalaId) {
+      whereClauses.push(`c.sala_id = $${idx}`);
+      params.push(efectivaSalaId);
+      idx++;
+    }
+
+    // Filtro por estado
+    if (estado === 'vencido') {
+      whereClauses.push(`cu.fecha_vencimiento < CURRENT_DATE`);
+    } else if (estado === 'pendiente') {
+      whereClauses.push(`cu.fecha_vencimiento >= CURRENT_DATE`);
+    }
+
+    // Filtro por aging (solo cuotas vencidas hace >= X días)
+    const agingNum = parseInt(aging, 10);
+    if (!isNaN(agingNum) && agingNum > 0) {
+      whereClauses.push(`(CURRENT_DATE - cu.fecha_vencimiento) >= $${idx}`);
+      params.push(agingNum);
+      idx++;
+    }
+
+    const whereStr = `WHERE ${whereClauses.join(' AND ')}`;
+
+    const result = await pool.query(
+      `SELECT
+        cu.id                                                          AS cuota_id,
+        cu.numero_cuota,
+        cu.monto_esperado,
+        cu.monto_pagado,
+        cu.monto_esperado - cu.monto_pagado                           AS saldo_cuota,
+        cu.fecha_vencimiento,
+        cu.estado                                                      AS estado_cuota,
+        cu.observacion                                                 AS observacion_gestion,
+        CURRENT_DATE - cu.fecha_vencimiento                           AS dias_vencido,
+        CASE
+          WHEN cu.fecha_vencimiento >= CURRENT_DATE                   THEN 'vigente'
+          WHEN CURRENT_DATE - cu.fecha_vencimiento <= 30              THEN 'mora_30'
+          WHEN CURRENT_DATE - cu.fecha_vencimiento <= 60              THEN 'mora_60'
+          WHEN CURRENT_DATE - cu.fecha_vencimiento <= 90              THEN 'mora_90'
+          ELSE 'mora_90_plus'
+        END                                                            AS tramo_mora,
+        c.id                                                           AS contrato_id,
         c.numero_contrato,
-        c.tipo_plan,
         c.monto_total,
-        c.monto_cuota,
-        c.n_cuotas,
-        c.fecha_contrato,
-        c.estado AS estado_contrato,
-        COALESCE(SUM(cu.monto_pagado), 0) AS pagado,
-        COALESCE(SUM(cu.monto_esperado), 0) AS esperado,
-        COUNT(cu.id) FILTER (WHERE cu.estado = 'vencido') AS cuotas_vencidas,
-        MAX(cu.fecha_vencimiento) FILTER (WHERE cu.estado = 'vencido') AS ultima_fecha_vencida,
-        p.id AS persona_id,
         p.nombres,
         p.apellidos,
         p.telefono,
         p.email,
-        p.ciudad,
-        p.num_documento AS cedula,
-        s.id AS sala_id,
-        s.nombre AS sala_nombre,
-        s.ciudad AS sala_ciudad,
-        u_cons.nombre AS consultor_nombre
-      FROM contratos c
-      JOIN personas p ON c.persona_id = p.id
-      LEFT JOIN salas s ON c.sala_id = s.id
-      LEFT JOIN usuarios u_cons ON c.consultor_id = u_cons.id
-      LEFT JOIN cuotas cu ON cu.contrato_id = c.id
-      WHERE c.estado != 'cancelado'
-        AND ($1::integer IS NULL OR c.sala_id = $1)
-      GROUP BY c.id, p.id, s.id, u_cons.nombre
-      ORDER BY c.fecha_contrato DESC
-    `, [salaFiltro || null]);
+        u.nombre                                                       AS consultor_nombre,
+        s.nombre                                                       AS sala_nombre
+      FROM cuotas cu
+      JOIN contratos c  ON cu.contrato_id = c.id
+      JOIN personas  p  ON c.persona_id   = p.id
+      LEFT JOIN usuarios u ON c.consultor_id = u.id
+      LEFT JOIN salas    s ON c.sala_id       = s.id
+      ${whereStr}
+      ORDER BY cu.fecha_vencimiento ASC
+      LIMIT 500`,
+      params
+    );
 
-    if (result.rows.length > 0) {
-      // Usar datos reales
-      const hoy = new Date();
-      const clientes = result.rows.map(row => {
-        const pagado = Number(row.pagado);
-        const esperado = Number(row.monto_total);
-        const saldo = esperado - pagado;
-        let moraDias = 0;
-        if (row.ultima_fecha_vencida) {
-          moraDias = Math.floor((hoy - new Date(row.ultima_fecha_vencida)) / (1000 * 60 * 60 * 24));
-        }
-        const estado_mora = moraDias <= 0 ? 'al_dia'
-          : moraDias <= 30 ? 'mora_30'
-          : moraDias <= 60 ? 'mora_60'
-          : 'mora_90';
-        return {
-          persona: { id: row.persona_id, nombres: row.nombres, apellidos: row.apellidos, telefono: row.telefono, email: row.email, ciudad: row.ciudad, cedula: row.cedula },
-          sala: { id: row.sala_id, nombre: row.sala_nombre, ciudad: row.sala_ciudad },
-          contrato: { id: row.contrato_id, numero: row.numero_contrato, tipo_plan: row.tipo_plan, consultor: row.consultor_nombre, fecha: row.fecha_contrato, estado: row.estado_contrato },
-          monto_total: esperado,
-          monto_pagado: pagado,
-          monto_saldo: saldo,
-          mora_dias: moraDias,
-          estado_mora,
-          cuotas_vencidas: Number(row.cuotas_vencidas),
-        };
-      });
-      return res.json(clientes);
-    }
-
-    // Fallback: mock desde visitas_sala (mientras no hay contratos)
-    const fallback = await pool.query(`
-      SELECT vs.id AS visita_id, vs.fecha, vs.calificacion, vs.sala_id,
-             p.id AS persona_id, p.nombres, p.apellidos, p.telefono, p.email, p.ciudad, p.num_documento AS cedula,
-             s.nombre AS sala_nombre, s.ciudad AS sala_ciudad,
-             uc.nombre AS consultor_nombre, l.id AS lead_id, l.patologia, f.nombre AS fuente_nombre
-      FROM visitas_sala vs
-      JOIN personas p ON vs.persona_id = p.id
-      LEFT JOIN salas s ON vs.sala_id = s.id
-      LEFT JOIN usuarios uc ON vs.consultor_id = uc.id
-      LEFT JOIN leads l ON vs.lead_id = l.id
-      LEFT JOIN fuentes f ON l.fuente_id = f.id
-      WHERE vs.calificacion = 'TOUR'
-        AND ($1::integer IS NULL OR vs.sala_id = $1)
-      ORDER BY vs.fecha DESC
-    `, [salaFiltro || null]);
-
-    const hoy = new Date();
-    const clientes = fallback.rows.map(row => {
-      const fechaVisita = new Date(row.fecha);
-      const montoBase = 12000;
-      const montoTotal = montoBase + (row.persona_id % 1000) * 10;
-      const porcentajePagado = 0.3 + ((row.persona_id % 50) / 100);
-      const montoPagado = Math.round(montoTotal * porcentajePagado);
-      const tieneMora = row.persona_id % 3 === 0;
-      const diasDesdeVisita = Math.floor((hoy - fechaVisita) / (1000 * 60 * 60 * 24));
-      const moraDias = tieneMora ? Math.min(diasDesdeVisita, 120) : 0;
-      const estado_mora = moraDias <= 0 ? 'al_dia' : moraDias <= 30 ? 'mora_30' : moraDias <= 60 ? 'mora_60' : 'mora_90';
-      return {
-        persona: { id: row.persona_id, nombres: row.nombres, apellidos: row.apellidos, telefono: row.telefono, email: row.email, ciudad: row.ciudad, cedula: row.cedula },
-        sala: { id: row.sala_id, nombre: row.sala_nombre, ciudad: row.sala_ciudad },
-        contrato: null,
-        monto_total: montoTotal,
-        monto_pagado: montoPagado,
-        monto_saldo: montoTotal - montoPagado,
-        mora_dias: moraDias,
-        estado_mora,
-        cuotas_vencidas: tieneMora ? 1 : 0,
-      };
-    });
-    res.json(clientes);
+    res.json(result.rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Error al obtener cartera' });
+    console.error('GET /api/cartera error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/cartera/resumen?sala_id=X
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/cartera/resumen
+// Totales por tramo de mora para cuotas vencidas y no pagadas
+// ─────────────────────────────────────────────────────────────────────────────
 router.get('/resumen', async (req, res) => {
   const { sala_id } = req.query;
-  const { sala_id: userSalaId, rol } = req.user;
-  const salaFiltro = sala_id || (['admin', 'director'].includes(rol) ? null : userSalaId);
+  const { rol, sala_id: userSalaId } = req.user;
 
   try {
-    const result = await pool.query(`
-      SELECT
-        COUNT(c.id) AS total_contratos,
-        COALESCE(SUM(c.monto_total), 0) AS total_cartera,
-        COALESCE(SUM(sub.pagado), 0) AS total_pagado,
-        COUNT(c.id) FILTER (WHERE sub.cuotas_vencidas > 0 AND sub.dias_mora BETWEEN 1 AND 30) AS mora_30,
-        COUNT(c.id) FILTER (WHERE sub.dias_mora BETWEEN 31 AND 60) AS mora_60,
-        COUNT(c.id) FILTER (WHERE sub.dias_mora > 60) AS mora_90,
-        COUNT(c.id) FILTER (WHERE sub.cuotas_vencidas = 0) AS al_dia
-      FROM contratos c
-      LEFT JOIN LATERAL (
-        SELECT
-          COALESCE(SUM(cu.monto_pagado), 0) AS pagado,
-          COUNT(cu.id) FILTER (WHERE cu.estado = 'vencido') AS cuotas_vencidas,
-          COALESCE(
-            EXTRACT(DAY FROM NOW() - MAX(cu.fecha_vencimiento) FILTER (WHERE cu.estado = 'vencido'))::integer,
-            0
-          ) AS dias_mora
-        FROM cuotas cu WHERE cu.contrato_id = c.id
-      ) sub ON true
-      WHERE c.estado != 'cancelado'
-        AND ($1::integer IS NULL OR c.sala_id = $1)
-    `, [salaFiltro || null]);
+    const params = [];
+    let idx = 1;
+    const whereClauses = [
+      `c.estado = 'activo'`,
+      `cu.estado != 'pagado'`,
+      `cu.fecha_vencimiento < CURRENT_DATE`,
+    ];
 
-    const row = result.rows[0];
-    const totalCartera = Number(row.total_cartera);
-    const totalPagado = Number(row.total_pagado);
+    const efectivaSalaId =
+      sala_id ||
+      (!['admin', 'director', 'asesor_cartera'].includes(rol) ? userSalaId : null);
 
-    if (Number(row.total_contratos) > 0) {
-      return res.json({
-        total_clientes: Number(row.total_contratos),
-        total_cartera: totalCartera,
-        total_pagado: totalPagado,
-        total_saldo: totalCartera - totalPagado,
-        porcentaje_cobro: totalCartera > 0 ? Number(((totalPagado / totalCartera) * 100).toFixed(1)) : 0,
-        mora_30: Number(row.mora_30),
-        mora_60: Number(row.mora_60),
-        mora_90: Number(row.mora_90),
-        al_dia: Number(row.al_dia),
-      });
+    if (efectivaSalaId) {
+      whereClauses.push(`c.sala_id = $${idx}`);
+      params.push(efectivaSalaId);
+      idx++;
     }
 
-    // Fallback mock
-    const fallback = await pool.query(
-      `SELECT vs.persona_id, vs.fecha FROM visitas_sala vs
-       WHERE vs.calificacion = 'TOUR' AND ($1::integer IS NULL OR vs.sala_id = $1)`,
-      [salaFiltro || null]
+    const whereStr = `WHERE ${whereClauses.join(' AND ')}`;
+
+    const result = await pool.query(
+      `SELECT
+        COUNT(*)        FILTER (WHERE dias_calc > 0  AND dias_calc <= 30)  AS mora_30_count,
+        SUM(saldo)      FILTER (WHERE dias_calc > 0  AND dias_calc <= 30)  AS mora_30_monto,
+        COUNT(*)        FILTER (WHERE dias_calc > 30 AND dias_calc <= 60)  AS mora_60_count,
+        SUM(saldo)      FILTER (WHERE dias_calc > 30 AND dias_calc <= 60)  AS mora_60_monto,
+        COUNT(*)        FILTER (WHERE dias_calc > 60 AND dias_calc <= 90)  AS mora_90_count,
+        SUM(saldo)      FILTER (WHERE dias_calc > 60 AND dias_calc <= 90)  AS mora_90_monto,
+        COUNT(*)        FILTER (WHERE dias_calc > 90)                      AS mora_plus_count,
+        SUM(saldo)      FILTER (WHERE dias_calc > 90)                      AS mora_plus_monto
+      FROM (
+        SELECT
+          GREATEST(0, CURRENT_DATE - cu.fecha_vencimiento)  AS dias_calc,
+          cu.monto_esperado - cu.monto_pagado                AS saldo
+        FROM cuotas cu
+        JOIN contratos c ON cu.contrato_id = c.id
+        ${whereStr}
+      ) sub`,
+      params
     );
-    const hoy = new Date();
-    let totalC = 0, totalP = 0, m30 = 0, m60 = 0, m90 = 0, alDia = 0;
-    fallback.rows.forEach(row => {
-      const mt = 12000 + (row.persona_id % 1000) * 10;
-      const mp = Math.round(mt * (0.3 + (row.persona_id % 50) / 100));
-      totalC += mt; totalP += mp;
-      const tieneMora = row.persona_id % 3 === 0;
-      if (!tieneMora) { alDia++; return; }
-      const dias = Math.min(Math.floor((hoy - new Date(row.fecha)) / 86400000), 120);
-      if (dias <= 30) m30++; else if (dias <= 60) m60++; else m90++;
-    });
+
+    const row = result.rows[0];
     res.json({
-      total_clientes: fallback.rows.length,
-      total_cartera: totalC,
-      total_pagado: totalP,
-      total_saldo: totalC - totalP,
-      porcentaje_cobro: totalC > 0 ? Number(((totalP / totalC) * 100).toFixed(1)) : 0,
-      mora_30: m30,
-      mora_60: m60,
-      mora_90: m90,
-      al_dia: alDia,
+      mora_30_count:   Number(row.mora_30_count   || 0),
+      mora_30_monto:   Number(row.mora_30_monto   || 0),
+      mora_60_count:   Number(row.mora_60_count   || 0),
+      mora_60_monto:   Number(row.mora_60_monto   || 0),
+      mora_90_count:   Number(row.mora_90_count   || 0),
+      mora_90_monto:   Number(row.mora_90_monto   || 0),
+      mora_plus_count: Number(row.mora_plus_count || 0),
+      mora_plus_monto: Number(row.mora_plus_monto || 0),
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Error al obtener resumen de cartera' });
+    console.error('GET /api/cartera/resumen error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/cartera/cuotas/:id/gestion
+// Body: { observacion: string }
+// Solo roles: asesor_cartera | admin | director
+// ─────────────────────────────────────────────────────────────────────────────
+router.patch('/cuotas/:id/gestion', async (req, res) => {
+  const { rol } = req.user;
+  if (!['asesor_cartera', 'admin', 'director'].includes(rol)) {
+    return res.status(403).json({ error: 'Sin permiso para registrar gestión de cartera' });
+  }
+
+  const { observacion } = req.body;
+  const cuotaId = parseInt(req.params.id, 10);
+
+  if (isNaN(cuotaId)) {
+    return res.status(400).json({ error: 'ID de cuota inválido' });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE cuotas
+       SET observacion = $1
+       WHERE id = $2
+       RETURNING id, contrato_id, numero_cuota, estado, observacion`,
+      [observacion ?? null, cuotaId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Cuota no encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('PATCH /api/cartera/cuotas/:id/gestion error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

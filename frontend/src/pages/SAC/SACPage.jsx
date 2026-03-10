@@ -1,0 +1,893 @@
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useAuth } from '../../context/AuthContext'
+import { getTickets, createTicket, updateTicket, getSACStats } from '../../api/sac'
+import { apiPersonas } from '../../api/personas'
+import client from '../../api/client'
+
+// ─── Configuraciones de badges ────────────────────────────
+const TIPO_CONFIG = {
+  queja:        { label: 'Queja',        cls: 'bg-red-100 text-red-700' },
+  reclamo:      { label: 'Reclamo',      cls: 'bg-orange-100 text-orange-700' },
+  peticion:     { label: 'Petición',     cls: 'bg-blue-100 text-blue-700' },
+  felicitacion: { label: 'Felicitación', cls: 'bg-green-100 text-green-700' },
+}
+
+const PRIORIDAD_CONFIG = {
+  urgente: { label: 'Urgente', cls: 'bg-red-100 text-red-700 font-semibold' },
+  alta:    { label: 'Alta',    cls: 'bg-orange-100 text-orange-700' },
+  normal:  { label: 'Normal',  cls: 'bg-gray-100 text-gray-600' },
+  baja:    { label: 'Baja',    cls: 'bg-green-50 text-green-600' },
+}
+
+const ESTADO_CONFIG = {
+  abierto:    { label: 'Abierto',     cls: 'bg-yellow-100 text-yellow-700' },
+  en_proceso: { label: 'En Proceso',  cls: 'bg-blue-100 text-blue-700' },
+  resuelto:   { label: 'Resuelto',    cls: 'bg-green-100 text-green-700' },
+  cerrado:    { label: 'Cerrado',     cls: 'bg-gray-100 text-gray-500' },
+}
+
+const CATEGORIA_LABELS = {
+  facturacion: 'Facturación',
+  servicio:    'Servicio',
+  atencion:    'Atención',
+  producto:    'Producto',
+  otro:        'Otro',
+}
+
+// ─── Componentes pequeños ─────────────────────────────────
+function Badge({ config, value }) {
+  const cfg = config[value] || { label: value || '—', cls: 'bg-gray-100 text-gray-500' }
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.cls}`}>
+      {cfg.label}
+    </span>
+  )
+}
+
+function Spinner() {
+  return (
+    <div className="flex items-center justify-center h-48">
+      <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
+
+function fmtFecha(val) {
+  if (!val) return '—'
+  return new Date(val).toLocaleDateString('es-EC', {
+    day: '2-digit', month: '2-digit', year: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
+// ─── Drawer Nuevo Ticket ──────────────────────────────────
+function DrawerNuevoTicket({ onClose, onCreated, userSalaId }) {
+  const [telefono, setTelefono]           = useState('')
+  const [buscando, setBuscando]           = useState(false)
+  const [persona, setPersona]             = useState(null)
+  const [sugerencias, setSugerencias]     = useState([])
+  const [mostrarSug, setMostrarSug]       = useState(false)
+
+  // Campos para nueva persona
+  const [nuevaNombres, setNuevaNombres]   = useState('')
+  const [nuevaApellidos, setNuevaApellidos] = useState('')
+  const [nuevaTelefono, setNuevaTelefono] = useState('')
+
+  // Contratos del cliente
+  const [contratos, setContratos]         = useState([])
+  const [contratoId, setContratoId]       = useState('')
+
+  // Campos del ticket
+  const [tipo, setTipo]         = useState('queja')
+  const [categoria, setCategoria] = useState('otro')
+  const [prioridad, setPrioridad] = useState('normal')
+  const [descripcion, setDescripcion] = useState('')
+
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError]         = useState('')
+
+  const debounceRef = useRef(null)
+
+  // Búsqueda de persona con debounce
+  const handleTelefono = (val) => {
+    setTelefono(val)
+    setPersona(null)
+    setSugerencias([])
+    setContratos([])
+    setContratoId('')
+    clearTimeout(debounceRef.current)
+    if (val.length < 3) { setMostrarSug(false); return }
+    debounceRef.current = setTimeout(async () => {
+      setBuscando(true)
+      try {
+        const data = await apiPersonas.buscar(val)
+        setSugerencias(Array.isArray(data) ? data : [])
+        setMostrarSug(true)
+      } catch {
+        setSugerencias([])
+      } finally {
+        setBuscando(false)
+      }
+    }, 500)
+  }
+
+  const seleccionarPersona = async (p) => {
+    setPersona(p)
+    setTelefono(`${p.nombres} ${p.apellidos} — ${p.telefono || ''}`)
+    setMostrarSug(false)
+    // Cargar contratos del cliente
+    try {
+      const data = await client.get('/api/ventas', { params: { persona_id: p.id } }).then(r => r.data)
+      setContratos(Array.isArray(data) ? data : [])
+    } catch {
+      setContratos([])
+    }
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    if (!descripcion.trim()) { setError('La descripción es requerida'); return }
+
+    let personaId = persona?.id
+
+    // Si no existe persona, crear una nueva
+    if (!personaId) {
+      if (!nuevaTelefono.trim() && !telefono.trim()) {
+        setError('Ingresa un teléfono o selecciona un cliente')
+        return
+      }
+      try {
+        const nueva = await apiPersonas.crear({
+          nombres:   nuevaNombres || 'Sin nombre',
+          apellidos: nuevaApellidos || '',
+          telefono:  nuevaTelefono || telefono,
+        })
+        personaId = nueva.id
+      } catch (err) {
+        setError('Error al crear cliente: ' + (err.response?.data?.error || err.message))
+        return
+      }
+    }
+
+    setGuardando(true)
+    try {
+      const payload = {
+        persona_id:  personaId,
+        contrato_id: contratoId || undefined,
+        sala_id:     userSalaId || undefined,
+        tipo,
+        categoria,
+        prioridad,
+        descripcion: descripcion.trim(),
+      }
+      const ticket = await createTicket(payload)
+      onCreated(ticket)
+      onClose()
+    } catch (err) {
+      setError('Error al crear ticket: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-800">Nuevo Ticket SAC/PQR</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+
+        {/* Body */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+          {/* Buscar cliente */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Buscar cliente por teléfono o nombre
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={telefono}
+                onChange={e => handleTelefono(e.target.value)}
+                placeholder="Ej: 0999123456"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              {buscando && (
+                <div className="absolute right-3 top-2.5">
+                  <div className="w-4 h-4 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+              {mostrarSug && sugerencias.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {sugerencias.map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => seleccionarPersona(p)}
+                      className="w-full text-left px-4 py-2.5 hover:bg-teal-50 text-sm border-b border-gray-50 last:border-0"
+                    >
+                      <span className="font-medium text-gray-800">{p.nombres} {p.apellidos}</span>
+                      <span className="text-gray-400 ml-2 font-mono text-xs">{p.telefono}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {mostrarSug && sugerencias.length === 0 && !buscando && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg px-4 py-3 text-sm text-gray-500">
+                  No encontrado — completa los datos para crear cliente nuevo
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Si no se encontró persona: campos para crear */}
+          {!persona && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 space-y-3">
+              <p className="text-xs font-semibold text-yellow-700 uppercase tracking-wide">Nuevo cliente</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Nombres</label>
+                  <input
+                    type="text"
+                    value={nuevaNombres}
+                    onChange={e => setNuevaNombres(e.target.value)}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Apellidos</label>
+                  <input
+                    type="text"
+                    value={nuevaApellidos}
+                    onChange={e => setNuevaApellidos(e.target.value)}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Teléfono</label>
+                <input
+                  type="text"
+                  value={nuevaTelefono}
+                  onChange={e => setNuevaTelefono(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Cliente encontrado — info */}
+          {persona && (
+            <div className="bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 flex items-center justify-between">
+              <div>
+                <p className="font-medium text-teal-800 text-sm">{persona.nombres} {persona.apellidos}</p>
+                <p className="text-xs text-teal-600 font-mono">{persona.telefono}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setPersona(null); setTelefono(''); setContratos([]); setContratoId('') }}
+                className="text-teal-400 hover:text-teal-600 text-sm"
+              >
+                Cambiar
+              </button>
+            </div>
+          )}
+
+          {/* Contrato (opcional) */}
+          {contratos.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Contrato (opcional)</label>
+              <select
+                value={contratoId}
+                onChange={e => setContratoId(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="">Sin contrato</option>
+                {contratos.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.numero_contrato} — {c.tipo_plan} — {c.estado}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Tipo y Categoría */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+              <select
+                value={tipo}
+                onChange={e => setTipo(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="queja">Queja</option>
+                <option value="reclamo">Reclamo</option>
+                <option value="peticion">Petición</option>
+                <option value="felicitacion">Felicitación</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+              <select
+                value={categoria}
+                onChange={e => setCategoria(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="facturacion">Facturación</option>
+                <option value="servicio">Servicio</option>
+                <option value="atencion">Atención</option>
+                <option value="producto">Producto</option>
+                <option value="otro">Otro</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Prioridad */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Prioridad</label>
+            <select
+              value={prioridad}
+              onChange={e => setPrioridad(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+            >
+              <option value="baja">Baja</option>
+              <option value="normal">Normal</option>
+              <option value="alta">Alta</option>
+              <option value="urgente">Urgente</option>
+            </select>
+          </div>
+
+          {/* Descripción */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Descripción <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={descripcion}
+              onChange={e => setDescripcion(e.target.value)}
+              rows={5}
+              placeholder="Describe detalladamente el motivo del ticket..."
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+              required
+            />
+          </div>
+
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex justify-between">
+              {error}
+              <button type="button" onClick={() => setError('')} className="text-red-400 hover:text-red-600 ml-2">×</button>
+            </div>
+          )}
+        </form>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={guardando}
+            className="flex-1 bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {guardando ? 'Guardando...' : 'Guardar Ticket'}
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ─── Drawer Ver/Editar Ticket ─────────────────────────────
+function DrawerVerTicket({ ticket, onClose, onUpdated, usuario, usuariosList }) {
+  const [estado, setEstado]       = useState(ticket.estado || 'abierto')
+  const [prioridad, setPrioridad] = useState(ticket.prioridad || 'normal')
+  const [asignadoA, setAsignadoA] = useState(ticket.asignado_a || '')
+  const [resolucion, setResolucion] = useState(ticket.resolucion || '')
+  const [categoria, setCategoria] = useState(ticket.categoria || 'otro')
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError]         = useState('')
+  const [success, setSuccess]     = useState(false)
+
+  const puedeAsignar = ['admin', 'director', 'sac'].includes(usuario?.rol)
+  const mostrarResolucion = estado === 'resuelto' || estado === 'cerrado'
+
+  const handleGuardar = async () => {
+    setError(''); setSuccess(false)
+    setGuardando(true)
+    try {
+      const payload = { estado, prioridad, categoria }
+      if (puedeAsignar) payload.asignado_a = asignadoA || null
+      if (mostrarResolucion && resolucion.trim()) payload.resolucion = resolucion.trim()
+      const updated = await updateTicket(ticket.id, payload)
+      setSuccess(true)
+      onUpdated(updated)
+      setTimeout(() => setSuccess(false), 2000)
+    } catch (err) {
+      setError('Error: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800">{ticket.numero_ticket}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{fmtFecha(ticket.fecha_apertura)}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {/* Info del cliente */}
+          <div className="bg-gray-50 rounded-xl p-4 space-y-1.5">
+            <p className="text-xs font-semibold uppercase text-gray-400 tracking-wide">Cliente</p>
+            <p className="font-semibold text-gray-800">
+              {ticket.persona_nombres} {ticket.persona_apellidos}
+            </p>
+            {ticket.persona_telefono && (
+              <p className="text-sm text-gray-500 font-mono">{ticket.persona_telefono}</p>
+            )}
+            {ticket.numero_contrato && (
+              <p className="text-sm text-teal-600 font-mono">Contrato: {ticket.numero_contrato}</p>
+            )}
+            {ticket.sala_nombre && (
+              <p className="text-sm text-gray-500">Sala: {ticket.sala_nombre}</p>
+            )}
+          </div>
+
+          {/* Tipo, Prioridad, Estado */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="text-center">
+              <p className="text-xs text-gray-400 mb-1">Tipo</p>
+              <Badge config={TIPO_CONFIG} value={ticket.tipo} />
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-gray-400 mb-1">Estado actual</p>
+              <Badge config={ESTADO_CONFIG} value={ticket.estado} />
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-gray-400 mb-1">Creado por</p>
+              <p className="text-xs text-gray-600">{ticket.creado_por_nombre || '—'}</p>
+            </div>
+          </div>
+
+          {/* Descripción original */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Descripción</p>
+            <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-4 py-3 whitespace-pre-wrap">
+              {ticket.descripcion}
+            </p>
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* Campos editables */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+              <select
+                value={estado}
+                onChange={e => setEstado(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="abierto">Abierto</option>
+                <option value="en_proceso">En Proceso</option>
+                <option value="resuelto">Resuelto</option>
+                <option value="cerrado">Cerrado</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Prioridad</label>
+              <select
+                value={prioridad}
+                onChange={e => setPrioridad(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="baja">Baja</option>
+                <option value="normal">Normal</option>
+                <option value="alta">Alta</option>
+                <option value="urgente">Urgente</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Categoría */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+            <select
+              value={categoria}
+              onChange={e => setCategoria(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+            >
+              <option value="facturacion">Facturación</option>
+              <option value="servicio">Servicio</option>
+              <option value="atencion">Atención</option>
+              <option value="producto">Producto</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+
+          {/* Asignar (solo admin/director/sac) */}
+          {puedeAsignar && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Asignado a</label>
+              <select
+                value={asignadoA}
+                onChange={e => setAsignadoA(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="">Sin asignar</option>
+                {usuariosList.map(u => (
+                  <option key={u.id} value={u.id}>{u.nombre}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Resolución (si estado es resuelto/cerrado) */}
+          {mostrarResolucion && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Resolución</label>
+              <textarea
+                value={resolucion}
+                onChange={e => setResolucion(e.target.value)}
+                rows={4}
+                placeholder="Describe cómo se resolvió este caso..."
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+              />
+            </div>
+          )}
+
+          {/* Resolución guardada */}
+          {ticket.resolucion && !mostrarResolucion && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Resolución</p>
+              <p className="text-sm text-gray-700 bg-green-50 rounded-lg px-4 py-3 whitespace-pre-wrap border border-green-100">
+                {ticket.resolucion}
+              </p>
+              {ticket.fecha_cierre && (
+                <p className="text-xs text-gray-400 mt-1">Cerrado: {fmtFecha(ticket.fecha_cierre)}</p>
+              )}
+            </div>
+          )}
+
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+              Cambios guardados correctamente
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+          >
+            Cerrar
+          </button>
+          <button
+            onClick={handleGuardar}
+            disabled={guardando}
+            className="flex-1 bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {guardando ? 'Guardando...' : 'Guardar Cambios'}
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ─── Página principal ─────────────────────────────────────
+export default function SACPage() {
+  const { usuario } = useAuth()
+
+  const [tickets, setTickets]     = useState([])
+  const [stats, setStats]         = useState(null)
+  const [usuarios, setUsuarios]   = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState('')
+
+  // Filtros
+  const [filtroEstado, setFiltroEstado]     = useState('')
+  const [filtroTipo, setFiltroTipo]         = useState('')
+  const [filtroPrioridad, setFiltroPrioridad] = useState('')
+  const [busqueda, setBusqueda]             = useState('')
+
+  // Drawers
+  const [drawerNuevo, setDrawerNuevo]       = useState(false)
+  const [ticketSeleccionado, setTicketSeleccionado] = useState(null)
+
+  const cargar = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const params = {}
+      if (filtroEstado)    params.estado    = filtroEstado
+      if (filtroTipo)      params.tipo      = filtroTipo
+      if (filtroPrioridad) params.prioridad = filtroPrioridad
+      if (busqueda.trim()) params.q         = busqueda.trim()
+
+      const [dataTickets, dataStats] = await Promise.all([
+        getTickets(params),
+        getSACStats(),
+      ])
+      setTickets(Array.isArray(dataTickets) ? dataTickets : [])
+      setStats(dataStats || null)
+    } catch (err) {
+      setError('Error al cargar tickets: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setLoading(false)
+    }
+  }, [filtroEstado, filtroTipo, filtroPrioridad, busqueda])
+
+  // Cargar usuarios para el selector de asignación
+  useEffect(() => {
+    client.get('/api/usuarios').then(r => {
+      setUsuarios(Array.isArray(r.data) ? r.data : [])
+    }).catch(() => setUsuarios([]))
+  }, [])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  const handleTicketCreado = (ticket) => {
+    setTickets(prev => [ticket, ...prev])
+    cargar() // recargar stats también
+  }
+
+  const handleTicketActualizado = (updated) => {
+    setTickets(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t))
+    cargar() // recargar stats
+  }
+
+  // Stats calculadas localmente si no hay datos del servidor
+  const totalTickets  = stats?.total      ?? tickets.length
+  const totalAbiertos = stats?.abiertos   ?? tickets.filter(t => t.estado === 'abierto').length
+  const totalEnProceso = stats?.en_proceso ?? tickets.filter(t => t.estado === 'en_proceso').length
+  const totalResueltos = stats?.resueltos  ?? tickets.filter(t => t.estado === 'resuelto').length
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">SAC / PQR</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Servicio al Cliente — Peticiones, Quejas y Reclamos</p>
+        </div>
+        <button
+          onClick={() => setDrawerNuevo(true)}
+          className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 text-sm font-medium flex items-center gap-2"
+        >
+          + Nuevo Ticket
+        </button>
+      </div>
+
+      {/* Stat Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <p className="text-xs font-semibold uppercase text-gray-400 tracking-wide">Total Tickets</p>
+          <p className="text-3xl font-bold text-gray-700 mt-1">{totalTickets}</p>
+        </div>
+        <div className={`rounded-xl border shadow-sm p-5 ${totalAbiertos > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'}`}>
+          <p className={`text-xs font-semibold uppercase tracking-wide ${totalAbiertos > 0 ? 'text-red-500' : 'text-gray-400'}`}>
+            Abiertos
+          </p>
+          <p className={`text-3xl font-bold mt-1 ${totalAbiertos > 0 ? 'text-red-600' : 'text-gray-700'}`}>
+            {totalAbiertos}
+          </p>
+        </div>
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl shadow-sm p-5">
+          <p className="text-xs font-semibold uppercase text-yellow-600 tracking-wide">En Proceso</p>
+          <p className="text-3xl font-bold text-yellow-700 mt-1">{totalEnProceso}</p>
+        </div>
+        <div className="bg-green-50 border border-green-200 rounded-xl shadow-sm p-5">
+          <p className="text-xs font-semibold uppercase text-green-600 tracking-wide">Resueltos</p>
+          <p className="text-3xl font-bold text-green-700 mt-1">{totalResueltos}</p>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-wrap items-end gap-4">
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Estado</label>
+          <select
+            value={filtroEstado}
+            onChange={e => setFiltroEstado(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+          >
+            <option value="">Todos</option>
+            <option value="abierto">Abierto</option>
+            <option value="en_proceso">En Proceso</option>
+            <option value="resuelto">Resuelto</option>
+            <option value="cerrado">Cerrado</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Tipo</label>
+          <select
+            value={filtroTipo}
+            onChange={e => setFiltroTipo(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+          >
+            <option value="">Todos</option>
+            <option value="queja">Queja</option>
+            <option value="reclamo">Reclamo</option>
+            <option value="peticion">Petición</option>
+            <option value="felicitacion">Felicitación</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Prioridad</label>
+          <select
+            value={filtroPrioridad}
+            onChange={e => setFiltroPrioridad(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+          >
+            <option value="">Todas</option>
+            <option value="urgente">Urgente</option>
+            <option value="alta">Alta</option>
+            <option value="normal">Normal</option>
+            <option value="baja">Baja</option>
+          </select>
+        </div>
+        <div className="flex-1 min-w-48">
+          <label className="block text-xs font-medium text-gray-500 mb-1">Buscar</label>
+          <input
+            type="text"
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && cargar()}
+            placeholder="N° ticket, cliente, teléfono..."
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+          />
+        </div>
+        <div>
+          <button
+            onClick={cargar}
+            className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+          >
+            Buscar
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex justify-between">
+          {error}
+          <button onClick={() => setError('')} className="text-red-400 hover:text-red-600">×</button>
+        </div>
+      )}
+
+      {/* Tabla */}
+      {loading ? <Spinner /> : (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="font-semibold text-gray-700">Tickets</h2>
+            <span className="text-sm text-gray-400">{tickets.length} registros</span>
+          </div>
+
+          {tickets.length === 0 ? (
+            <div className="p-12 text-center text-gray-400">
+              <div className="text-4xl mb-3">🎫</div>
+              <p className="font-medium">No hay tickets para esta selección</p>
+              <p className="text-sm mt-1">Cambia los filtros o crea un nuevo ticket</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">N° Ticket</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Cliente</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Tipo</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Categoría</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Prioridad</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Estado</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Asignado</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Fecha</th>
+                    <th className="px-4 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tickets.map((t, i) => (
+                    <tr
+                      key={t.id}
+                      onClick={() => setTicketSeleccionado(t)}
+                      className={`border-b border-gray-50 hover:bg-teal-50/30 cursor-pointer transition-colors ${
+                        i % 2 === 0 ? '' : 'bg-gray-50/30'
+                      }`}
+                    >
+                      <td className="px-4 py-3 font-mono text-xs text-teal-700 font-bold whitespace-nowrap">
+                        {t.numero_ticket || '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-gray-800">
+                          {t.persona_nombres} {t.persona_apellidos}
+                        </div>
+                        {t.persona_telefono && (
+                          <div className="text-xs text-gray-400 font-mono">{t.persona_telefono}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge config={TIPO_CONFIG} value={t.tipo} />
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">
+                        {CATEGORIA_LABELS[t.categoria] || t.categoria || '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge config={PRIORIDAD_CONFIG} value={t.prioridad} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge config={ESTADO_CONFIG} value={t.estado} />
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">
+                        {t.asignado_nombre || <span className="text-gray-300 italic">Sin asignar</span>}
+                      </td>
+                      <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
+                        {t.fecha_apertura
+                          ? new Date(t.fecha_apertura).toLocaleDateString('es-EC', {
+                              day: '2-digit', month: '2-digit', year: '2-digit',
+                            })
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={e => { e.stopPropagation(); setTicketSeleccionado(t) }}
+                          className="text-teal-600 hover:text-teal-800 text-xs font-medium"
+                        >
+                          Ver →
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Drawer: Nuevo Ticket */}
+      {drawerNuevo && (
+        <DrawerNuevoTicket
+          onClose={() => setDrawerNuevo(false)}
+          onCreated={handleTicketCreado}
+          userSalaId={usuario?.sala_id}
+        />
+      )}
+
+      {/* Drawer: Ver/Editar Ticket */}
+      {ticketSeleccionado && (
+        <DrawerVerTicket
+          ticket={ticketSeleccionado}
+          onClose={() => setTicketSeleccionado(null)}
+          onUpdated={handleTicketActualizado}
+          usuario={usuario}
+          usuariosList={usuarios}
+        />
+      )}
+    </div>
+  )
+}
