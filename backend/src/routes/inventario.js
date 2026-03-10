@@ -58,7 +58,7 @@ router.get('/stock', auth, async (req, res) => {
          p.codigo,
          p.nombre,
          p.tipo,
-         p.precio_base,
+         p.precio_venta,
          p.activo,
          COALESCE(SUM(
            CASE m.tipo
@@ -70,7 +70,7 @@ router.get('/stock', auth, async (req, res) => {
        FROM productos p
        LEFT JOIN movimientos_inventario m ON m.producto_id = p.id
        ${whereClause}
-       GROUP BY p.id, p.codigo, p.nombre, p.tipo, p.precio_base, p.activo
+       GROUP BY p.id, p.codigo, p.nombre, p.tipo, p.precio_venta, p.activo
        ORDER BY p.nombre ASC`
     );
 
@@ -232,7 +232,7 @@ router.patch('/productos/:id', auth, async (req, res) => {
     return res.status(403).json({ error: 'Sin permiso. Solo admin o director.' });
   }
 
-  const allowedFields = ['nombre', 'descripcion', 'precio_base', 'activo', 'codigo'];
+  const allowedFields = ['nombre', 'descripcion', 'precio_venta', 'activo', 'codigo'];
   const updates = [];
   const values  = [];
   let idx = 1;

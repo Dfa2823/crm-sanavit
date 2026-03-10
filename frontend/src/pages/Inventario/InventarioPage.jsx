@@ -484,7 +484,7 @@ export default function InventarioPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-500 capitalize">{p.tipo || '—'}</td>
-                      <td className="px-4 py-3 text-right text-gray-700">{fmt(p.precio_base)}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">{fmt(p.precio_venta)}</td>
                       <td className={`px-4 py-3 text-right tabular-nums ${colorStock(p.stock_actual)}`}>
                         {p.stock_actual}
                       </td>
