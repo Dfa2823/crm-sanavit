@@ -9,7 +9,7 @@ export default function CapturarLead({ onClose, onGuardado }) {
   const [buscando, setBuscando] = useState(false)
 
   const [nuevaPersona, setNuevaPersona] = useState({
-    nombres: '', apellidos: '', telefono: '', ciudad: '', patologia: '',
+    nombres: '', apellidos: '', telefono: '', telefono2: '', ciudad: '', patologia: '',
   })
 
   const [lead, setLead] = useState({
@@ -64,6 +64,7 @@ export default function CapturarLead({ onClose, onGuardado }) {
           nombres: nuevaPersona.nombres,
           apellidos: nuevaPersona.apellidos,
           telefono: busquedaTel || nuevaPersona.telefono,
+          telefono2: nuevaPersona.telefono2 || undefined,
           ciudad: nuevaPersona.ciudad,
           patologia: nuevaPersona.patologia,
         })
@@ -177,6 +178,16 @@ export default function CapturarLead({ onClose, onGuardado }) {
                         onChange={e => setNuevaPersona(p => ({ ...p, apellidos: e.target.value }))}
                       />
                     </div>
+                  </div>
+                  <div>
+                    <label className="label">Teléfono 2 <span className="text-gray-400 font-normal">(opcional)</span></label>
+                    <input
+                      type="tel"
+                      className="input"
+                      placeholder="Número alternativo"
+                      value={nuevaPersona.telefono2}
+                      onChange={e => setNuevaPersona(p => ({ ...p, telefono2: e.target.value }))}
+                    />
                   </div>
                   <div>
                     <label className="label">Ciudad</label>

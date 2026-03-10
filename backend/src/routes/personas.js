@@ -13,18 +13,19 @@ router.get('/', auth, async (req, res) => {
     if (q && q.trim()) {
       const term = `%${q.trim()}%`;
       result = await pool.query(`
-        SELECT id, nombres, apellidos, telefono, email, ciudad, edad,
+        SELECT id, nombres, apellidos, telefono, telefono2, email, ciudad, edad,
                tipo_documento, num_documento, situacion_laboral, patologia,
                created_at
         FROM personas
         WHERE nombres ILIKE $1 OR apellidos ILIKE $1
            OR telefono LIKE $2 OR num_documento LIKE $2
+           OR telefono2 LIKE $2
         ORDER BY nombres ASC
         LIMIT 20
       `, [term, `%${q.trim()}%`]);
     } else {
       result = await pool.query(`
-        SELECT id, nombres, apellidos, telefono, email, ciudad, edad,
+        SELECT id, nombres, apellidos, telefono, telefono2, email, ciudad, edad,
                tipo_documento, num_documento, situacion_laboral, patologia,
                created_at
         FROM personas
@@ -88,7 +89,7 @@ router.get('/:id', auth, async (req, res) => {
 // POST /api/personas — crear nueva persona
 router.post('/', auth, async (req, res) => {
   const {
-    nombres, apellidos, telefono, email, ciudad, edad,
+    nombres, apellidos, telefono, telefono2, email, ciudad, edad,
     tipo_documento, num_documento, situacion_laboral, patologia
   } = req.body;
 
@@ -109,11 +110,11 @@ router.post('/', auth, async (req, res) => {
     }
 
     const result = await pool.query(`
-      INSERT INTO personas (nombres, apellidos, telefono, email, ciudad, edad,
+      INSERT INTO personas (nombres, apellidos, telefono, telefono2, email, ciudad, edad,
                             tipo_documento, num_documento, situacion_laboral, patologia)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       RETURNING *
-    `, [nombres, apellidos, telefono, email, ciudad, edad,
+    `, [nombres, apellidos, telefono, telefono2 || null, email, ciudad, edad,
         tipo_documento, num_documento, situacion_laboral, patologia]);
 
     res.status(201).json(result.rows[0]);

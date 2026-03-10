@@ -152,7 +152,19 @@ export default function TMKDashboard() {
                       </div>
                       <div className="text-xs text-gray-400">{lead.ciudad}</div>
                     </td>
-                    <td className="text-gray-600 font-mono">{lead.telefono}</td>
+                    <td className="text-gray-600 font-mono whitespace-nowrap">
+                      {lead.telefono}
+                      {lead.telefono && (
+                        <a
+                          href={`https://wa.me/593${lead.telefono.replace(/^0/, '').replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="ml-1.5 text-green-500 hover:text-green-600"
+                          title="Abrir WhatsApp"
+                        >📱</a>
+                      )}
+                    </td>
                     <td>
                       <span className="badge-blue badge">{lead.fuente_nombre}</span>
                     </td>
