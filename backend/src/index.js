@@ -45,8 +45,12 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     sistema: 'CRM Sanavit Ecuador',
-    version: '1.0.0',
+    version: '2.0.0',
+    fase: 'Fase 3 - Productos, Ventas, Recibos',
     timestamp: new Date().toISOString(),
+    rutas: ['/api/auth','/api/personas','/api/leads','/api/citas','/api/kpis',
+            '/api/admin','/api/cartera','/api/reportes','/api/outsourcing',
+            '/api/comisiones','/api/productos','/api/ventas','/api/recibos'],
   });
 });
 
