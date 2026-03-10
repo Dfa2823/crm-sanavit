@@ -77,6 +77,99 @@ function TablaPremanifiesto({ items }) {
   )
 }
 
+function exportarPDF(data, filtros) {
+  if (!data) return
+  const fechaLabel = filtros.fecha
+    ? new Date(filtros.fecha + 'T12:00:00').toLocaleDateString('es-EC', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+      })
+    : ''
+  const secciones = TABS.map(tab => {
+    const items = data[tab.key] || []
+    const filas = items.map(item => `
+      <tr>
+        <td>${item.nombres || ''} ${item.apellidos || ''}<br><small>${item.ciudad || ''}</small></td>
+        <td>${item.telefono || '—'}</td>
+        <td>${item.fecha_cita
+          ? new Date(item.fecha_cita).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })
+          : '—'}</td>
+        <td>${item.tmk_nombre || '—'}</td>
+        <td>${item.outsourcing_nombre || 'Interno'}</td>
+        <td>${item.patologia || '—'}</td>
+        <td>${item.observacion || '—'}</td>
+      </tr>`).join('')
+    return `
+      <div class="section">
+        <h2>${tab.icon} ${tab.label} (${items.length})</h2>
+        ${items.length === 0
+          ? '<p class="empty">Sin registros en esta categoría</p>'
+          : `<table>
+              <thead><tr>
+                <th>Cliente</th><th>Teléfono</th><th>Hora</th>
+                <th>TMK</th><th>Call Center</th><th>Patología</th><th>Observación</th>
+              </tr></thead>
+              <tbody>${filas}</tbody>
+            </table>`}
+      </div>`
+  }).join('')
+
+  const html = `<!DOCTYPE html><html lang="es"><head>
+    <meta charset="UTF-8"><title>Pre-manifiesto — ${fechaLabel}</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 9px; color: #222; margin: 0; }
+      h1 { font-size: 14px; margin: 0 0 2px; }
+      h2 { font-size: 11px; margin: 14px 0 5px; color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 3px; }
+      .sub { color: #6b7280; font-size: 8px; margin: 0 0 10px; }
+      .empty { color: #9ca3af; font-style: italic; margin: 4px 0; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #f3f4f6; padding: 4px 5px; font-size: 8px; border: 1px solid #d1d5db; text-align: left; }
+      td { padding: 3px 5px; border: 1px solid #e5e7eb; vertical-align: top; }
+      tr:nth-child(even) td { background: #f9fafb; }
+      small { color: #9ca3af; }
+      @page { margin: 1cm; size: A4 landscape; }
+    </style></head><body>
+    <h1>Pre-manifiesto — ${fechaLabel}</h1>
+    <p class="sub">Generado el ${new Date().toLocaleString('es-EC')}</p>
+    ${secciones}
+  </body></html>`
+
+  const w = window.open('', '_blank', 'width=1100,height=750')
+  if (!w) { alert('Permite ventanas emergentes para exportar PDF'); return }
+  w.document.write(html); w.document.close(); w.focus()
+  setTimeout(() => { w.print(); w.close() }, 600)
+}
+
+function exportarCSV(data, filtros) {
+  if (!data) return
+  const cols = ['Sección', 'Nombres', 'Apellidos', 'Teléfono', 'Ciudad', 'Hora cita', 'TMK', 'Call Center', 'Patología', 'Observación']
+  const rows = TABS.flatMap(tab =>
+    (data[tab.key] || []).map(item => [
+      tab.label,
+      item.nombres || '',
+      item.apellidos || '',
+      item.telefono || '',
+      item.ciudad || '',
+      item.fecha_cita
+        ? new Date(item.fecha_cita).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })
+        : '',
+      item.tmk_nombre || '',
+      item.outsourcing_nombre || 'Interno',
+      item.patologia || '',
+      item.observacion || '',
+    ])
+  )
+  const csv = [cols, ...rows]
+    .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `premanifiesto-${filtros.fecha || 'sin-fecha'}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function Premanifiesto() {
   const [data, setData] = useState(null)
   const [salas, setSalas] = useState([])
@@ -143,9 +236,23 @@ export default function Premanifiesto() {
           />
         </div>
 
-        <div className="mt-5">
+        <div className="mt-5 flex gap-2">
           <button onClick={cargar} className="btn-secondary btn-sm">
             🔄 Actualizar
+          </button>
+          <button
+            onClick={() => exportarPDF(data, filtros)}
+            disabled={!data}
+            className="btn-sm px-3 py-1.5 text-sm font-medium rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            🖨️ PDF
+          </button>
+          <button
+            onClick={() => exportarCSV(data, filtros)}
+            disabled={!data}
+            className="btn-sm px-3 py-1.5 text-sm font-medium rounded-lg border border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            📄 CSV
           </button>
         </div>
 

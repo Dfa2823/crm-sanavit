@@ -74,85 +74,121 @@ const MENU_POR_ROL = {
   ],
 }
 
-export default function Sidebar() {
+export default function Sidebar({ isOpen = true, onToggle }) {
   const { usuario } = useAuth()
   const menuItems = MENU_POR_ROL[usuario?.rol] || []
 
   return (
-    <aside className="w-60 min-h-screen bg-slate-900 text-white flex flex-col">
-      {/* Logo */}
-      <div className="px-6 py-5 border-b border-slate-700">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-teal-500 rounded-lg flex items-center justify-center font-bold text-lg">
+    <aside
+      className={`
+        ${isOpen ? 'w-60' : 'w-16'}
+        min-h-screen bg-slate-900 text-white flex flex-col
+        transition-all duration-300 ease-in-out shrink-0 overflow-hidden
+      `}
+    >
+      {/* Logo + botón toggle */}
+      <div className={`${isOpen ? 'px-6' : 'px-2'} py-5 border-b border-slate-700 flex items-center justify-between`}>
+        <div className={`flex items-center gap-3 ${!isOpen && 'justify-center w-full'}`}>
+          <div className="w-9 h-9 bg-teal-500 rounded-lg flex items-center justify-center font-bold text-lg shrink-0">
             S
           </div>
-          <div>
-            <div className="font-bold text-sm tracking-wide">SANAVIT</div>
-            <div className="text-xs text-slate-400">CRM Ecuador</div>
-          </div>
+          {isOpen && (
+            <div>
+              <div className="font-bold text-sm tracking-wide">SANAVIT</div>
+              <div className="text-xs text-slate-400">CRM Ecuador</div>
+            </div>
+          )}
         </div>
+        {isOpen && (
+          <button
+            onClick={onToggle}
+            className="text-slate-400 hover:text-white hover:bg-slate-700 rounded-md p-1 transition-colors shrink-0"
+            title="Colapsar menú"
+          >
+            ◀
+          </button>
+        )}
       </div>
 
+      {/* Botón expandir (solo cuando está colapsado) */}
+      {!isOpen && (
+        <button
+          onClick={onToggle}
+          className="flex justify-center py-3 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors border-b border-slate-700"
+          title="Expandir menú"
+        >
+          ▶
+        </button>
+      )}
+
       {/* Sala */}
-      {usuario?.sala_nombre && (
+      {isOpen && usuario?.sala_nombre && (
         <div className="px-6 py-3 bg-slate-800 text-xs text-slate-400 border-b border-slate-700">
           📍 {usuario.sala_nombre}
         </div>
       )}
+      {!isOpen && usuario?.sala_nombre && (
+        <div className="flex justify-center py-2 border-b border-slate-700" title={usuario.sala_nombre}>
+          <span className="text-xs">📍</span>
+        </div>
+      )}
 
       {/* Navegación */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className={`flex-1 ${isOpen ? 'px-3' : 'px-2'} py-4 space-y-1`}>
         {menuItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
+            title={!isOpen ? item.label : undefined}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
+              `flex items-center rounded-lg text-sm transition-colors
+              ${isOpen ? 'gap-3 px-3 py-2.5' : 'justify-center p-2.5'}
               ${isActive
                 ? 'bg-teal-600 text-white font-medium'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white'
               }`
             }
           >
-            <span className="text-base">{item.icon}</span>
-            {item.label}
+            <span className="text-base shrink-0">{item.icon}</span>
+            {isOpen && item.label}
           </NavLink>
         ))}
       </nav>
 
       {/* Mi Perfil */}
-      <div className="px-3 py-2 border-t border-slate-700">
+      <div className={`${isOpen ? 'px-3' : 'px-2'} py-2 border-t border-slate-700`}>
         <NavLink
           to="/perfil"
+          title={!isOpen ? 'Mi Perfil' : undefined}
           className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
+            `flex items-center rounded-lg text-sm transition-colors
+            ${isOpen ? 'gap-3 px-3 py-2.5' : 'justify-center p-2.5'}
             ${isActive
               ? 'bg-teal-600 text-white font-medium'
               : 'text-slate-300 hover:bg-slate-800 hover:text-white'
             }`
           }
         >
-          <span className="text-base">👤</span>
-          Mi Perfil
+          <span className="text-base shrink-0">👤</span>
+          {isOpen && 'Mi Perfil'}
         </NavLink>
       </div>
 
       {/* Próximamente */}
-      <div className="px-3 py-3 border-t border-slate-700">
-        <p className="text-xs text-slate-500 px-3 mb-2 font-semibold uppercase tracking-wide">
-          Próximamente
-        </p>
-        {[
-          { label: 'WhatsApp', icon: '💬' },
-        ].map((item) => (
-          <div
-            key={item.label}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-600 cursor-not-allowed"
-          >
-            <span>{item.icon}</span>
-            {item.label}
-          </div>
-        ))}
+      <div className={`${isOpen ? 'px-3' : 'px-2'} py-3 border-t border-slate-700`}>
+        {isOpen && (
+          <p className="text-xs text-slate-500 px-3 mb-2 font-semibold uppercase tracking-wide">
+            Próximamente
+          </p>
+        )}
+        <div
+          title={!isOpen ? 'WhatsApp — próximamente' : undefined}
+          className={`flex items-center rounded-lg text-sm text-slate-600 cursor-not-allowed
+            ${isOpen ? 'gap-3 px-3 py-2' : 'justify-center p-2.5'}`}
+        >
+          <span className="shrink-0">💬</span>
+          {isOpen && 'WhatsApp'}
+        </div>
       </div>
     </aside>
   )

@@ -29,7 +29,8 @@ export default function AppLayout() {
   const { pathname } = useLocation()
   const navigate     = useNavigate()
 
-  const [alertCount, setAlertCount] = useState(0)
+  const [alertCount,  setAlertCount]  = useState(0)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   /* Cargar conteo de alertas al montar y cada 5 minutos */
   useEffect(() => {
@@ -51,12 +52,12 @@ export default function AppLayout() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar />
+      <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(v => !v)} />
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* Wrapper relativo para superponer el badge sobre el Topbar */}
         <div className="relative">
-          <Topbar title={title} />
+          <Topbar title={title} onToggleSidebar={() => setSidebarOpen(v => !v)} />
 
           {/* Badge de campana — superpuesto en la esquina derecha del header */}
           <div className="absolute top-0 right-0 h-14 flex items-center pr-28 pointer-events-none">

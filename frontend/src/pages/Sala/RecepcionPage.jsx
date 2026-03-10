@@ -5,6 +5,94 @@ import { apiPersonas } from '../../api/personas'
 import { apiUsuarios } from '../../api/usuarios'
 import { useAuth } from '../../context/AuthContext'
 
+function exportarManifiestoPDF(citas, hoyStr) {
+  if (!citas.length) return
+  const filas = citas.map(c => `
+    <tr>
+      <td>${c.nombres || ''} ${c.apellidos || ''}<br><small>${c.ciudad || ''} · ${c.edad || ''} años</small></td>
+      <td>${c.fecha_cita ? new Date(c.fecha_cita).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+      <td>${c.hora_llegada || '—'}</td>
+      <td>${c.consultor_nombre || '—'}</td>
+      <td>${c.tmk_nombre || '—'}</td>
+      <td>${c.outsourcing_nombre || 'Interno'}</td>
+      <td>${c.calificacion || c.estado || '—'}</td>
+      <td>${c.acompanante || '—'}</td>
+    </tr>`).join('')
+
+  const tours   = citas.filter(c => c.calificacion === 'TOUR').length
+  const noTours = citas.filter(c => c.calificacion === 'NO_TOUR').length
+  const noShows = citas.filter(c => c.calificacion === 'NO_SHOW').length
+  const sinCal  = citas.filter(c => !c.calificacion).length
+
+  const html = `<!DOCTYPE html><html lang="es"><head>
+    <meta charset="UTF-8"><title>Manifiesto del Día</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 9px; color: #222; margin: 0; }
+      h1 { font-size: 14px; margin: 0 0 2px; }
+      .sub { color: #6b7280; font-size: 8px; margin: 0 0 6px; }
+      .stats { display: flex; gap: 16px; margin-bottom: 10px; font-size: 10px; }
+      .stat { font-weight: bold; }
+      .stat span { color: #6b7280; font-weight: normal; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #f3f4f6; padding: 4px 5px; font-size: 8px; border: 1px solid #d1d5db; text-align: left; }
+      td { padding: 3px 5px; border: 1px solid #e5e7eb; vertical-align: top; }
+      tr:nth-child(even) td { background: #f9fafb; }
+      small { color: #9ca3af; }
+      @page { margin: 1cm; size: A4 landscape; }
+    </style></head><body>
+    <h1>Manifiesto del Día — ${hoyStr}</h1>
+    <p class="sub">Generado el ${new Date().toLocaleString('es-EC')} — ${citas.length} citas</p>
+    <div class="stats">
+      <div class="stat">${tours} <span>TOUR</span></div>
+      <div class="stat">${noTours} <span>NO TOUR</span></div>
+      <div class="stat">${noShows} <span>NO SHOW</span></div>
+      <div class="stat">${sinCal} <span>Por calificar</span></div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Cliente</th><th>Hora cita</th><th>Hora llegada</th>
+        <th>Consultor</th><th>TMK</th><th>Call Center</th><th>Calificación</th><th>Acompañante</th>
+      </tr></thead>
+      <tbody>${filas}</tbody>
+    </table>
+  </body></html>`
+
+  const w = window.open('', '_blank', 'width=1100,height=750')
+  if (!w) { alert('Permite ventanas emergentes para exportar PDF'); return }
+  w.document.write(html); w.document.close(); w.focus()
+  setTimeout(() => { w.print(); w.close() }, 600)
+}
+
+function exportarManifiestoCSV(citas) {
+  if (!citas.length) return
+  const cols = ['Nombres', 'Apellidos', 'Teléfono', 'Ciudad', 'Edad', 'Hora cita', 'Hora llegada', 'Consultor', 'TMK', 'Call Center', 'Calificación', 'Estado', 'Acompañante']
+  const rows = citas.map(c => [
+    c.nombres || '',
+    c.apellidos || '',
+    c.telefono || '',
+    c.ciudad || '',
+    c.edad || '',
+    c.fecha_cita ? new Date(c.fecha_cita).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '',
+    c.hora_llegada || '',
+    c.consultor_nombre || '',
+    c.tmk_nombre || '',
+    c.outsourcing_nombre || 'Interno',
+    c.calificacion || '',
+    c.estado || '',
+    c.acompanante || '',
+  ])
+  const csv = [cols, ...rows]
+    .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `manifiesto-${new Date().toISOString().split('T')[0]}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 const CAL_LABEL = {
   TOUR:    { label: '🟢 TOUR',    cls: 'badge-green' },
   NO_TOUR: { label: '🔴 NO TOUR', cls: 'badge-red' },
@@ -168,7 +256,23 @@ export default function RecepcionPage() {
             <h2 className="font-semibold text-gray-700">Citas de hoy</h2>
             <p className="text-xs text-gray-400 capitalize">{hoyStr}</p>
           </div>
-          <button onClick={cargar} className="btn-secondary btn-sm">🔄 Actualizar</button>
+          <div className="flex gap-2">
+            <button onClick={cargar} className="btn-secondary btn-sm">🔄 Actualizar</button>
+            <button
+              onClick={() => exportarManifiestoPDF(citas, hoyStr)}
+              disabled={!citas.length}
+              className="btn-sm px-3 py-1.5 text-sm font-medium rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              🖨️ PDF
+            </button>
+            <button
+              onClick={() => exportarManifiestoCSV(citas)}
+              disabled={!citas.length}
+              className="btn-sm px-3 py-1.5 text-sm font-medium rounded-lg border border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              📄 CSV
+            </button>
+          </div>
         </div>
 
         {loading ? (
