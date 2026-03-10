@@ -15,6 +15,8 @@ import CarteraPage from './pages/Cartera/CarteraPage'
 import ReportesPage from './pages/Reportes/ReportesPage'
 import OutsourcingPage from './pages/Outsourcing/OutsourcingPage'
 import ComisionesPage from './pages/Comisiones/ComisionesPage'
+import VentasPage from './pages/Ventas/VentasPage'
+import Venta360Page from './pages/Ventas/Venta360Page'
 
 // Rutas protegidas: solo usuarios autenticados
 function PrivateRoute({ children }) {
@@ -58,6 +60,8 @@ function AppRoutes() {
         <Route path="reportes" element={<ReportesPage />} />
         <Route path="outsourcing" element={<OutsourcingPage />} />
         <Route path="comisiones" element={<ComisionesPage />} />
+        <Route path="ventas" element={<VentasPage />} />
+        <Route path="ventas/:id" element={<Venta360Page />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

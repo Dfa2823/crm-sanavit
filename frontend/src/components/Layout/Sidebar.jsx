@@ -8,6 +8,7 @@ const MENU_POR_ROL = {
     { label: 'Recepción', path: '/sala/recepcion', icon: '🏥' },
     { label: 'Leads', path: '/mercadeo/captura', icon: '📞' },
     { label: 'Cartera', path: '/cartera', icon: '💳' },
+    { label: 'Ventas', path: '/ventas', icon: '💼' },
     { label: 'Reportes', path: '/reportes', icon: '📈' },
     { label: 'Outsourcing', path: '/outsourcing', icon: '🏢' },
     { label: 'Comisiones', path: '/comisiones', icon: '💰' },
@@ -19,6 +20,7 @@ const MENU_POR_ROL = {
     { label: 'Recepción', path: '/sala/recepcion', icon: '🏥' },
     { label: 'Leads TMK', path: '/mercadeo/captura', icon: '📞' },
     { label: 'Cartera', path: '/cartera', icon: '💳' },
+    { label: 'Ventas', path: '/ventas', icon: '💼' },
     { label: 'Reportes', path: '/reportes', icon: '📈' },
     { label: 'Outsourcing', path: '/outsourcing', icon: '🏢' },
     { label: 'Comisiones', path: '/comisiones', icon: '💰' },
@@ -39,9 +41,11 @@ const MENU_POR_ROL = {
   ],
   hostess: [
     { label: 'Recepción', path: '/sala/recepcion', icon: '🏥' },
+    { label: 'Ventas', path: '/ventas', icon: '💼' },
   ],
   consultor: [
     { label: 'Mis Clientes Hoy', path: '/sala/recepcion', icon: '🏥' },
+    { label: 'Ventas', path: '/ventas', icon: '💼' },
   ],
   asesor_cartera: [
     { label: 'Dashboard KPIs', path: '/kpis', icon: '📊' },
