@@ -270,6 +270,24 @@ router.patch('/:id/estado', auth, async (req, res) => {
   }
 });
 
+// PATCH /api/ventas/productos/:id/despachar — marcar línea de producto como despachada
+router.patch('/productos/:id/despachar', auth, async (req, res) => {
+  const { rol } = req.user;
+  if (!['admin', 'director', 'inventario'].includes(rol)) {
+    return res.status(403).json({ error: 'Sin permiso para registrar despachos' });
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE venta_productos SET despacho_estado = 'despachado' WHERE id = $1 RETURNING *`,
+      [req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Ítem no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PATCH /api/ventas/:id/notas — actualizar observaciones del contrato
 router.patch('/:id/notas', auth, async (req, res) => {
   const { rol } = req.user;

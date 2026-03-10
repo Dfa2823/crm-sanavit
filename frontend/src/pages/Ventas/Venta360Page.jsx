@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { getVenta360, updateEstadoVenta, updateNotasVenta } from '../../api/ventas'
+import { getVenta360, updateEstadoVenta, updateNotasVenta, despacharProducto } from '../../api/ventas'
 import { createRecibo, anularRecibo } from '../../api/recibos'
 import { getFormasPago } from '../../api/admin'
 
@@ -54,6 +54,8 @@ export default function Venta360Page() {
   const [notasMsg, setNotasMsg]       = useState('')
   // ── Cambio de estado ──────────────────────────────────────
   const [cambiandoEstado, setCambiandoEstado] = useState(false)
+  // ── Despacho de productos ─────────────────────────────────
+  const [despachando, setDespachando] = useState(new Set())
 
   const cargar = async () => {
     setLoading(true); setError('')
@@ -139,6 +141,19 @@ export default function Venta360Page() {
       setNotasMsg('❌ Error al guardar notas')
     } finally {
       setGuardandoNotas(false)
+    }
+  }
+
+  async function handleDespachar(productoId) {
+    if (!window.confirm('¿Confirmar despacho de este producto? Esta acción no se puede deshacer.')) return
+    setDespachando(prev => new Set(prev).add(productoId))
+    try {
+      await despacharProducto(productoId)
+      cargar()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al registrar el despacho')
+    } finally {
+      setDespachando(prev => { const s = new Set(prev); s.delete(productoId); return s })
     }
   }
 
@@ -414,9 +429,19 @@ export default function Venta360Page() {
                       <td className="px-4 py-3 text-right text-gray-600">{fmt(p.precio_unitario)}</td>
                       <td className="px-4 py-3 text-right font-medium">{fmt(p.valor_total)}</td>
                       <td className="px-4 py-3 text-center">
-                        <span className={`text-xs px-2 py-1 rounded-full ${p.despacho_estado === 'despachado' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                          {p.despacho_estado === 'despachado' ? '✅ Despachado' : '⏳ Pendiente'}
-                        </span>
+                        {p.despacho_estado === 'despachado' ? (
+                          <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">✅ Despachado</span>
+                        ) : ['admin', 'director', 'inventario'].includes(usuario?.rol) ? (
+                          <button
+                            disabled={despachando.has(p.id)}
+                            onClick={() => handleDespachar(p.id)}
+                            className="text-xs px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-full disabled:opacity-60 font-medium"
+                          >
+                            {despachando.has(p.id) ? '...' : '📦 Despachar'}
+                          </button>
+                        ) : (
+                          <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">⏳ Pendiente</span>
+                        )}
                       </td>
                     </tr>
                   ))}

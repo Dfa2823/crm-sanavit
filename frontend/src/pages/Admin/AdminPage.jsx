@@ -80,11 +80,12 @@ function TabUsuarios({ salas, roles }) {
   const [modalEditar, setModalEditar] = useState(null)
   const [guardando, setGuardando] = useState(false)
 
+  const [busqueda, setBusqueda] = useState('')
   const [formNuevo, setFormNuevo] = useState({
-    nombre: '', username: '', password: '', sala_id: '', rol: '',
+    nombre: '', username: '', password: '', sala_id: '', rol_id: '',
   })
   const [formEditar, setFormEditar] = useState({
-    nombre: '', sala_id: '', rol: '', activo: true,
+    nombre: '', sala_id: '', rol_id: '', activo: true, password: '',
   })
 
   const cargar = useCallback(async () => {
@@ -109,7 +110,7 @@ function TabUsuarios({ salas, roles }) {
     try {
       await createUsuario(formNuevo)
       setModalNuevo(false)
-      setFormNuevo({ nombre: '', username: '', password: '', sala_id: '', rol: '' })
+      setFormNuevo({ nombre: '', username: '', password: '', sala_id: '', rol_id: '' })
       cargar()
     } catch (err) {
       setError('Error al crear usuario: ' + (err.response?.data?.error || err.message))
@@ -123,7 +124,14 @@ function TabUsuarios({ salas, roles }) {
     setGuardando(true)
     setError('')
     try {
-      await updateUsuario(modalEditar.id, formEditar)
+      const payload = {
+        nombre:  formEditar.nombre,
+        sala_id: formEditar.sala_id || null,
+        rol_id:  formEditar.rol_id,
+        activo:  formEditar.activo,
+      }
+      if (formEditar.password) payload.password = formEditar.password
+      await updateUsuario(modalEditar.id, payload)
       setModalEditar(null)
       cargar()
     } catch (err) {
@@ -137,19 +145,36 @@ function TabUsuarios({ salas, roles }) {
     setFormEditar({
       nombre:  u.nombre  || '',
       sala_id: u.sala_id || '',
-      rol:     u.rol     || '',
+      rol_id:  u.rol_id  || '',
       activo:  u.activo !== false,
+      password: '',
     })
     setModalEditar(u)
   }
 
+  const usuariosFiltrados = busqueda.trim()
+    ? usuarios.filter(u =>
+        u.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+        u.username.toLowerCase().includes(busqueda.toLowerCase()) ||
+        (u.rol || '').toLowerCase().includes(busqueda.toLowerCase()) ||
+        (u.sala_nombre || '').toLowerCase().includes(busqueda.toLowerCase())
+      )
+    : usuarios
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-gray-500">{usuarios.length} usuarios registrados</p>
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <input
+          type="text"
+          placeholder="Buscar por nombre, usuario, rol o sala..."
+          value={busqueda}
+          onChange={e => setBusqueda(e.target.value)}
+          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+        />
+        <p className="text-sm text-gray-500 whitespace-nowrap">{usuariosFiltrados.length} de {usuarios.length}</p>
         <button
           onClick={() => setModalNuevo(true)}
-          className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+          className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 whitespace-nowrap"
         >
           + Nuevo usuario
         </button>
@@ -176,7 +201,7 @@ function TabUsuarios({ salas, roles }) {
               </tr>
             </thead>
             <tbody>
-              {usuarios.map((u, i) => (
+              {usuariosFiltrados.map((u, i) => (
                 <tr
                   key={u.id}
                   className={`border-b border-gray-50 hover:bg-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
@@ -185,7 +210,7 @@ function TabUsuarios({ salas, roles }) {
                   <td className="px-4 py-3 text-gray-600 font-mono text-xs">{u.username}</td>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700">
-                      {u.rol}
+                      {u.rol_label || u.rol}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-500">{u.sala_nombre || '—'}</td>
@@ -261,12 +286,12 @@ function TabUsuarios({ salas, roles }) {
               <select
                 required
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                value={formNuevo.rol}
-                onChange={e => setFormNuevo(f => ({ ...f, rol: e.target.value }))}
+                value={formNuevo.rol_id}
+                onChange={e => setFormNuevo(f => ({ ...f, rol_id: e.target.value }))}
               >
                 <option value="">Seleccionar rol</option>
                 {roles.map(r => (
-                  <option key={r.id || r} value={r.nombre || r}>{r.nombre || r}</option>
+                  <option key={r.id} value={r.id}>{r.label || r.nombre}</option>
                 ))}
               </select>
             </div>
@@ -323,14 +348,24 @@ function TabUsuarios({ salas, roles }) {
               <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
               <select
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                value={formEditar.rol}
-                onChange={e => setFormEditar(f => ({ ...f, rol: e.target.value }))}
+                value={formEditar.rol_id}
+                onChange={e => setFormEditar(f => ({ ...f, rol_id: e.target.value }))}
               >
                 <option value="">Seleccionar rol</option>
                 {roles.map(r => (
-                  <option key={r.id || r} value={r.nombre || r}>{r.nombre || r}</option>
+                  <option key={r.id} value={r.id}>{r.label || r.nombre}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña <span className="text-gray-400 font-normal">(dejar vacío para no cambiar)</span></label>
+              <input
+                type="password"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                placeholder="••••••"
+                value={formEditar.password}
+                onChange={e => setFormEditar(f => ({ ...f, password: e.target.value }))}
+              />
             </div>
             <div className="flex items-center gap-3">
               <label className="text-sm font-medium text-gray-700">Activo</label>

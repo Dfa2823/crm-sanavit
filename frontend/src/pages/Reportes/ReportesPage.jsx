@@ -143,6 +143,53 @@ function MiniCards({ tabActivo, meta, data }) {
   )
 }
 
+// ─────────────────────────── Export PDF ─────────────────────────────────────
+
+function exportarPDF(tabActivo, data) {
+  if (!data?.length) return
+  const titulos = { leads: 'Reporte de Leads', ventas: 'Reporte de Ventas', cartera: 'Reporte de Cartera' }
+  const titulo = titulos[tabActivo] || 'Reporte'
+  const cols = Object.keys(data[0])
+  const encabezados = cols.map(c => `<th>${c}</th>`).join('')
+  const filas = data.map(row =>
+    `<tr>${cols.map(c => `<td>${row[c] ?? ''}</td>`).join('')}</tr>`
+  ).join('')
+
+  const html = `<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8">
+<title>${titulo}</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 10px; color: #222; margin: 0; }
+  header { margin-bottom: 12px; }
+  h1 { font-size: 15px; margin: 0 0 2px; }
+  p.sub { color: #666; margin: 0 0 12px; font-size: 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f3f4f6; text-align: left; padding: 5px 6px; font-size: 9px; border: 1px solid #d1d5db; white-space: nowrap; }
+  td { padding: 4px 6px; border: 1px solid #e5e7eb; vertical-align: top; }
+  tr:nth-child(even) td { background: #f9fafb; }
+  @page { margin: 1.2cm; size: A4 landscape; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style>
+</head><body>
+<header>
+  <h1>${titulo}</h1>
+  <p class="sub">Generado el ${new Date().toLocaleString('es-EC')} — ${data.length} registros</p>
+</header>
+<table>
+  <thead><tr>${encabezados}</tr></thead>
+  <tbody>${filas}</tbody>
+</table>
+</body></html>`
+
+  const w = window.open('', '_blank', 'width=1000,height=700')
+  if (!w) { alert('Permite ventanas emergentes para exportar PDF'); return }
+  w.document.write(html)
+  w.document.close()
+  w.focus()
+  setTimeout(() => { w.print(); w.close() }, 500)
+}
+
 // ─────────────────────────── Export CSV ─────────────────────────────────────
 
 function exportarCSV(tabActivo, data) {
@@ -304,7 +351,15 @@ export default function ReportesPage() {
               disabled={!filas.length}
               className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-40 text-sm font-medium flex items-center gap-2"
             >
-              Exportar CSV
+              📄 CSV
+            </button>
+
+            <button
+              onClick={() => exportarPDF(tabActivo, filas)}
+              disabled={!filas.length}
+              className="border border-red-300 text-red-700 bg-red-50 px-4 py-2 rounded-lg hover:bg-red-100 disabled:opacity-40 text-sm font-medium flex items-center gap-2"
+            >
+              🖨️ PDF
             </button>
           </div>
         </div>
