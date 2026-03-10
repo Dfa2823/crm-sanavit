@@ -147,32 +147,32 @@ export default function CarteraPage() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <StatCard
               titulo="Total Cartera"
-              valor={fmt(resumen?.total_monto)}
-              subtitulo={`${resumen?.total_contratos ?? 0} contratos`}
+              valor={fmt(resumen?.total_cartera)}
+              subtitulo={`${resumen?.total_clientes ?? 0} contratos`}
               color="teal"
             />
             <StatCard
               titulo="Al día"
-              valor={fmt(resumen?.al_dia_monto)}
-              subtitulo={`${resumen?.al_dia_contratos ?? 0} contratos`}
+              valor={`${resumen?.al_dia ?? 0}`}
+              subtitulo="contratos"
               color="green"
             />
             <StatCard
               titulo="Mora 30d"
-              valor={fmt(resumen?.mora_30_monto)}
-              subtitulo={`${resumen?.mora_30_contratos ?? 0} contratos`}
+              valor={`${resumen?.mora_30 ?? 0}`}
+              subtitulo="contratos"
               color="yellow"
             />
             <StatCard
               titulo="Mora 60d"
-              valor={fmt(resumen?.mora_60_monto)}
-              subtitulo={`${resumen?.mora_60_contratos ?? 0} contratos`}
+              valor={`${resumen?.mora_60 ?? 0}`}
+              subtitulo="contratos"
               color="orange"
             />
             <StatCard
               titulo="Mora 90d"
-              valor={fmt(resumen?.mora_90_monto)}
-              subtitulo={`${resumen?.mora_90_contratos ?? 0} contratos`}
+              valor={`${resumen?.mora_90 ?? 0}`}
+              subtitulo="contratos"
               color="red"
             />
           </div>
@@ -206,19 +206,19 @@ export default function CarteraPage() {
                   <tbody>
                     {cartera.map((item, i) => (
                       <tr
-                        key={item.id || i}
+                        key={item.contrato?.id || i}
                         className={`border-b border-gray-50 hover:bg-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
                       >
                         <td className="px-4 py-3">
                           <div className="font-medium text-gray-800">
-                            {item.nombres} {item.apellidos}
+                            {item.persona?.nombres} {item.persona?.apellidos}
                           </div>
-                          {item.telefono && (
-                            <div className="text-xs text-gray-400 font-mono">{item.telefono}</div>
+                          {item.persona?.telefono && (
+                            <div className="text-xs text-gray-400 font-mono">{item.persona.telefono}</div>
                           )}
                         </td>
                         <td className="px-4 py-3 font-mono text-xs text-gray-600">
-                          {item.numero_contrato || '—'}
+                          {item.contrato?.numero || '—'}
                         </td>
                         <td className="px-4 py-3 text-right font-medium text-gray-800">
                           {fmt(item.monto_total)}
@@ -227,17 +227,17 @@ export default function CarteraPage() {
                           {fmt(item.monto_pagado)}
                         </td>
                         <td className="px-4 py-3 text-right font-medium text-gray-800">
-                          {fmt((item.monto_total || 0) - (item.monto_pagado || 0))}
+                          {fmt(item.monto_saldo ?? (item.monto_total || 0) - (item.monto_pagado || 0))}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {item.dias_mora != null ? (
-                            <span className={`font-bold ${item.dias_mora > 90 ? 'text-red-600' : item.dias_mora > 60 ? 'text-orange-500' : item.dias_mora > 30 ? 'text-yellow-600' : 'text-gray-600'}`}>
-                              {item.dias_mora}
+                          {item.mora_dias != null ? (
+                            <span className={`font-bold ${item.mora_dias > 90 ? 'text-red-600' : item.mora_dias > 60 ? 'text-orange-500' : item.mora_dias > 30 ? 'text-yellow-600' : 'text-gray-600'}`}>
+                              {item.mora_dias}
                             </span>
                           ) : '—'}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <BadgeEstado estado={item.estado} />
+                          <BadgeEstado estado={item.estado_mora} />
                         </td>
                       </tr>
                     ))}
