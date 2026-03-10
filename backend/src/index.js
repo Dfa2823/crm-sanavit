@@ -29,6 +29,8 @@ app.use('/api/kpis',      require('./routes/kpis'));
 app.use('/api/admin',     authMiddleware, require('./routes/admin'));
 app.use('/api/cartera',   authMiddleware, require('./routes/cartera'));
 app.use('/api/reportes',  authMiddleware, require('./routes/reportes'));
+app.use('/api/outsourcing', authMiddleware, require('./routes/outsourcing'));
+app.use('/api/comisiones', authMiddleware, require('./routes/comisiones'));
 
 // ── Health check ───────────────────────────────────────────
 app.get('/health', (req, res) => {

@@ -13,6 +13,8 @@ import KPIsDashboard from './pages/KPIs/KPIsDashboard'
 import AdminPage from './pages/Admin/AdminPage'
 import CarteraPage from './pages/Cartera/CarteraPage'
 import ReportesPage from './pages/Reportes/ReportesPage'
+import OutsourcingPage from './pages/Outsourcing/OutsourcingPage'
+import ComisionesPage from './pages/Comisiones/ComisionesPage'
 
 // Rutas protegidas: solo usuarios autenticados
 function PrivateRoute({ children }) {
@@ -54,6 +56,8 @@ function AppRoutes() {
         <Route path="admin" element={<AdminPage />} />
         <Route path="cartera" element={<CarteraPage />} />
         <Route path="reportes" element={<ReportesPage />} />
+        <Route path="outsourcing" element={<OutsourcingPage />} />
+        <Route path="comisiones" element={<ComisionesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

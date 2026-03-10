@@ -219,6 +219,71 @@ async function seed() {
       lead3Res.rows[0].id, personaIds[4],
     ]);
 
+    // ── OUTSOURCING EMPRESAS DE PRUEBA ──────────────────────
+    await client.query(`
+      INSERT INTO outsourcing_empresas (nombre, contacto_nombre, contacto_telefono, contacto_email, ciudad) VALUES
+        ('CallCenter Pro Ecuador', 'Roberto Mendez', '0987654321', 'roberto@callcenterpro.ec', 'Quito'),
+        ('TeleVentas Sur', 'Patricia Ramos', '0976543210', 'patricia@televentassur.ec', 'Guayaquil'),
+        ('ContactCenter Nacional', 'Fernando Lagos', '0965432109', 'fernando@ccnacional.ec', 'Cuenca')
+      ON CONFLICT DO NOTHING
+    `);
+    console.log('✅ Outsourcing empresas insertadas');
+
+    // ── CONTRATOS DE PRUEBA (basados en las visitas TOUR del seed) ──
+    const toursRows = await client.query(`
+      SELECT DISTINCT vs.persona_id, vs.sala_id, vs.consultor_id
+      FROM visitas_sala vs
+      WHERE vs.calificacion = 'TOUR'
+      LIMIT 5
+    `);
+
+    for (let i = 0; i < toursRows.rows.length; i++) {
+      const t = toursRows.rows[i];
+      const numero = `SQT-${2476 + i}`;
+      const tiposPlan = ['mensual', 'trimestral', 'anual'];
+      const tipo = tiposPlan[i % 3];
+      const montoMap = { mensual: 1200, trimestral: 3600, anual: 14400 };
+      const cuotasMap = { mensual: 1, trimestral: 3, anual: 12 };
+      const monto = montoMap[tipo];
+      const nCuotas = cuotasMap[tipo];
+
+      try {
+        const r = await client.query(`
+          INSERT INTO contratos (numero_contrato, persona_id, sala_id, consultor_id, fecha_contrato, tipo_plan, monto_total, monto_cuota, n_cuotas, dia_pago, fecha_primer_pago, estado)
+          VALUES ($1,$2,$3,$4, CURRENT_DATE - $5 * INTERVAL '1 day', $6, $7, $8, $9, 15, CURRENT_DATE - INTERVAL '25 days', 'activo')
+          ON CONFLICT (numero_contrato) DO NOTHING
+          RETURNING id
+        `, [numero, t.persona_id, t.sala_id || 1, t.consultor_id, (i + 1) * 7, tipo, monto, monto / nCuotas, nCuotas]);
+
+        if (r.rows.length > 0) {
+          const contratoId = r.rows[0].id;
+          const fechaBase = new Date();
+          fechaBase.setDate(15);
+
+          for (let c = 0; c < nCuotas; c++) {
+            const fechaVenc = new Date(fechaBase);
+            fechaVenc.setMonth(fechaVenc.getMonth() - (nCuotas - 1 - c));
+            const yaVencio = fechaVenc < new Date();
+            const pagado = c < nCuotas - 1;
+
+            await client.query(`
+              INSERT INTO cuotas (contrato_id, numero_cuota, monto_esperado, monto_pagado, fecha_vencimiento, fecha_pago, estado)
+              VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `, [
+              contratoId, c + 1, monto / nCuotas,
+              pagado ? monto / nCuotas : 0,
+              fechaVenc.toISOString().split('T')[0],
+              pagado ? fechaVenc.toISOString().split('T')[0] : null,
+              pagado ? 'pagado' : (yaVencio ? 'vencido' : 'pendiente'),
+            ]);
+          }
+        }
+      } catch (e) {
+        console.log('Contrato ya existe o error:', numero, e.message);
+      }
+    }
+    console.log('✅ Contratos y cuotas de prueba creados');
+
     console.log('✅ Seed completado exitosamente');
     console.log('');
     console.log('📋 Credenciales de prueba (contraseña: sanavit123):');

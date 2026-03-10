@@ -149,3 +149,75 @@ CREATE INDEX idx_visitas_fecha ON visitas_sala(fecha);
 CREATE INDEX idx_visitas_lead ON visitas_sala(lead_id);
 CREATE INDEX idx_personas_telefono ON personas(telefono);
 CREATE INDEX idx_personas_doc ON personas(num_documento);
+
+-- ═══════════════════════════════════════════════════════
+-- CONTRATOS (reemplaza el mock de cartera)
+-- ═══════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS contratos (
+  id SERIAL PRIMARY KEY,
+  numero_contrato VARCHAR(20) UNIQUE,   -- ej: SQT-2476
+  persona_id INTEGER REFERENCES personas(id) NOT NULL,
+  sala_id INTEGER REFERENCES salas(id),
+  visita_sala_id INTEGER REFERENCES visitas_sala(id),
+  consultor_id INTEGER REFERENCES usuarios(id),
+  fecha_contrato DATE NOT NULL DEFAULT CURRENT_DATE,
+  tipo_plan VARCHAR(50) NOT NULL,        -- 'mensual', 'trimestral', 'anual', 'pago_unico'
+  descripcion_plan TEXT,
+  monto_total NUMERIC(10,2) NOT NULL,
+  monto_cuota NUMERIC(10,2),
+  n_cuotas INTEGER DEFAULT 1,
+  dia_pago INTEGER DEFAULT 1,            -- día del mes para pagar (1-31)
+  fecha_primer_pago DATE,
+  estado VARCHAR(30) DEFAULT 'activo',   -- activo | cancelado | suspendido | completado
+  observaciones TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ═══════════════════════════════════════════════════════
+-- CUOTAS (pagos programados de contratos)
+-- ═══════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS cuotas (
+  id SERIAL PRIMARY KEY,
+  contrato_id INTEGER REFERENCES contratos(id) NOT NULL,
+  numero_cuota INTEGER NOT NULL,
+  monto_esperado NUMERIC(10,2) NOT NULL,
+  monto_pagado NUMERIC(10,2) DEFAULT 0,
+  fecha_vencimiento DATE NOT NULL,
+  fecha_pago DATE,
+  estado VARCHAR(20) DEFAULT 'pendiente', -- pendiente | pagado | vencido | parcial
+  observacion TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ═══════════════════════════════════════════════════════
+-- OUTSOURCING (empresas de call center externas)
+-- ═══════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS outsourcing_empresas (
+  id SERIAL PRIMARY KEY,
+  nombre VARCHAR(150) NOT NULL,
+  contacto_nombre VARCHAR(150),
+  contacto_telefono VARCHAR(30),
+  contacto_email VARCHAR(150),
+  ciudad VARCHAR(100),
+  activo BOOLEAN DEFAULT true,
+  notas TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ═══════════════════════════════════════════════════════
+-- COMISIONES (liquidaciones por tours/ventas)
+-- ═══════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS comisiones (
+  id SERIAL PRIMARY KEY,
+  usuario_id INTEGER REFERENCES usuarios(id) NOT NULL,
+  sala_id INTEGER REFERENCES salas(id),
+  tipo VARCHAR(30) NOT NULL,   -- 'tour' | 'venta' | 'bono' | 'descuento'
+  monto NUMERIC(10,2) NOT NULL,
+  referencia_id INTEGER,       -- lead_id o contrato_id según tipo
+  referencia_tipo VARCHAR(30), -- 'lead' | 'contrato'
+  periodo VARCHAR(7),          -- 'YYYY-MM'
+  estado VARCHAR(20) DEFAULT 'pendiente', -- pendiente | aprobado | pagado
+  observacion TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
