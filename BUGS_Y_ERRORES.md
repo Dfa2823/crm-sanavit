@@ -149,16 +149,16 @@
 - [x] `GET /api/comisiones` — Listado de comisiones del período
 - [x] `GET /api/comisiones/resumen` — Cálculo automático por colaborador
 
-### Frontend (commit 3210848 activo)
-- [x] Dashboard KPIs `/kpis`
-- [x] Pre-manifiesto `/premanifiesto`
-- [x] Recepción `/recepcion`
-- [x] Leads `/leads`
-- [x] Cartera `/cartera` (contratos reales, mora 30/60/90)
-- [x] Reportes `/reportes` (CSV export, 3 tipos)
-- [x] Outsourcing `/outsourcing` (CRUD empresas, estadísticas)
-- [x] Comisiones `/comisiones` (cálculo automático por período)
-- [x] Panel de Administración `/admin` (usuarios, salas, tipificaciones, fuentes)
+### Frontend (commit b0c43fa activo — E2E ✅ 2026-03-10)
+- [x] Dashboard KPIs `/kpis` — Tours/No Tours/No Shows, funnel, efectividad ✅
+- [x] Pre-manifiesto `/premanifiesto` — 4 tabs (confirmadas/tentativas/canceladas/inasistencias) ✅
+- [x] Recepción `/recepcion` — lista citas del día, registrar llegada ✅
+- [x] Leads `/leads` — captura, tipificación, búsqueda persona ✅
+- [x] Cartera `/cartera` — contratos reales, mora 30/60/90, estructura anidada ✅
+- [x] Reportes `/reportes` — CSV export, leads/asistencias, aliases SQL correctos ✅
+- [x] Outsourcing `/outsourcing` — CRUD empresas, estadísticas por empresa ✅
+- [x] Comisiones `/comisiones` — cálculo automático por período ($250 en demo) ✅
+- [x] Panel de Administración `/admin` — usuarios, salas, tipificaciones, fuentes ✅
 
 ### Pendiente para próxima iteración
 - [ ] Módulo SAC/PQR (quejas y reclamos)
@@ -178,4 +178,5 @@
 - **Frontend prod:** https://reasonable-hope-production.up.railway.app (Puerto 8080)
 - **GitHub:** https://github.com/Dfa2823/crm-sanavit
 - **Railway Project:** passionate-healing (ID: 81338afe-6cb9-48c9-a7bc-fd97b3e5ffab)
-- **Último commit desplegado:** 3210848 — fix: Agregar prefijo /api/ en outsourcing y comisiones
+- **Último commit desplegado:** b0c43fa — docs: Agregar Bug [017] - CarteraPage estructura anidada del API
+- **E2E tests:** ✅ Todos los módulos verificados en producción (2026-03-10)
