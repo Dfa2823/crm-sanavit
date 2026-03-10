@@ -67,7 +67,7 @@ router.get('/', async (req, res) => {
         p.telefono,
         p.email,
         p.ciudad,
-        p.cedula,
+        p.num_documento AS cedula,
         s.nombre AS sala_nombre,
         s.ciudad AS sala_ciudad,
         uc.nombre AS consultor_nombre,
