@@ -10,7 +10,7 @@ const REDIRECT_POR_ROL = {
   confirmador:    '/mercadeo/calendario',
   hostess:        '/sala/recepcion',
   consultor:      '/sala/recepcion',
-  asesor_cartera: '/kpis',
+  asesor_cartera: '/cartera',
   sac:            '/kpis',
   outsourcing:    '/mercadeo/captura',
 }

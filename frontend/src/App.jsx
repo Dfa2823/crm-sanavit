@@ -10,6 +10,9 @@ import Premanifiesto from './pages/Mercadeo/Premanifiesto'
 import RecepcionPage from './pages/Sala/RecepcionPage'
 import HojaDeVida from './pages/Sala/HojaDeVida'
 import KPIsDashboard from './pages/KPIs/KPIsDashboard'
+import AdminPage from './pages/Admin/AdminPage'
+import CarteraPage from './pages/Cartera/CarteraPage'
+import ReportesPage from './pages/Reportes/ReportesPage'
 
 // Rutas protegidas: solo usuarios autenticados
 function PrivateRoute({ children }) {
@@ -48,6 +51,9 @@ function AppRoutes() {
         <Route path="sala/recepcion" element={<RecepcionPage />} />
         <Route path="sala/cliente/:id" element={<HojaDeVida />} />
         <Route path="kpis" element={<KPIsDashboard />} />
+        <Route path="admin" element={<AdminPage />} />
+        <Route path="cartera" element={<CarteraPage />} />
+        <Route path="reportes" element={<ReportesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

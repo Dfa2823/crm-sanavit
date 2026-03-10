@@ -16,13 +16,19 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// ── Middlewares de autenticación ───────────────────────────
+const authMiddleware = require('./middleware/auth');
+
 // ── Rutas ─────────────────────────────────────────────────
-app.use('/api/auth',     require('./routes/auth'));
-app.use('/api/personas', require('./routes/personas'));
-app.use('/api/leads',    require('./routes/leads'));
-app.use('/api/citas',    require('./routes/citas'));
-app.use('/api/usuarios', require('./routes/usuarios'));
-app.use('/api/kpis',     require('./routes/kpis'));
+app.use('/api/auth',      require('./routes/auth'));
+app.use('/api/personas',  require('./routes/personas'));
+app.use('/api/leads',     require('./routes/leads'));
+app.use('/api/citas',     require('./routes/citas'));
+app.use('/api/usuarios',  require('./routes/usuarios'));
+app.use('/api/kpis',      require('./routes/kpis'));
+app.use('/api/admin',     authMiddleware, require('./routes/admin'));
+app.use('/api/cartera',   authMiddleware, require('./routes/cartera'));
+app.use('/api/reportes',  authMiddleware, require('./routes/reportes'));
 
 // ── Health check ───────────────────────────────────────────
 app.get('/health', (req, res) => {

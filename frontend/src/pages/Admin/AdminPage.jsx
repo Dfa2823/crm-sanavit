@@ -1,0 +1,727 @@
+import { useState, useEffect, useCallback } from 'react'
+import {
+  getUsuarios, createUsuario, updateUsuario,
+  getSalas, createSala,
+  getTipificaciones, createTipificacion, updateTipificacion,
+  getFuentes, createFuente, updateFuente,
+  getRoles,
+} from '../../api/admin'
+
+const TABS = [
+  { key: 'usuarios',      label: 'Usuarios',       icon: '👥' },
+  { key: 'salas',         label: 'Salas',           icon: '🏢' },
+  { key: 'tipificaciones',label: 'Tipificaciones',  icon: '🏷️' },
+  { key: 'fuentes',       label: 'Fuentes',         icon: '📡' },
+]
+
+// ─────────────────────────────── Spinner ────────────────────────────────────
+function Spinner() {
+  return (
+    <div className="flex items-center justify-center h-48">
+      <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
+
+// ─────────────────────────────── Badge activo ───────────────────────────────
+function BadgeActivo({ activo }) {
+  return activo
+    ? <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700">Activo</span>
+    : <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-600">Inactivo</span>
+}
+
+// ─────────────────────────────── Modal base ─────────────────────────────────
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-bold text-gray-800 text-lg">{title}</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+          >
+            ×
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+// ──────────────────────────── TAB USUARIOS ──────────────────────────────────
+function TabUsuarios({ salas, roles }) {
+  const [usuarios, setUsuarios] = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState('')
+  const [modalNuevo, setModalNuevo] = useState(false)
+  const [modalEditar, setModalEditar] = useState(null)
+  const [guardando, setGuardando] = useState(false)
+
+  const [formNuevo, setFormNuevo] = useState({
+    nombre: '', username: '', password: '', sala_id: '', rol: '',
+  })
+  const [formEditar, setFormEditar] = useState({
+    nombre: '', sala_id: '', rol: '', activo: true,
+  })
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await getUsuarios()
+      setUsuarios(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setError('Error al cargar usuarios: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  async function handleCrear(e) {
+    e.preventDefault()
+    setGuardando(true)
+    setError('')
+    try {
+      await createUsuario(formNuevo)
+      setModalNuevo(false)
+      setFormNuevo({ nombre: '', username: '', password: '', sala_id: '', rol: '' })
+      cargar()
+    } catch (err) {
+      setError('Error al crear usuario: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  async function handleEditar(e) {
+    e.preventDefault()
+    setGuardando(true)
+    setError('')
+    try {
+      await updateUsuario(modalEditar.id, formEditar)
+      setModalEditar(null)
+      cargar()
+    } catch (err) {
+      setError('Error al actualizar usuario: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  function abrirEditar(u) {
+    setFormEditar({
+      nombre:  u.nombre  || '',
+      sala_id: u.sala_id || '',
+      rol:     u.rol     || '',
+      activo:  u.activo !== false,
+    })
+    setModalEditar(u)
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500">{usuarios.length} usuarios registrados</p>
+        <button
+          onClick={() => setModalNuevo(true)}
+          className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+        >
+          + Nuevo usuario
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          {error}
+          <button onClick={() => setError('')} className="ml-2 text-red-400 hover:text-red-600">×</button>
+        </div>
+      )}
+
+      {loading ? <Spinner /> : (
+        <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Nombre</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Usuario</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Rol</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Sala</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Estado</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {usuarios.map((u, i) => (
+                <tr
+                  key={u.id}
+                  className={`border-b border-gray-50 hover:bg-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
+                >
+                  <td className="px-4 py-3 font-medium text-gray-800">{u.nombre}</td>
+                  <td className="px-4 py-3 text-gray-600 font-mono text-xs">{u.username}</td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700">
+                      {u.rol}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-500">{u.sala_nombre || '—'}</td>
+                  <td className="px-4 py-3"><BadgeActivo activo={u.activo !== false} /></td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => abrirEditar(u)}
+                      className="border border-gray-300 text-gray-700 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-50"
+                    >
+                      Editar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {usuarios.length === 0 && (
+                <tr>
+                  <td colSpan="6" className="px-4 py-12 text-center text-gray-400">
+                    No hay usuarios registrados
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Modal: Nuevo usuario */}
+      {modalNuevo && (
+        <Modal title="Nuevo usuario" onClose={() => setModalNuevo(false)}>
+          <form onSubmit={handleCrear} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo *</label>
+              <input
+                type="text" required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={formNuevo.nombre}
+                onChange={e => setFormNuevo(f => ({ ...f, nombre: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
+              <input
+                type="text" required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={formNuevo.username}
+                onChange={e => setFormNuevo(f => ({ ...f, username: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña *</label>
+              <input
+                type="password" required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={formNuevo.password}
+                onChange={e => setFormNuevo(f => ({ ...f, password: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Sala</label>
+              <select
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={formNuevo.sala_id}
+                onChange={e => setFormNuevo(f => ({ ...f, sala_id: e.target.value }))}
+              >
+                <option value="">Sin sala</option>
+                {salas.map(s => (
+                  <option key={s.id} value={s.id}>{s.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Rol *</label>
+              <select
+                required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={formNuevo.rol}
+                onChange={e => setFormNuevo(f => ({ ...f, rol: e.target.value }))}
+              >
+                <option value="">Seleccionar rol</option>
+                {roles.map(r => (
+                  <option key={r.id || r} value={r.nombre || r}>{r.nombre || r}</option>
+                ))}
+              </select>
+            </div>
+            {error && (
+              <p className="text-red-600 text-xs">{error}</p>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalNuevo(false)}
+                className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={guardando}
+                className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                {guardando ? 'Guardando...' : 'Crear usuario'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Modal: Editar usuario */}
+      {modalEditar && (
+        <Modal title={`Editar: ${modalEditar.nombre}`} onClose={() => setModalEditar(null)}>
+          <form onSubmit={handleEditar} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
+              <input
+                type="text"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={formEditar.nombre}
+                onChange={e => setFormEditar(f => ({ ...f, nombre: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Sala</label>
+              <select
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={formEditar.sala_id}
+                onChange={e => setFormEditar(f => ({ ...f, sala_id: e.target.value }))}
+              >
+                <option value="">Sin sala</option>
+                {salas.map(s => (
+                  <option key={s.id} value={s.id}>{s.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
+              <select
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={formEditar.rol}
+                onChange={e => setFormEditar(f => ({ ...f, rol: e.target.value }))}
+              >
+                <option value="">Seleccionar rol</option>
+                {roles.map(r => (
+                  <option key={r.id || r} value={r.nombre || r}>{r.nombre || r}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-gray-700">Activo</label>
+              <button
+                type="button"
+                onClick={() => setFormEditar(f => ({ ...f, activo: !f.activo }))}
+                className={`relative w-12 h-6 rounded-full transition-colors ${formEditar.activo ? 'bg-teal-500' : 'bg-gray-300'}`}
+              >
+                <span
+                  className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${formEditar.activo ? 'translate-x-7' : 'translate-x-1'}`}
+                />
+              </button>
+              <span className="text-sm text-gray-500">{formEditar.activo ? 'Activo' : 'Inactivo'}</span>
+            </div>
+            {error && <p className="text-red-600 text-xs">{error}</p>}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalEditar(null)}
+                className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={guardando}
+                className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                {guardando ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ──────────────────────────── TAB SALAS ─────────────────────────────────────
+function TabSalas() {
+  const [salas, setSalas]         = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState('')
+  const [modalNuevo, setModalNuevo] = useState(false)
+  const [guardando, setGuardando] = useState(false)
+  const [form, setForm]           = useState({ nombre: '', ciudad: '', prefijo_contrato: '' })
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await getSalas()
+      setSalas(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setError('Error al cargar salas: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  async function handleCrear(e) {
+    e.preventDefault()
+    setGuardando(true)
+    setError('')
+    try {
+      await createSala(form)
+      setModalNuevo(false)
+      setForm({ nombre: '', ciudad: '', prefijo_contrato: '' })
+      cargar()
+    } catch (err) {
+      setError('Error al crear sala: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500">{salas.length} salas registradas</p>
+        <button
+          onClick={() => setModalNuevo(true)}
+          className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+        >
+          + Nueva sala
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          {error}
+          <button onClick={() => setError('')} className="ml-2 text-red-400 hover:text-red-600">×</button>
+        </div>
+      )}
+
+      {loading ? <Spinner /> : (
+        <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Nombre</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Ciudad</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Prefijo contrato</th>
+              </tr>
+            </thead>
+            <tbody>
+              {salas.map((s, i) => (
+                <tr
+                  key={s.id}
+                  className={`border-b border-gray-50 hover:bg-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
+                >
+                  <td className="px-4 py-3 font-medium text-gray-800">{s.nombre}</td>
+                  <td className="px-4 py-3 text-gray-600">{s.ciudad || '—'}</td>
+                  <td className="px-4 py-3">
+                    <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">
+                      {s.prefijo_contrato || '—'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {salas.length === 0 && (
+                <tr>
+                  <td colSpan="3" className="px-4 py-12 text-center text-gray-400">
+                    No hay salas registradas
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {modalNuevo && (
+        <Modal title="Nueva sala" onClose={() => setModalNuevo(false)}>
+          <form onSubmit={handleCrear} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+              <input
+                type="text" required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={form.nombre}
+                onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Ciudad</label>
+              <input
+                type="text"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={form.ciudad}
+                onChange={e => setForm(f => ({ ...f, ciudad: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Prefijo contrato</label>
+              <input
+                type="text" maxLength={10}
+                placeholder="Ej: GYE, UIO, CUE"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={form.prefijo_contrato}
+                onChange={e => setForm(f => ({ ...f, prefijo_contrato: e.target.value.toUpperCase() }))}
+              />
+            </div>
+            {error && <p className="text-red-600 text-xs">{error}</p>}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalNuevo(false)}
+                className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={guardando}
+                className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                {guardando ? 'Guardando...' : 'Crear sala'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────── TAB TIPIFICACIONES / FUENTES (genérico) ────────────────
+function TabCatalogo({ titulo, fetchFn, createFn, updateFn }) {
+  const [items, setItems]         = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState('')
+  const [modalNuevo, setModalNuevo] = useState(false)
+  const [guardando, setGuardando] = useState(false)
+  const [nombre, setNombre]       = useState('')
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await fetchFn()
+      setItems(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setError('Error al cargar: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setLoading(false)
+    }
+  }, [fetchFn])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  async function handleCrear(e) {
+    e.preventDefault()
+    setGuardando(true)
+    setError('')
+    try {
+      await createFn({ nombre })
+      setModalNuevo(false)
+      setNombre('')
+      cargar()
+    } catch (err) {
+      setError('Error al crear: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  async function toggleActivo(item) {
+    try {
+      await updateFn(item.id, { activo: !item.activo })
+      cargar()
+    } catch (err) {
+      setError('Error al actualizar: ' + (err.response?.data?.error || err.message))
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500">{items.length} {titulo.toLowerCase()} registradas</p>
+        <button
+          onClick={() => setModalNuevo(true)}
+          className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+        >
+          + Nueva {titulo.slice(0, -1).toLowerCase()}
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          {error}
+          <button onClick={() => setError('')} className="ml-2 text-red-400 hover:text-red-600">×</button>
+        </div>
+      )}
+
+      {loading ? <Spinner /> : (
+        <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Nombre</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Estado</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, i) => (
+                <tr
+                  key={item.id}
+                  className={`border-b border-gray-50 hover:bg-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
+                >
+                  <td className="px-4 py-3 font-medium text-gray-800">{item.nombre}</td>
+                  <td className="px-4 py-3"><BadgeActivo activo={item.activo !== false} /></td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => toggleActivo(item)}
+                      className={`px-3 py-1.5 rounded-lg text-xs border ${
+                        item.activo !== false
+                          ? 'border-red-200 text-red-600 hover:bg-red-50'
+                          : 'border-green-200 text-green-700 hover:bg-green-50'
+                      }`}
+                    >
+                      {item.activo !== false ? 'Desactivar' : 'Activar'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {items.length === 0 && (
+                <tr>
+                  <td colSpan="3" className="px-4 py-12 text-center text-gray-400">
+                    No hay {titulo.toLowerCase()} registradas
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {modalNuevo && (
+        <Modal title={`Nueva ${titulo.slice(0, -1).toLowerCase()}`} onClose={() => setModalNuevo(false)}>
+          <form onSubmit={handleCrear} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+              <input
+                type="text" required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={nombre}
+                onChange={e => setNombre(e.target.value)}
+              />
+            </div>
+            {error && <p className="text-red-600 text-xs">{error}</p>}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalNuevo(false)}
+                className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={guardando}
+                className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                {guardando ? 'Guardando...' : 'Crear'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────── Página principal ───────────────────────────────
+export default function AdminPage() {
+  const [tabActivo, setTabActivo] = useState('usuarios')
+  const [salas, setSalas]         = useState([])
+  const [roles, setRoles]         = useState([])
+  const [loadingMeta, setLoadingMeta] = useState(true)
+
+  useEffect(() => {
+    Promise.all([getSalas(), getRoles()])
+      .then(([s, r]) => {
+        setSalas(Array.isArray(s) ? s : [])
+        setRoles(Array.isArray(r) ? r : [])
+      })
+      .catch(err => console.error('Error cargando metadatos admin:', err))
+      .finally(() => setLoadingMeta(false))
+  }, [])
+
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold text-gray-800 mb-6">Panel de Administración</h1>
+
+      {/* Tabs */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        {/* Tab headers */}
+        <div className="border-b border-gray-100">
+          <div className="flex overflow-x-auto">
+            {TABS.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setTabActivo(tab.key)}
+                className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+                  tabActivo === tab.key
+                    ? 'border-teal-500 text-teal-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-200'
+                }`}
+              >
+                <span>{tab.icon}</span>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tab content */}
+        <div className="p-6">
+          {loadingMeta ? (
+            <Spinner />
+          ) : (
+            <>
+              {tabActivo === 'usuarios' && (
+                <TabUsuarios salas={salas} roles={roles} />
+              )}
+              {tabActivo === 'salas' && (
+                <TabSalas />
+              )}
+              {tabActivo === 'tipificaciones' && (
+                <TabCatalogo
+                  titulo="Tipificaciones"
+                  fetchFn={getTipificaciones}
+                  createFn={createTipificacion}
+                  updateFn={updateTipificacion}
+                />
+              )}
+              {tabActivo === 'fuentes' && (
+                <TabCatalogo
+                  titulo="Fuentes"
+                  fetchFn={getFuentes}
+                  createFn={createFuente}
+                  updateFn={updateFuente}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

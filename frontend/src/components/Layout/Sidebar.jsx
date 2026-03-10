@@ -7,17 +7,23 @@ const MENU_POR_ROL = {
     { label: 'Pre-manifiesto', path: '/mercadeo/premanifiesto', icon: '📋' },
     { label: 'Recepción', path: '/sala/recepcion', icon: '🏥' },
     { label: 'Leads', path: '/mercadeo/captura', icon: '📞' },
+    { label: 'Cartera', path: '/cartera', icon: '💳' },
+    { label: 'Reportes', path: '/reportes', icon: '📈' },
+    { label: 'Administración', path: '/admin', icon: '⚙️' },
   ],
   director: [
     { label: 'Dashboard KPIs', path: '/kpis', icon: '📊' },
     { label: 'Pre-manifiesto', path: '/mercadeo/premanifiesto', icon: '📋' },
     { label: 'Recepción', path: '/sala/recepcion', icon: '🏥' },
     { label: 'Leads TMK', path: '/mercadeo/captura', icon: '📞' },
+    { label: 'Cartera', path: '/cartera', icon: '💳' },
+    { label: 'Reportes', path: '/reportes', icon: '📈' },
   ],
   supervisor_cc: [
     { label: 'Pre-manifiesto', path: '/mercadeo/premanifiesto', icon: '📋' },
     { label: 'Leads del equipo', path: '/mercadeo/captura', icon: '📞' },
     { label: 'Calendario', path: '/mercadeo/calendario', icon: '📅' },
+    { label: 'Reportes', path: '/reportes', icon: '📈' },
   ],
   tmk: [
     { label: 'Mis Leads de Hoy', path: '/mercadeo/captura', icon: '📞' },
@@ -34,9 +40,12 @@ const MENU_POR_ROL = {
   ],
   asesor_cartera: [
     { label: 'Dashboard KPIs', path: '/kpis', icon: '📊' },
+    { label: 'Cartera', path: '/cartera', icon: '💳' },
+    { label: 'Reportes', path: '/reportes', icon: '📈' },
   ],
   sac: [
     { label: 'Dashboard KPIs', path: '/kpis', icon: '📊' },
+    { label: 'Reportes', path: '/reportes', icon: '📈' },
   ],
   outsourcing: [
     { label: 'Mis Leads', path: '/mercadeo/captura', icon: '📞' },
@@ -96,7 +105,6 @@ export default function Sidebar() {
           Próximamente
         </p>
         {[
-          { label: 'Cartera', icon: '💳' },
           { label: 'Comisiones', icon: '💰' },
           { label: 'Inventario', icon: '📦' },
         ].map((item) => (
