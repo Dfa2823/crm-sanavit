@@ -245,4 +245,92 @@ router.get('/:id/historia', auth, async (req, res) => {
   }
 });
 
+// GET /api/personas/:id/timeline — línea de tiempo unificada del cliente
+router.get('/:id/timeline', auth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const eventos = [];
+
+    // 1. Leads
+    const leadsRes = await pool.query(`
+      SELECT l.id, l.created_at AS fecha, l.estado,
+        'lead' AS tipo,
+        CONCAT('Lead — ', COALESCE(t.nombre, 'sin tipificación'), ' · ', COALESCE(f.nombre, '')) AS descripcion,
+        u.nombre AS actor,
+        NULL::numeric AS monto
+      FROM leads l
+      LEFT JOIN fuentes f ON l.fuente_id = f.id
+      LEFT JOIN tipificaciones t ON l.tipificacion_id = t.id
+      LEFT JOIN usuarios u ON l.tmk_id = u.id
+      WHERE l.persona_id = $1
+    `, [id]);
+    eventos.push(...leadsRes.rows);
+
+    // 2. Visitas sala
+    const visitasRes = await pool.query(`
+      SELECT vs.id, vs.created_at AS fecha, vs.calificacion AS estado,
+        'visita' AS tipo,
+        CONCAT('Visita a sala — ', vs.calificacion, ' · ', COALESCE(s.nombre, '')) AS descripcion,
+        u.nombre AS actor,
+        NULL::numeric AS monto
+      FROM visitas_sala vs
+      LEFT JOIN salas s ON vs.sala_id = s.id
+      LEFT JOIN usuarios u ON vs.consultor_id = u.id
+      WHERE vs.persona_id = $1
+    `, [id]);
+    eventos.push(...visitasRes.rows);
+
+    // 3. Contratos
+    const contratosRes = await pool.query(`
+      SELECT c.id, c.created_at AS fecha, c.estado,
+        'contrato' AS tipo,
+        CONCAT('Contrato ', c.numero_contrato, ' · ', c.tipo_plan, ' · ', c.n_cuotas, ' cuotas') AS descripcion,
+        u.nombre AS actor,
+        c.monto_total AS monto
+      FROM contratos c
+      LEFT JOIN usuarios u ON c.consultor_id = u.id
+      WHERE c.persona_id = $1
+    `, [id]);
+    eventos.push(...contratosRes.rows);
+
+    // 4. Pagos
+    const pagosRes = await pool.query(`
+      SELECT r.id, r.fecha_pago::timestamptz AS fecha, r.estado,
+        'pago' AS tipo,
+        CONCAT('Pago — ', fp.nombre, CASE WHEN r.numero_cuota IS NOT NULL THEN CONCAT(' · Cuota #', r.numero_cuota) ELSE '' END) AS descripcion,
+        u.nombre AS actor,
+        r.valor AS monto
+      FROM recibos r
+      JOIN contratos c ON r.contrato_id = c.id
+      LEFT JOIN formas_pago fp ON r.forma_pago_id = fp.id
+      LEFT JOIN usuarios u ON r.usuario_id = u.id
+      WHERE c.persona_id = $1 AND r.estado = 'activo'
+    `, [id]);
+    eventos.push(...pagosRes.rows);
+
+    // 5. Tickets SAC (opcional — puede no existir la tabla)
+    try {
+      const ticketsRes = await pool.query(`
+        SELECT pt.id, pt.fecha_apertura::timestamptz AS fecha, pt.estado,
+          'ticket' AS tipo,
+          CONCAT('Ticket SAC — ', pt.tipo, ': ', LEFT(COALESCE(pt.descripcion,''), 60)) AS descripcion,
+          u.nombre AS actor,
+          NULL::numeric AS monto
+        FROM pqr_tickets pt
+        LEFT JOIN usuarios u ON pt.asignado_a = u.id
+        WHERE pt.persona_id = $1
+      `, [id]);
+      eventos.push(...ticketsRes.rows);
+    } catch (_) { /* tabla aún no existe */ }
+
+    // Ordenar por fecha descendente
+    eventos.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+    res.json(eventos.slice(0, 100));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

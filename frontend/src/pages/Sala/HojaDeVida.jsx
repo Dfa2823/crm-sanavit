@@ -53,6 +53,9 @@ export default function HojaDeVida() {
   const [form,       setForm]       = useState({})
   const [guardando,  setGuardando]  = useState(false)
   const [mensaje,    setMensaje]    = useState('')
+  // Fase 15: Timeline
+  const [timeline,      setTimeline]      = useState([])
+  const [timelineLoad,  setTimelineLoad]  = useState(false)
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -78,6 +81,16 @@ export default function HojaDeVida() {
   }, [id])
 
   useEffect(() => { cargar() }, [cargar])
+
+  // Cargar timeline al hacer clic en la tab
+  useEffect(() => {
+    if (tab !== 'timeline') return
+    setTimelineLoad(true)
+    client.get(`/api/personas/${id}/timeline`)
+      .then(r => setTimeline(r.data || []))
+      .catch(() => setTimeline([]))
+      .finally(() => setTimelineLoad(false))
+  }, [tab, id])
 
   async function guardarDatos() {
     setGuardando(true)
@@ -121,6 +134,7 @@ export default function HojaDeVida() {
     { key: 'historia',  label: '📋 Historia' },
     { key: 'contratos', label: '💼 Contratos' },
     { key: 'sac',       label: '🎫 SAC' },
+    { key: 'timeline',  label: '📅 Timeline' },
   ]
 
   return (
@@ -491,6 +505,78 @@ export default function HojaDeVida() {
                   </div>
                 )
               })
+            )}
+          </div>
+        )}
+
+        {/* ══ TAB 5: Timeline ═══════════════════════════════════════════════ */}
+        {tab === 'timeline' && (
+          <div className="p-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-5">
+              Línea de tiempo del cliente
+            </h3>
+            {timelineLoad ? (
+              <div className="flex justify-center py-12">
+                <div className="w-7 h-7 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : timeline.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <p className="text-4xl mb-2">📅</p>
+                <p className="text-sm">Sin eventos registrados</p>
+              </div>
+            ) : (
+              <div className="relative">
+                {/* Línea vertical */}
+                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
+                <div className="space-y-3">
+                  {timeline.map((ev, i) => {
+                    const config = {
+                      lead:     { icon: '🎯', bg: 'bg-blue-100',   dot: 'bg-blue-500'  },
+                      visita:   { icon: '🏥', bg: 'bg-green-100',  dot: 'bg-green-500' },
+                      contrato: { icon: '💼', bg: 'bg-teal-100',   dot: 'bg-teal-500'  },
+                      pago:     { icon: '💰', bg: 'bg-orange-100', dot: 'bg-orange-500'},
+                      ticket:   { icon: '🎫', bg: 'bg-red-100',    dot: 'bg-red-500'   },
+                    }[ev.tipo] || { icon: '📌', bg: 'bg-gray-100', dot: 'bg-gray-400' }
+                    return (
+                      <div key={`${ev.tipo}-${ev.id}-${i}`} className="flex gap-4 pl-1">
+                        {/* Punto en la línea */}
+                        <div className={`w-7 h-7 rounded-full ${config.dot} flex items-center justify-center text-white text-xs flex-shrink-0 z-10 shadow-sm`}>
+                          {config.icon}
+                        </div>
+                        {/* Tarjeta */}
+                        <div className={`flex-1 ${config.bg} rounded-lg px-4 py-3 mb-1`}>
+                          <div className="flex justify-between items-start gap-2">
+                            <p className="text-sm font-medium text-gray-800 leading-tight">
+                              {ev.descripcion}
+                            </p>
+                            <span className="text-xs text-gray-500 flex-shrink-0 ml-2">
+                              {ev.fecha ? new Date(ev.fecha).toLocaleString('es-EC', {
+                                day: '2-digit', month: '2-digit', year: '2-digit',
+                                hour: '2-digit', minute: '2-digit',
+                              }) : '—'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 flex-wrap">
+                            {ev.estado && (
+                              <span className="text-xs bg-white/70 text-gray-600 rounded-full px-2 py-0.5">
+                                {ev.estado}
+                              </span>
+                            )}
+                            {ev.actor && (
+                              <span className="text-xs text-gray-500">👤 {ev.actor}</span>
+                            )}
+                            {ev.monto && Number(ev.monto) > 0 && (
+                              <span className="text-xs font-semibold text-gray-700">
+                                💵 ${Number(ev.monto).toLocaleString('es-EC', { maximumFractionDigits: 2 })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
             )}
           </div>
         )}

@@ -16,7 +16,7 @@ const ROL_COLORS = {
   outsourcing:    'bg-gray-100 text-gray-800',
 }
 
-export default function Topbar({ title, onToggleSidebar }) {
+export default function Topbar({ title, onToggleSidebar, onOpenSearch }) {
   const { usuario, logout } = useAuth()
   const navigate = useNavigate()
 
@@ -105,6 +105,16 @@ export default function Topbar({ title, onToggleSidebar }) {
 
       {/* Búsqueda global — centro */}
       <div ref={wrapperRef} className="relative flex-1 max-w-sm mx-6">
+        {/* Botón Ctrl+K */}
+        {onOpenSearch && (
+          <button
+            onClick={onOpenSearch}
+            className="absolute right-3 top-1/2 -translate-y-1/2 z-10 flex items-center gap-1 text-xs text-gray-400 bg-gray-100 hover:bg-gray-200 rounded px-1.5 py-0.5 transition-colors"
+            title="Búsqueda avanzada (Ctrl+K)"
+          >
+            <kbd className="font-sans">⌘K</kbd>
+          </button>
+        )}
         <div className="relative">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">🔍</span>
           <input

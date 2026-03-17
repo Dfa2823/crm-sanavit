@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import client from '../../api/client'
 import { getReportLeads, getReportVentas, getReportCartera, getReporteAsistencias, getReporteTMK } from '../../api/reportes'
+import {
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts'
 
 // ─────────────────────────────── Helpers ────────────────────────────────────
 
@@ -249,7 +253,10 @@ const TABS = [
   { key: 'cartera',     label: 'Cartera' },
   { key: 'asistencias', label: 'Asistencias' },
   { key: 'tmk',         label: 'Productividad TMK' },
+  { key: 'graficos',    label: '📊 Gráficos' },
 ]
+
+const COLORES_CHART = ['#14b8a6','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#10b981','#f97316']
 
 export default function ReportesPage() {
   const [tabActivo,    setTabActivo]    = useState('leads')
@@ -261,6 +268,9 @@ export default function ReportesPage() {
   const [loading,      setLoading]      = useState(false)
   const [error,        setError]        = useState('')
   const [pagina,       setPagina]       = useState(1)
+  // Fase 18: Gráficos
+  const [chartData,    setChartData]    = useState({ tendencia: [], topConsultores: [], fuentes: [] })
+  const [chartLoading, setChartLoading] = useState(false)
 
   // Cargar salas al montar
   useEffect(() => {
@@ -268,6 +278,35 @@ export default function ReportesPage() {
       .then(r => setSalas(Array.isArray(r.data) ? r.data : []))
       .catch(console.error)
   }, [])
+
+  // Cargar datos de gráficos cuando se activa ese tab
+  useEffect(() => {
+    if (tabActivo !== 'graficos') return
+    setChartLoading(true)
+    const mesActual = fechaInicio.slice(0, 7)
+    Promise.all([
+      client.get('/api/kpis/tendencia', { params: { sala_id: salaId || undefined, semanas: 12 } }).catch(() => ({ data: [] })),
+      client.get('/api/kpis/top-consultores', { params: { sala_id: salaId || undefined, periodo: mesActual } }).catch(() => ({ data: [] })),
+      client.get('/api/kpis', { params: { sala_id: salaId || undefined, periodo: mesActual } }).catch(() => ({ data: null })),
+    ]).then(([tend, top, kpis]) => {
+      const tendencia = (tend.data || []).map(r => ({
+        semana: new Date(r.semana_inicio).toLocaleDateString('es-EC', { day:'2-digit', month:'2-digit' }),
+        contratos: Number(r.total_contratos),
+        monto: Math.round(Number(r.monto_total)),
+      }))
+      const topConsultores = (top.data || []).map(r => ({
+        nombre: r.consultor?.split(' ')[0] || '—',
+        contratos: Number(r.total_contratos),
+        monto: Math.round(Number(r.monto_total)),
+      }))
+      const fuentes = (kpis.data?.fuentes || []).map(f => ({
+        name: f.fuente,
+        value: Number(f.cantidad),
+      }))
+      setChartData({ tendencia, topConsultores, fuentes })
+    }).finally(() => setChartLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabActivo])
 
   async function generar() {
     setLoading(true)
@@ -418,8 +457,95 @@ export default function ReportesPage() {
           </div>
         )}
 
+        {/* ── Tab Gráficos ── */}
+        {tabActivo === 'graficos' && (
+          <div className="p-6 space-y-8">
+            {chartLoading ? (
+              <div className="flex justify-center py-16"><Spinner /></div>
+            ) : (
+              <>
+                {/* Tendencia de ventas */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4">📈 Contratos por semana (últimas 12 semanas)</h3>
+                  {chartData.tendencia.length === 0 ? (
+                    <p className="text-gray-400 text-sm text-center py-8">Sin datos disponibles</p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={260}>
+                      <LineChart data={chartData.tendencia} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} />
+                        <Tooltip
+                          formatter={(v, n) => [v, n === 'contratos' ? 'Contratos' : 'Monto $']}
+                          contentStyle={{ fontSize: 12 }}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Line type="monotone" dataKey="contratos" stroke="#14b8a6" strokeWidth={2} dot={{ r: 4 }} name="Contratos" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+
+                {/* Top consultores */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4">🏆 Top 5 consultores (mes actual)</h3>
+                  {chartData.topConsultores.length === 0 ? (
+                    <p className="text-gray-400 text-sm text-center py-8">Sin datos disponibles</p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={240}>
+                      <BarChart data={chartData.topConsultores} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis dataKey="nombre" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} />
+                        <Tooltip contentStyle={{ fontSize: 12 }} />
+                        <Bar dataKey="contratos" fill="#3b82f6" radius={[4,4,0,0]} name="Contratos" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+
+                {/* Leads por fuente */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4">🎯 Leads por fuente (mes actual)</h3>
+                  {chartData.fuentes.length === 0 ? (
+                    <p className="text-gray-400 text-sm text-center py-8">Sin datos disponibles</p>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row items-center gap-6">
+                      <ResponsiveContainer width={280} height={240}>
+                        <PieChart>
+                          <Pie
+                            data={chartData.fuentes}
+                            cx="50%" cy="50%"
+                            innerRadius={55} outerRadius={90}
+                            paddingAngle={3}
+                            dataKey="value"
+                          >
+                            {chartData.fuentes.map((_, i) => (
+                              <Cell key={i} fill={COLORES_CHART[i % COLORES_CHART.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(v) => [v, 'Leads']} contentStyle={{ fontSize: 12 }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="flex flex-col gap-2">
+                        {chartData.fuentes.map((f, i) => (
+                          <div key={f.name} className="flex items-center gap-2 text-sm">
+                            <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: COLORES_CHART[i % COLORES_CHART.length] }} />
+                            <span className="text-gray-700">{f.name}</span>
+                            <span className="font-semibold text-gray-500 ml-1">{f.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* ── Contenido ── */}
-        {loading ? (
+        {tabActivo !== 'graficos' && (loading ? (
           <div className="p-8">
             <Spinner />
           </div>
@@ -500,7 +626,7 @@ export default function ReportesPage() {
               </>
             )}
           </div>
-        )}
+        ))}
       </div>
     </div>
   )

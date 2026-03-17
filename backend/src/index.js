@@ -40,6 +40,7 @@ app.use('/api/perfil',       authMiddleware, require('./routes/perfil'));
 app.use('/api/importar',     authMiddleware, require('./routes/importar'));
 app.use('/api/nomina',       authMiddleware, require('./routes/nomina'));
 app.use('/api/metas',        authMiddleware, require('./routes/metas'));
+app.use('/api/buscar',       authMiddleware, require('./routes/buscar'));
 
 const productosRouter = require('./routes/productos');
 const ventasRouter = require('./routes/ventas');
@@ -55,7 +56,7 @@ app.get('/health', (req, res) => {
     status: 'ok',
     sistema: 'CRM Sanavit Ecuador',
     version: '2.0.0',
-    fase: 'Fase 13 — Dashboard Live, Módulo de Metas',
+    fase: 'Fase 19 — Timeline, Búsqueda Global, Notificaciones, Gráficos, Firma Digital',
     timestamp: new Date().toISOString(),
     rutas: ['/api/auth','/api/personas','/api/leads','/api/citas','/api/kpis',
             '/api/admin','/api/cartera','/api/reportes','/api/outsourcing',

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { createVenta } from '../../api/ventas'
@@ -6,6 +6,7 @@ import { apiPersonas } from '../../api/personas'
 import { getProductos } from '../../api/productos'
 import { getSalas, getUsuarios, getFormasPago } from '../../api/admin'
 import { getEmpresas } from '../../api/outsourcing'
+import SignatureCanvas from 'react-signature-canvas'
 
 function fmt(val) {
   if (!val && val !== 0) return '$0.00'
@@ -60,6 +61,9 @@ export default function NuevaVentaPage() {
   // ── Estado UI ─────────────────────────────────────────────
   const [guardando, setGuardando] = useState(false)
   const [error, setError]         = useState('')
+  // Fase 19: Firma digital
+  const sigCanvasRef  = useRef(null)
+  const [firmaTouched, setFirmaTouched] = useState(false)
 
   // ── Cargar config al montar ───────────────────────────────
   useEffect(() => {
@@ -209,6 +213,12 @@ export default function NuevaVentaPage() {
       const cuotaInicial = Number(plan.cuota_inicial) || 0
       const valorFinanciado = montoTotal - cuotaInicial
 
+      // Capturar firma si se dibujó
+      let firma_cliente = undefined
+      if (sigCanvasRef.current && !sigCanvasRef.current.isEmpty()) {
+        firma_cliente = sigCanvasRef.current.getTrimmedCanvas().toDataURL('image/png')
+      }
+
       const payload = {
         persona_id,
         sala_id: contrato.sala_id || undefined,
@@ -225,6 +235,7 @@ export default function NuevaVentaPage() {
         n_cuotas: contrato.tipo_plan !== 'pago_unico' ? Number(plan.n_cuotas) || 1 : 1,
         dia_pago: contrato.tipo_plan !== 'pago_unico' ? Number(plan.dia_pago) || 1 : undefined,
         fecha_primer_pago: contrato.tipo_plan !== 'pago_unico' ? plan.fecha_primer_pago || fechaDefaultPrimerPago : undefined,
+        firma_cliente,
         productos: carrito.map(i => ({
           producto_id: i.producto_id,
           cantidad: Number(i.cantidad),
@@ -614,6 +625,42 @@ export default function NuevaVentaPage() {
               )}
             </div>
           )}
+        </div>
+
+        {/* ── SECCIÓN 5: Firma del cliente ── */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-3">
+          <h2 className="font-semibold text-gray-700 flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-teal-500 text-white text-xs flex items-center justify-center font-bold">5</span>
+            Firma del Cliente
+            <span className="text-xs font-normal text-gray-400">(opcional)</span>
+          </h2>
+          <p className="text-xs text-gray-500">El cliente puede firmar directamente en pantalla o con tablet/stylus.</p>
+          <div className="relative border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-gray-50"
+            style={{ touchAction: 'none' }}>
+            <SignatureCanvas
+              ref={sigCanvasRef}
+              penColor="#0f766e"
+              canvasProps={{ width: 600, height: 180, className: 'w-full' }}
+              onEnd={() => setFirmaTouched(true)}
+            />
+            {!firmaTouched && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <p className="text-gray-300 text-sm">✍️ Firmar aquí</p>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => { sigCanvasRef.current?.clear(); setFirmaTouched(false) }}
+              className="text-xs text-gray-500 hover:text-red-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:border-red-300 transition-colors"
+            >
+              🗑️ Limpiar firma
+            </button>
+            {firmaTouched && (
+              <span className="text-xs text-teal-600 font-medium">✅ Firma capturada</span>
+            )}
+          </div>
         </div>
 
         {/* Error */}

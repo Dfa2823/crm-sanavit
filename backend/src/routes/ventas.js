@@ -13,6 +13,8 @@ async function initMigrations() {
       ALTER TABLE contratos ADD COLUMN IF NOT EXISTS fecha_anulacion TIMESTAMPTZ;
       ALTER TABLE contratos ADD COLUMN IF NOT EXISTS motivo_anulacion VARCHAR(255);
     `);
+    // Fase 19: firma digital del cliente
+    await pool.query(`ALTER TABLE contratos ADD COLUMN IF NOT EXISTS firma_cliente TEXT`);
     // Agregar requiere_referencia a formas_pago si no existe
     await pool.query(`
       ALTER TABLE formas_pago ADD COLUMN IF NOT EXISTS requiere_referencia BOOLEAN DEFAULT false;
@@ -170,6 +172,7 @@ router.post('/', auth, async (req, res) => {
     monto_total, cuota_inicial = 0, forma_pago_inicial_id,
     valor_financiado, n_cuotas = 1, dia_pago = 1, fecha_primer_pago,
     outsourcing_empresa_id, segunda_venta = false, sac_asesor_id, observaciones,
+    firma_cliente,
     productos = []   // array de { producto_id, cantidad, precio_unitario }
   } = req.body;
 
@@ -212,8 +215,9 @@ router.post('/', auth, async (req, res) => {
         monto_total, valor_bruto, iva_porcentaje, valor_iva,
         cuota_inicial, forma_pago_inicial_id,
         monto_cuota, n_cuotas, dia_pago, fecha_primer_pago,
-        outsourcing_empresa_id, segunda_venta, sac_asesor_id, observaciones
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+        outsourcing_empresa_id, segunda_venta, sac_asesor_id, observaciones,
+        firma_cliente
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
       RETURNING *
     `, [
       numeroContrato, persona_id, salaId, consultor_id || userId, visita_sala_id,
@@ -222,7 +226,8 @@ router.post('/', auth, async (req, res) => {
       cuota_inicial, forma_pago_inicial_id,
       n_cuotas > 0 ? parseFloat(valor_financiado || 0) / n_cuotas : 0,
       n_cuotas, dia_pago, fecha_primer_pago,
-      outsourcing_empresa_id, segunda_venta, sac_asesor_id || null, observaciones
+      outsourcing_empresa_id, segunda_venta, sac_asesor_id || null, observaciones,
+      firma_cliente || null,
     ]);
 
     const contrato = contratoResult.rows[0];

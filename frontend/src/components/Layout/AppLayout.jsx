@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
+import GlobalSearch from '../GlobalSearch/GlobalSearch'
 import { getResumenAlertas } from '../../api/alertas'
 
 const TITULOS = {
@@ -32,19 +33,55 @@ export default function AppLayout() {
   const { pathname } = useLocation()
   const navigate     = useNavigate()
 
-  const [alertCount,  setAlertCount]  = useState(0)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [alertCount,     setAlertCount]     = useState(0)
+  const [prevAlertCount, setPrevAlertCount] = useState(0)
+  const [sidebarOpen,    setSidebarOpen]    = useState(true)
+  const [searchOpen,     setSearchOpen]     = useState(false)
+
+  /* Solicitar permiso de notificaciones al montar */
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {})
+    }
+  }, [])
+
+  /* Notificación push cuando llegan nuevas alertas */
+  useEffect(() => {
+    if (alertCount > prevAlertCount && prevAlertCount !== 0) {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('CRM Sanavit — Nuevas alertas', {
+          body: `Tienes ${alertCount} alerta${alertCount !== 1 ? 's' : ''} pendiente${alertCount !== 1 ? 's' : ''}`,
+          icon: '/favicon.ico',
+        })
+      }
+    }
+    setPrevAlertCount(alertCount)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alertCount])
 
   /* Cargar conteo de alertas al montar y cada 5 minutos */
+  const fetchAlertas = useCallback(() => {
+    getResumenAlertas()
+      .then(data => setAlertCount(data.total || 0))
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
-    const fetchAlertas = () => {
-      getResumenAlertas()
-        .then(data => setAlertCount(data.total || 0))
-        .catch(() => {})
-    }
     fetchAlertas()
     const interval = setInterval(fetchAlertas, 5 * 60 * 1000)
     return () => clearInterval(interval)
+  }, [fetchAlertas])
+
+  /* Ctrl+K para abrir búsqueda global */
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setSearchOpen(v => !v)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
   }, [])
 
   let title = TITULOS[pathname]
@@ -55,12 +92,13 @@ export default function AppLayout() {
 
   return (
     <div className="flex min-h-screen">
+      {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
       <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(v => !v)} />
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* Wrapper relativo para superponer el badge sobre el Topbar */}
         <div className="relative">
-          <Topbar title={title} onToggleSidebar={() => setSidebarOpen(v => !v)} />
+          <Topbar title={title} onToggleSidebar={() => setSidebarOpen(v => !v)} onOpenSearch={() => setSearchOpen(true)} />
 
           {/* Badge de campana — superpuesto en la esquina derecha del header */}
           <div className="absolute top-0 right-0 h-14 flex items-center pr-28 pointer-events-none">

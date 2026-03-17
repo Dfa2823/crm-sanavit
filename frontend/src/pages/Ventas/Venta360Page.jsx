@@ -433,6 +433,21 @@ export default function Venta360Page() {
                   )}
                 </div>
               </div>
+
+              {/* Firma del cliente */}
+              {contrato.firma_cliente && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">✍️ Firma del cliente</p>
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 inline-block">
+                    <img
+                      src={contrato.firma_cliente}
+                      alt="Firma del cliente"
+                      className="max-h-28 max-w-xs"
+                      style={{ imageRendering: 'crisp-edges' }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
