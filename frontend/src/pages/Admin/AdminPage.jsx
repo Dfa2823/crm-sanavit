@@ -53,12 +53,13 @@ const TODOS_LOS_MODULOS = [
   { key: 'inventario',    label: 'Inventario' },
   { key: 'alertas',       label: 'Alertas' },
   { key: 'importar',      label: 'Importar Base' },
+  { key: 'nomina',        label: 'Nómina' },
   { key: 'admin',         label: 'Administración' },
 ]
 
 const ROL_DEFAULTS = {
-  admin:         ['kpis','premanifiesto','recepcion','leads','supervisor','calendario','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar','admin'],
-  director:      ['kpis','premanifiesto','recepcion','leads','supervisor','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar'],
+  admin:         ['kpis','premanifiesto','recepcion','leads','supervisor','calendario','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar','nomina','admin'],
+  director:      ['kpis','premanifiesto','recepcion','leads','supervisor','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar','nomina'],
   supervisor_cc: ['supervisor','premanifiesto','leads','calendario','reportes','outsourcing','importar'],
   tmk:           ['leads'],
   confirmador:   ['calendario','premanifiesto'],
@@ -197,10 +198,10 @@ function BadgeActivo({ activo }) {
 }
 
 // ─────────────────────────────── Modal base ─────────────────────────────────
-function Modal({ title, onClose, children }) {
+function Modal({ title, onClose, children, wide }) {
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div className={`bg-white rounded-2xl shadow-2xl w-full ${wide ? 'max-w-lg' : 'max-w-md'} p-6 my-4`}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="font-bold text-gray-800 text-lg">{title}</h3>
           <button
@@ -211,6 +212,104 @@ function Modal({ title, onClose, children }) {
           </button>
         </div>
         {children}
+      </div>
+    </div>
+  )
+}
+
+// ──────────────────────── Sección Salarial ──────────────────────────────────
+function SeccionSalarial({ form, setForm, rolNombre }) {
+  const f = (field, val) => setForm(p => ({ ...p, [field]: val }))
+  const inp = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500'
+
+  const esConsultorODirector = ['consultor','director','admin'].includes(rolNombre)
+  const esTmk                = rolNombre === 'tmk'
+  const esConfirmador        = rolNombre === 'confirmador'
+  const esAsesor             = rolNombre === 'asesor_cartera'
+  const tieneComision        = esConsultorODirector || esTmk || esConfirmador || esAsesor
+
+  if (!tieneComision && !rolNombre) return null
+
+  return (
+    <div className="border-t border-gray-100 pt-4 mt-1">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Configuración salarial</p>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Sueldo base ($)</label>
+          <input type="number" min="0" step="0.01" className={inp}
+            placeholder="0.00"
+            value={form.sueldo_base}
+            onChange={e => f('sueldo_base', e.target.value)}
+          />
+        </div>
+        {esConsultorODirector && (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">% Comisión sobre cobrado</label>
+              <input type="number" min="0" max="100" step="0.01" className={inp}
+                placeholder="10"
+                value={form.pct_comision_venta}
+                onChange={e => f('pct_comision_venta', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">% Mínimo para desbloquear</label>
+              <input type="number" min="0" max="100" step="0.01" className={inp}
+                placeholder="30"
+                value={form.pct_desbloqueo}
+                onChange={e => f('pct_desbloqueo', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Bono por tour ($)</label>
+              <input type="number" min="0" step="0.01" className={inp}
+                placeholder="50"
+                value={form.bono_por_tour}
+                onChange={e => f('bono_por_tour', e.target.value)}
+              />
+            </div>
+          </>
+        )}
+        {esTmk && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Bono por tour ($)</label>
+            <input type="number" min="0" step="0.01" className={inp}
+              placeholder="15"
+              value={form.bono_por_tour}
+              onChange={e => f('bono_por_tour', e.target.value)}
+            />
+          </div>
+        )}
+        {esConfirmador && (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Bono por tour ($)</label>
+              <input type="number" min="0" step="0.01" className={inp}
+                placeholder="10"
+                value={form.bono_por_tour}
+                onChange={e => f('bono_por_tour', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Bono por cita confirmada ($)</label>
+              <input type="number" min="0" step="0.01" className={inp}
+                placeholder="2"
+                value={form.bono_por_cita}
+                onChange={e => f('bono_por_cita', e.target.value)}
+              />
+            </div>
+          </>
+        )}
+        {esAsesor && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">% Comisión sobre cobros cartera</label>
+            <input type="number" min="0" max="100" step="0.01" className={inp}
+              placeholder="2"
+              value={form.pct_comision_cobro}
+              onChange={e => f('pct_comision_cobro', e.target.value)}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -230,9 +329,13 @@ function TabUsuarios({ salas, roles }) {
   const [busqueda, setBusqueda] = useState('')
   const [formNuevo, setFormNuevo] = useState({
     nombre: '', username: '', password: '', sala_id: '', rol_id: '',
+    sueldo_base: '', pct_comision_venta: '', pct_desbloqueo: '',
+    pct_comision_cobro: '', bono_por_tour: '', bono_por_cita: '',
   })
   const [formEditar, setFormEditar] = useState({
     nombre: '', sala_id: '', rol_id: '', activo: true, password: '',
+    sueldo_base: '', pct_comision_venta: '', pct_desbloqueo: '',
+    pct_comision_cobro: '', bono_por_tour: '', bono_por_cita: '',
   })
 
   const cargar = useCallback(async () => {
@@ -257,7 +360,11 @@ function TabUsuarios({ salas, roles }) {
     try {
       await createUsuario(formNuevo)
       setModalNuevo(false)
-      setFormNuevo({ nombre: '', username: '', password: '', sala_id: '', rol_id: '' })
+      setFormNuevo({
+        nombre: '', username: '', password: '', sala_id: '', rol_id: '',
+        sueldo_base: '', pct_comision_venta: '', pct_desbloqueo: '',
+        pct_comision_cobro: '', bono_por_tour: '', bono_por_cita: '',
+      })
       cargar()
     } catch (err) {
       setError('Error al crear usuario: ' + (err.response?.data?.error || err.message))
@@ -276,6 +383,12 @@ function TabUsuarios({ salas, roles }) {
         sala_id: formEditar.sala_id || null,
         rol_id:  formEditar.rol_id,
         activo:  formEditar.activo,
+        sueldo_base:        formEditar.sueldo_base        !== '' ? formEditar.sueldo_base        : null,
+        pct_comision_venta: formEditar.pct_comision_venta !== '' ? formEditar.pct_comision_venta : null,
+        pct_desbloqueo:     formEditar.pct_desbloqueo     !== '' ? formEditar.pct_desbloqueo     : null,
+        pct_comision_cobro: formEditar.pct_comision_cobro !== '' ? formEditar.pct_comision_cobro : null,
+        bono_por_tour:      formEditar.bono_por_tour      !== '' ? formEditar.bono_por_tour      : null,
+        bono_por_cita:      formEditar.bono_por_cita      !== '' ? formEditar.bono_por_cita      : null,
       }
       if (formEditar.password) payload.password = formEditar.password
       await updateUsuario(modalEditar.id, payload)
@@ -304,6 +417,12 @@ function TabUsuarios({ salas, roles }) {
       rol_id:  u.rol_id  || '',
       activo:  u.activo !== false,
       password: '',
+      sueldo_base:        u.sueldo_base        ?? '',
+      pct_comision_venta: u.pct_comision_venta ?? '',
+      pct_desbloqueo:     u.pct_desbloqueo     ?? '',
+      pct_comision_cobro: u.pct_comision_cobro ?? '',
+      bono_por_tour:      u.bono_por_tour      ?? '',
+      bono_por_cita:      u.bono_por_cita      ?? '',
     })
     setModalEditar(u)
   }
@@ -419,7 +538,7 @@ function TabUsuarios({ salas, roles }) {
 
       {/* Modal: Nuevo usuario */}
       {modalNuevo && (
-        <Modal title="Nuevo usuario" onClose={() => setModalNuevo(false)}>
+        <Modal title="Nuevo usuario" onClose={() => setModalNuevo(false)} wide>
           <form onSubmit={handleCrear} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo *</label>
@@ -475,6 +594,12 @@ function TabUsuarios({ salas, roles }) {
                 ))}
               </select>
             </div>
+            {/* ── Configuración salarial ── */}
+            <SeccionSalarial
+              form={formNuevo}
+              setForm={setFormNuevo}
+              rolNombre={roles.find(r => String(r.id) === String(formNuevo.rol_id))?.nombre || ''}
+            />
             {error && (
               <p className="text-red-600 text-xs">{error}</p>
             )}
@@ -500,7 +625,7 @@ function TabUsuarios({ salas, roles }) {
 
       {/* Modal: Editar usuario */}
       {modalEditar && (
-        <Modal title={`Editar: ${modalEditar.nombre}`} onClose={() => setModalEditar(null)}>
+        <Modal title={`Editar: ${modalEditar.nombre}`} onClose={() => setModalEditar(null)} wide>
           <form onSubmit={handleEditar} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
@@ -537,6 +662,12 @@ function TabUsuarios({ salas, roles }) {
                 ))}
               </select>
             </div>
+            {/* ── Configuración salarial ── */}
+            <SeccionSalarial
+              form={formEditar}
+              setForm={setFormEditar}
+              rolNombre={roles.find(r => String(r.id) === String(formEditar.rol_id))?.nombre || ''}
+            />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña <span className="text-gray-400 font-normal">(dejar vacío para no cambiar)</span></label>
               <input

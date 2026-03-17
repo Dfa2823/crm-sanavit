@@ -94,12 +94,13 @@ router.post('/calcular', auth, requireAdminOrDirector, async (req, res) => {
         COUNT(c.id)::integer AS contratos_count,
         COALESCE(SUM(
           CASE
-            WHEN (COALESCE(pagado.total, 0) / NULLIF(c.monto_total, 0)) >= 0.3
-            THEN c.monto_total * 0.10
+            WHEN (COALESCE(pagado.total, 0) / NULLIF(c.monto_total, 0) * 100) >= COALESCE(u.pct_desbloqueo, 30)
+            THEN COALESCE(pagado.total, 0) * COALESCE(u.pct_comision_venta, 10) / 100
             ELSE 0
           END
         ), 0) AS monto_comision
       FROM contratos c
+      JOIN usuarios u ON c.consultor_id = u.id
       LEFT JOIN (
         SELECT contrato_id, SUM(valor) AS total
         FROM recibos

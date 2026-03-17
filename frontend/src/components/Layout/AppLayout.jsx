@@ -24,6 +24,7 @@ const TITULOS = {
   '/admin':                 'Administración del Sistema',
   '/perfil':                'Mi Perfil',
   '/importar':              'Importar Base de Datos',
+  '/nomina':                'Nómina Mensual',
 }
 
 export default function AppLayout() {

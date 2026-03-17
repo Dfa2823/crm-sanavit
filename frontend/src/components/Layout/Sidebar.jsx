@@ -19,6 +19,7 @@ const TODOS_LOS_MODULOS = {
   inventario:    { label: 'Inventario',        path: '/inventario',             icon: '📦' },
   alertas:       { label: 'Alertas',           path: '/alertas',                icon: '🔔' },
   importar:      { label: 'Importar Base',     path: '/importar',               icon: '📥' },
+  nomina:        { label: 'Nómina',            path: '/nomina',                 icon: '💵' },
   admin:         { label: 'Administración',    path: '/admin',                  icon: '⚙️' },
 }
 
@@ -39,6 +40,7 @@ const MENU_POR_ROL = {
     { label: 'Inventario', path: '/inventario', icon: '📦' },
     { label: 'Alertas', path: '/alertas', icon: '🔔' },
     { label: 'Importar Base', path: '/importar', icon: '📥' },
+    { label: 'Nómina', path: '/nomina', icon: '💵' },
     { label: 'Administración', path: '/admin', icon: '⚙️' },
   ],
   director: [
@@ -57,6 +59,7 @@ const MENU_POR_ROL = {
     { label: 'Inventario', path: '/inventario', icon: '📦' },
     { label: 'Alertas', path: '/alertas', icon: '🔔' },
     { label: 'Importar Base', path: '/importar', icon: '📥' },
+    { label: 'Nómina', path: '/nomina', icon: '💵' },
   ],
   supervisor_cc: [
     { label: 'Mi Equipo TMK', path: '/mercadeo/supervisor', icon: '🎯' },

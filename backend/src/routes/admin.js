@@ -4,12 +4,18 @@ const pool = require('../db');
 
 const router = express.Router();
 
-// Auto-migración: columna permisos JSONB
+// Auto-migración: columnas permisos y campos salariales
 ;(async () => {
   try {
     await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS permisos JSONB DEFAULT NULL');
+    await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS sueldo_base NUMERIC(10,2) DEFAULT 0');
+    await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS pct_comision_venta NUMERIC(5,2) DEFAULT 10.00');
+    await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS pct_comision_cobro NUMERIC(5,2) DEFAULT 0');
+    await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bono_por_tour NUMERIC(10,2) DEFAULT 0');
+    await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bono_por_cita NUMERIC(10,2) DEFAULT 0');
+    await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS pct_desbloqueo NUMERIC(5,2) DEFAULT 30.00');
   } catch (e) {
-    console.error('Migration permisos:', e.message);
+    console.error('Migration usuarios:', e.message);
   }
 })();
 
@@ -31,6 +37,12 @@ router.get('/usuarios', requireAdmin, async (req, res) => {
     const result = await pool.query(`
       SELECT
         u.id, u.nombre, u.username, u.activo, u.created_at, u.permisos,
+        COALESCE(u.sueldo_base,0)            AS sueldo_base,
+        COALESCE(u.pct_comision_venta,10)    AS pct_comision_venta,
+        COALESCE(u.pct_comision_cobro,0)     AS pct_comision_cobro,
+        COALESCE(u.bono_por_tour,0)          AS bono_por_tour,
+        COALESCE(u.bono_por_cita,0)          AS bono_por_cita,
+        COALESCE(u.pct_desbloqueo,30)        AS pct_desbloqueo,
         r.id AS rol_id, r.nombre AS rol, r.label AS rol_label,
         s.id AS sala_id, s.nombre AS sala_nombre, s.ciudad AS sala_ciudad
       FROM usuarios u
@@ -47,7 +59,11 @@ router.get('/usuarios', requireAdmin, async (req, res) => {
 
 // POST /api/admin/usuarios — crear nuevo usuario
 router.post('/usuarios', requireAdmin, async (req, res) => {
-  const { nombre, username, password, rol_id, sala_id } = req.body;
+  const {
+    nombre, username, password, rol_id, sala_id,
+    sueldo_base, pct_comision_venta, pct_comision_cobro,
+    bono_por_tour, bono_por_cita, pct_desbloqueo,
+  } = req.body;
 
   if (!nombre || !username || !password || !rol_id) {
     return res.status(400).json({ error: 'nombre, username, password y rol_id son requeridos' });
@@ -66,14 +82,32 @@ router.post('/usuarios', requireAdmin, async (req, res) => {
     const password_hash = await bcrypt.hash(password, 10);
 
     const result = await pool.query(`
-      INSERT INTO usuarios (nombre, username, password_hash, rol_id, sala_id, activo)
-      VALUES ($1, $2, $3, $4, $5, true)
+      INSERT INTO usuarios (
+        nombre, username, password_hash, rol_id, sala_id, activo,
+        sueldo_base, pct_comision_venta, pct_comision_cobro,
+        bono_por_tour, bono_por_cita, pct_desbloqueo
+      )
+      VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8, $9, $10, $11)
       RETURNING id
-    `, [nombre, username, password_hash, rol_id, sala_id || null]);
+    `, [
+      nombre, username, password_hash, rol_id, sala_id || null,
+      sueldo_base || 0,
+      pct_comision_venta !== undefined ? pct_comision_venta : 10,
+      pct_comision_cobro || 0,
+      bono_por_tour || 0,
+      bono_por_cita || 0,
+      pct_desbloqueo !== undefined ? pct_desbloqueo : 30,
+    ]);
 
     const newUser = await pool.query(`
       SELECT
-        u.id, u.nombre, u.username, u.activo, u.created_at,
+        u.id, u.nombre, u.username, u.activo, u.created_at, u.permisos,
+        COALESCE(u.sueldo_base,0) AS sueldo_base,
+        COALESCE(u.pct_comision_venta,10) AS pct_comision_venta,
+        COALESCE(u.pct_comision_cobro,0) AS pct_comision_cobro,
+        COALESCE(u.bono_por_tour,0) AS bono_por_tour,
+        COALESCE(u.bono_por_cita,0) AS bono_por_cita,
+        COALESCE(u.pct_desbloqueo,30) AS pct_desbloqueo,
         r.id AS rol_id, r.nombre AS rol, r.label AS rol_label,
         s.id AS sala_id, s.nombre AS sala_nombre, s.ciudad AS sala_ciudad
       FROM usuarios u
@@ -91,17 +125,27 @@ router.post('/usuarios', requireAdmin, async (req, res) => {
 
 // PATCH /api/admin/usuarios/:id — actualizar usuario
 router.patch('/usuarios/:id', requireAdmin, async (req, res) => {
-  const { nombre, sala_id, rol_id, activo, password } = req.body;
+  const {
+    nombre, sala_id, rol_id, activo, password,
+    sueldo_base, pct_comision_venta, pct_comision_cobro,
+    bono_por_tour, bono_por_cita, pct_desbloqueo,
+  } = req.body;
 
   try {
     const updates = [];
     const params = [];
     let idx = 1;
 
-    if (nombre !== undefined)   { updates.push(`nombre = $${idx++}`);   params.push(nombre); }
-    if (sala_id !== undefined)  { updates.push(`sala_id = $${idx++}`);  params.push(sala_id); }
-    if (rol_id !== undefined)   { updates.push(`rol_id = $${idx++}`);   params.push(rol_id); }
-    if (activo !== undefined)   { updates.push(`activo = $${idx++}`);   params.push(activo); }
+    if (nombre !== undefined)             { updates.push(`nombre = $${idx++}`);             params.push(nombre); }
+    if (sala_id !== undefined)            { updates.push(`sala_id = $${idx++}`);            params.push(sala_id); }
+    if (rol_id !== undefined)             { updates.push(`rol_id = $${idx++}`);             params.push(rol_id); }
+    if (activo !== undefined)             { updates.push(`activo = $${idx++}`);             params.push(activo); }
+    if (sueldo_base !== undefined)        { updates.push(`sueldo_base = $${idx++}`);        params.push(sueldo_base); }
+    if (pct_comision_venta !== undefined) { updates.push(`pct_comision_venta = $${idx++}`); params.push(pct_comision_venta); }
+    if (pct_comision_cobro !== undefined) { updates.push(`pct_comision_cobro = $${idx++}`); params.push(pct_comision_cobro); }
+    if (bono_por_tour !== undefined)      { updates.push(`bono_por_tour = $${idx++}`);      params.push(bono_por_tour); }
+    if (bono_por_cita !== undefined)      { updates.push(`bono_por_cita = $${idx++}`);      params.push(bono_por_cita); }
+    if (pct_desbloqueo !== undefined)     { updates.push(`pct_desbloqueo = $${idx++}`);     params.push(pct_desbloqueo); }
 
     if (password !== undefined && password !== '') {
       const password_hash = await bcrypt.hash(password, 10);
@@ -121,7 +165,13 @@ router.patch('/usuarios/:id', requireAdmin, async (req, res) => {
 
     const updated = await pool.query(`
       SELECT
-        u.id, u.nombre, u.username, u.activo, u.created_at,
+        u.id, u.nombre, u.username, u.activo, u.created_at, u.permisos,
+        COALESCE(u.sueldo_base,0) AS sueldo_base,
+        COALESCE(u.pct_comision_venta,10) AS pct_comision_venta,
+        COALESCE(u.pct_comision_cobro,0) AS pct_comision_cobro,
+        COALESCE(u.bono_por_tour,0) AS bono_por_tour,
+        COALESCE(u.bono_por_cita,0) AS bono_por_cita,
+        COALESCE(u.pct_desbloqueo,30) AS pct_desbloqueo,
         r.id AS rol_id, r.nombre AS rol, r.label AS rol_label,
         s.id AS sala_id, s.nombre AS sala_nombre, s.ciudad AS sala_ciudad
       FROM usuarios u

@@ -38,6 +38,7 @@ app.use('/api/alertas',      authMiddleware, require('./routes/alertas'));
 app.use('/api/liquidaciones', authMiddleware, require('./routes/liquidaciones'));
 app.use('/api/perfil',       authMiddleware, require('./routes/perfil'));
 app.use('/api/importar',     authMiddleware, require('./routes/importar'));
+app.use('/api/nomina',       authMiddleware, require('./routes/nomina'));
 
 const productosRouter = require('./routes/productos');
 const ventasRouter = require('./routes/ventas');
@@ -53,13 +54,13 @@ app.get('/health', (req, res) => {
     status: 'ok',
     sistema: 'CRM Sanavit Ecuador',
     version: '2.0.0',
-    fase: 'Fase 11 — Permisos modulares, Importar Excel, Toasts, Mejoras UX',
+    fase: 'Fase 12 — Nómina Completa, Configuración salarial por usuario',
     timestamp: new Date().toISOString(),
     rutas: ['/api/auth','/api/personas','/api/leads','/api/citas','/api/kpis',
             '/api/admin','/api/cartera','/api/reportes','/api/outsourcing',
             '/api/comisiones','/api/sac','/api/supervisor','/api/inventario',
             '/api/productos','/api/ventas','/api/recibos',
-            '/api/alertas','/api/liquidaciones','/api/perfil'],
+            '/api/alertas','/api/liquidaciones','/api/perfil','/api/nomina'],
   });
 });
 

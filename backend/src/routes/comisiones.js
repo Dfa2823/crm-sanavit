@@ -61,14 +61,14 @@ router.get('/', async (req, res) => {
         s.nombre                        AS sala_nombre,
         COUNT(DISTINCT c.id)            AS total_contratos,
         COUNT(DISTINCT CASE
-          WHEN COALESCE(r.total_cobrado, 0) / NULLIF(c.monto_total, 0) * 100 >= 30
+          WHEN COALESCE(r.total_cobrado, 0) / NULLIF(c.monto_total, 0) * 100 >= COALESCE(u.pct_desbloqueo, 30)
           THEN c.id END)                AS contratos_desbloqueados,
         COALESCE(SUM(c.monto_total), 0) AS cartera_total,
         COALESCE(SUM(r.total_cobrado), 0) AS total_cobrado,
         COALESCE(SUM(
           CASE
-            WHEN COALESCE(r.total_cobrado, 0) / NULLIF(c.monto_total, 0) * 100 >= 30
-            THEN r.total_cobrado * 0.10
+            WHEN COALESCE(r.total_cobrado, 0) / NULLIF(c.monto_total, 0) * 100 >= COALESCE(u.pct_desbloqueo, 30)
+            THEN r.total_cobrado * COALESCE(u.pct_comision_venta, 10) / 100
             ELSE 0
           END
         ), 0)                           AS comision_calculada
@@ -129,20 +129,23 @@ router.get('/detalle/:consultor_id', async (req, res) => {
         END                                                                  AS pct_pagado,
         CASE
           WHEN c.monto_total > 0
-            AND COALESCE(r.total_cobrado, 0) / c.monto_total * 100 >= 30
-          THEN ROUND(COALESCE(r.total_cobrado, 0) * 0.10, 2)
+            AND COALESCE(r.total_cobrado, 0) / c.monto_total * 100 >= COALESCE(cons.pct_desbloqueo, 30)
+          THEN ROUND(COALESCE(r.total_cobrado, 0) * COALESCE(cons.pct_comision_venta, 10) / 100, 2)
           ELSE 0
         END                                                                  AS comision_por_contrato,
         CASE
           WHEN c.monto_total > 0
-            AND COALESCE(r.total_cobrado, 0) / c.monto_total * 100 >= 30
+            AND COALESCE(r.total_cobrado, 0) / c.monto_total * 100 >= COALESCE(cons.pct_desbloqueo, 30)
           THEN 'desbloqueada'
           ELSE 'bloqueada'
         END                                                                  AS estado_comision,
+        COALESCE(cons.pct_comision_venta, 10) AS pct_comision_venta,
+        COALESCE(cons.pct_desbloqueo, 30)     AS pct_desbloqueo,
         c.fecha_contrato,
         c.estado
       FROM contratos c
       JOIN personas p ON c.persona_id = p.id
+      JOIN usuarios cons ON c.consultor_id = cons.id
       LEFT JOIN (
         SELECT contrato_id, SUM(valor) AS total_cobrado
         FROM recibos
