@@ -14,6 +14,8 @@ const router = express.Router();
     await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bono_por_tour NUMERIC(10,2) DEFAULT 0');
     await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bono_por_cita NUMERIC(10,2) DEFAULT 0');
     await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS pct_desbloqueo NUMERIC(5,2) DEFAULT 30.00');
+    // Columna para asignar asesor de cartera a un contrato
+    await pool.query('ALTER TABLE contratos ADD COLUMN IF NOT EXISTS asesor_cartera_id INTEGER REFERENCES usuarios(id)');
   } catch (e) {
     console.error('Migration usuarios:', e.message);
   }

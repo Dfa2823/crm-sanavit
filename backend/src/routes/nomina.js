@@ -156,13 +156,24 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           AND r.estado = 'activo'
       `, [u.id, mes, u.pct_comision_cobro]);
 
-      // 2c. Bono por tours (tmk_id o consultor_id en visitas_sala)
+      // 2c. Bono por tours
+      // - Consultor/hostess: visitas donde consultor_id = u.id con calificacion TOUR
+      // - TMK: leads donde tmk_id = u.id que tuvieron visita con calificacion TOUR
       const tourRes = await pool.query(`
-        SELECT COUNT(*)::integer AS tours_count
-        FROM visitas_sala
-        WHERE TO_CHAR(fecha, 'YYYY-MM') = $2
-          AND calificacion = 'TOUR'
-          AND ($1 = tmk_id OR $1 = consultor_id)
+        SELECT (
+          -- Tours como consultor en sala
+          (SELECT COUNT(*) FROM visitas_sala
+           WHERE TO_CHAR(fecha, 'YYYY-MM') = $2
+             AND calificacion = 'TOUR'
+             AND consultor_id = $1)
+          +
+          -- Tours como TMK (lead propio que llegó a sala como TOUR)
+          (SELECT COUNT(*) FROM leads l
+           JOIN visitas_sala vs ON vs.lead_id = l.id
+           WHERE l.tmk_id = $1
+             AND TO_CHAR(vs.fecha, 'YYYY-MM') = $2
+             AND vs.calificacion = 'TOUR')
+        )::integer AS tours_count
       `, [u.id, mes]);
 
       // 2d. Bono por citas confirmadas (confirmador)
@@ -171,7 +182,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
         FROM leads
         WHERE confirmador_id = $1
           AND TO_CHAR(COALESCE(fecha_cita, created_at), 'YYYY-MM') = $2
-          AND estado = 'confirmada'
+          AND estado IN ('confirmada', 'tour', 'venta')
       `, [u.id, mes]);
 
       // 3. Calcular totales

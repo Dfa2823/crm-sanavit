@@ -41,6 +41,16 @@ function DrawerNomina({ registro, onClose, onUpdate, esAdmin }) {
     otras_deducciones: registro.otras_deducciones || 0,
     observaciones:     registro.observaciones     || '',
   })
+
+  // Sincronizar form cuando cambia el registro (tras guardar)
+  useEffect(() => {
+    setForm({
+      otros_ingresos:    registro.otros_ingresos    || 0,
+      anticipo:          registro.anticipo          || 0,
+      otras_deducciones: registro.otras_deducciones || 0,
+      observaciones:     registro.observaciones     || '',
+    })
+  }, [registro.id, registro.otros_ingresos, registro.anticipo, registro.otras_deducciones, registro.observaciones])
   const [guardando, setGuardando] = useState(false)
   const [error,     setError]     = useState('')
 
