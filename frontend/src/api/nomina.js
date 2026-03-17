@@ -1,4 +1,4 @@
-import api from './axios'
+import api from './client'
 
 export const getNomina       = (params = {}) => api.get('/nomina', { params }).then(r => r.data)
 export const calcularNomina  = (body)        => api.post('/nomina/calcular', body).then(r => r.data)
