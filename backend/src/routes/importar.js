@@ -106,7 +106,9 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
     let tmkIndex = 0;
     if (!tmk_id) {
       const tmkRes = await pool.query(
-        `SELECT id FROM usuarios WHERE rol = 'tmk' AND sala_id = $1 AND activo = true ORDER BY id`,
+        `SELECT u.id FROM usuarios u
+         JOIN roles r ON u.rol_id = r.id
+         WHERE r.nombre = 'tmk' AND u.sala_id = $1 AND u.activo = true ORDER BY u.id`,
         [sala_id]
       );
       tmkIds = tmkRes.rows.map(r => r.id);

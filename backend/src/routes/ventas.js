@@ -246,7 +246,9 @@ router.post('/', auth, async (req, res) => {
       for (let i = 0; i < n_cuotas; i++) {
         const fechaVenc = new Date(fechaInicio);
         fechaVenc.setMonth(fechaVenc.getMonth() + i);
-        fechaVenc.setDate(dia_pago);
+        // Limitar dia_pago al último día real del mes (evita overflow: 31 feb → 3 mar)
+        const ultimoDiaMes = new Date(fechaVenc.getFullYear(), fechaVenc.getMonth() + 1, 0).getDate();
+        fechaVenc.setDate(Math.min(dia_pago, ultimoDiaMes));
 
         await client.query(`
           INSERT INTO cuotas (contrato_id, numero_cuota, monto_esperado, fecha_vencimiento, estado)

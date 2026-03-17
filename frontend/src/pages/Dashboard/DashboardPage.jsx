@@ -274,15 +274,15 @@ function DashboardConsultor() {
                 sublabel="contratos"
               />
               <KPICard
-                label="Comisión estimada"
+                label="Monto ventas"
                 valor={
-                  ve.total_contratos != null
-                    ? `$${(ve.total_contratos * 1200 * 0.1).toLocaleString('es-EC', { maximumFractionDigits: 0 })}`
+                  ve.monto_total != null
+                    ? `$${Number(ve.monto_total).toLocaleString('es-EC', { maximumFractionDigits: 0 })}`
                     : '—'
                 }
                 icon="💵"
                 color="green"
-                sublabel="aprox. 10%"
+                sublabel="total contratos"
               />
               <KPICard
                 label="Clientes hoy"

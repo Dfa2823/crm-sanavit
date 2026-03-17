@@ -95,8 +95,22 @@ router.get('/', auth, async (req, res) => {
       ORDER BY total_leads DESC
     `, params);
 
+    // ── KPIs de Ventas ───────────────────────────────────
+    const ventasRes = await pool.query(`
+      SELECT
+        COUNT(*)                         AS total_contratos,
+        COALESCE(SUM(monto_total), 0)    AS monto_total,
+        COALESCE(SUM(valor_financiado), 0) AS monto_financiado,
+        COUNT(*) FILTER (WHERE segunda_venta = true) AS segundas_ventas
+      FROM contratos
+      WHERE DATE(fecha_contrato) BETWEEN $1::date AND $2::date
+        AND ($3::integer IS NULL OR sala_id = $3)
+        AND estado NOT IN ('cancelado')
+    `, params);
+
     const merc = mercadeoRes.rows[0];
     const sala = salaRes.rows[0];
+    const vent = ventasRes.rows[0];
 
     // Calcular ratios
     const totalLeads    = Number(merc.total_leads);
@@ -127,6 +141,12 @@ router.get('/', auth, async (req, res) => {
         no_shows:          Number(sala.no_shows),
         total_visitas:     totalVisitas,
         efectividad:       Number(efectividad_sala),   // Tours / Total visitas %
+      },
+      ventas: {
+        total_contratos:  Number(vent.total_contratos),
+        monto_total:      Number(vent.monto_total),
+        monto_financiado: Number(vent.monto_financiado),
+        segundas_ventas:  Number(vent.segundas_ventas),
       },
       fuentes: fuentesRes.rows,
       tipificaciones: tipificacionesRes.rows,
