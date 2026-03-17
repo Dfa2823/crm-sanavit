@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { useTheme } from '../../context/ThemeContext'
 
 // Catálogo completo de módulos — usado para permisos personalizados
 const TODOS_LOS_MODULOS = {
@@ -106,6 +107,7 @@ const MENU_POR_ROL = {
 
 export default function Sidebar({ isOpen = true, onToggle }) {
   const { usuario } = useAuth()
+  const { dark, toggle: toggleDark } = useTheme()
   // Si el usuario tiene permisos personalizados (array), usarlos; si no, usar los del rol
   const menuItems = Array.isArray(usuario?.permisos)
     ? usuario.permisos.map(k => TODOS_LOS_MODULOS[k]).filter(Boolean)
@@ -205,6 +207,19 @@ export default function Sidebar({ isOpen = true, onToggle }) {
           <span className="text-base shrink-0">👤</span>
           {isOpen && 'Mi Perfil'}
         </NavLink>
+      </div>
+
+      {/* Toggle modo oscuro */}
+      <div className={`${isOpen ? 'px-3' : 'px-2'} py-2 border-t border-slate-700`}>
+        <button
+          onClick={toggleDark}
+          title={dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+          className={`w-full flex items-center rounded-lg text-sm transition-colors text-slate-300 hover:bg-slate-800 hover:text-white
+            ${isOpen ? 'gap-3 px-3 py-2.5' : 'justify-center p-2.5'}`}
+        >
+          <span className="text-base shrink-0">{dark ? '☀️' : '🌙'}</span>
+          {isOpen && (dark ? 'Modo claro' : 'Modo oscuro')}
+        </button>
       </div>
 
       {/* Próximamente */}
