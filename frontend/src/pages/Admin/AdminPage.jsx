@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  getUsuarios, createUsuario, updateUsuario, toggleUsuario,
+  getUsuarios, createUsuario, updateUsuario, toggleUsuario, updatePermisos,
   getSalas, createSala,
   getTipificaciones, createTipificacion, updateTipificacion,
   getFuentes, createFuente, updateFuente,
@@ -34,6 +34,151 @@ const TIPOS_PRODUCTO = [
   { value: 'producto',  label: 'Producto' },
   { value: 'paquete',   label: 'Paquete' },
 ]
+
+// ─────────────────────────────── Módulos del sistema ────────────────────────
+const TODOS_LOS_MODULOS = [
+  { key: 'kpis',          label: 'Dashboard KPIs' },
+  { key: 'premanifiesto', label: 'Pre-manifiesto' },
+  { key: 'recepcion',     label: 'Recepción / Sala' },
+  { key: 'leads',         label: 'Leads / TMK' },
+  { key: 'supervisor',    label: 'Supervisor CC' },
+  { key: 'calendario',    label: 'Calendario Confirmador' },
+  { key: 'cartera',       label: 'Cartera' },
+  { key: 'ventas',        label: 'Ventas' },
+  { key: 'reportes',      label: 'Reportes' },
+  { key: 'outsourcing',   label: 'Outsourcing' },
+  { key: 'comisiones',    label: 'Comisiones' },
+  { key: 'liquidaciones', label: 'Liquidaciones' },
+  { key: 'sac',           label: 'SAC / PQR' },
+  { key: 'inventario',    label: 'Inventario' },
+  { key: 'alertas',       label: 'Alertas' },
+  { key: 'importar',      label: 'Importar Base' },
+  { key: 'admin',         label: 'Administración' },
+]
+
+const ROL_DEFAULTS = {
+  admin:         ['kpis','premanifiesto','recepcion','leads','supervisor','calendario','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar','admin'],
+  director:      ['kpis','premanifiesto','recepcion','leads','supervisor','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar'],
+  supervisor_cc: ['supervisor','premanifiesto','leads','calendario','reportes','outsourcing','importar'],
+  tmk:           ['leads'],
+  confirmador:   ['calendario','premanifiesto'],
+  hostess:       ['recepcion','ventas'],
+  consultor:     ['recepcion','ventas'],
+  asesor_cartera:['kpis','cartera','reportes'],
+  sac:           ['sac','kpis','reportes'],
+  outsourcing:   ['leads','premanifiesto'],
+}
+
+// ─────────────────────────────── ModalPermisos ──────────────────────────────
+function ModalPermisos({ usuario, onClose, onSuccess }) {
+  const inicial = Array.isArray(usuario.permisos)
+    ? new Set(usuario.permisos)
+    : new Set(ROL_DEFAULTS[usuario.rol] || [])
+  const [seleccionados, setSeleccionados] = useState(inicial)
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+  const esPersonalizado = Array.isArray(usuario.permisos)
+
+  function toggle(key) {
+    setSeleccionados(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
+  async function handleGuardar() {
+    setGuardando(true)
+    setError('')
+    try {
+      // Guardar en el mismo orden que TODOS_LOS_MODULOS
+      const ordered = TODOS_LOS_MODULOS.map(m => m.key).filter(k => seleccionados.has(k))
+      await updatePermisos(usuario.id, ordered)
+      onSuccess('Permisos actualizados correctamente')
+      onClose()
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al guardar permisos')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  async function handleRestablecer() {
+    setGuardando(true)
+    setError('')
+    try {
+      await updatePermisos(usuario.id, null)
+      onSuccess('Permisos restablecidos al rol por defecto')
+      onClose()
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al restablecer permisos')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-bold text-gray-800 text-lg">Permisos modulares</h3>
+            <p className="text-sm text-gray-500">{usuario.nombre} · <span className="text-blue-600">{usuario.rol_label || usuario.rol}</span></p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+
+        {!esPersonalizado && (
+          <div className="mb-4 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-xs">
+            Este usuario usa los permisos por defecto del rol. Al guardar, se aplicarán permisos personalizados.
+          </div>
+        )}
+
+        {error && (
+          <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs">{error}</div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2 mb-5 max-h-72 overflow-y-auto pr-1">
+          {TODOS_LOS_MODULOS.map(m => (
+            <label key={m.key} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer text-sm select-none">
+              <input
+                type="checkbox"
+                checked={seleccionados.has(m.key)}
+                onChange={() => toggle(m.key)}
+                className="accent-teal-600 w-4 h-4"
+              />
+              <span className="text-gray-700">{m.label}</span>
+            </label>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          {esPersonalizado && (
+            <button
+              onClick={handleRestablecer}
+              disabled={guardando}
+              className="text-xs px-3 py-2 border border-gray-300 text-gray-600 hover:bg-gray-50 rounded-lg disabled:opacity-50"
+            >
+              Restablecer a rol
+            </button>
+          )}
+          <div className="flex gap-2 ml-auto">
+            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+              Cancelar
+            </button>
+            <button
+              onClick={handleGuardar}
+              disabled={guardando}
+              className="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg disabled:opacity-50"
+            >
+              {guardando ? 'Guardando...' : 'Guardar permisos'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ─────────────────────────────── Spinner ────────────────────────────────────
 function Spinner() {
@@ -78,7 +223,9 @@ function TabUsuarios({ salas, roles }) {
   const [error, setError]       = useState('')
   const [modalNuevo, setModalNuevo] = useState(false)
   const [modalEditar, setModalEditar] = useState(null)
+  const [modalPermisos, setModalPermisos] = useState(null)
   const [guardando, setGuardando] = useState(false)
+  const [mensajeExito, setMensajeExito] = useState('')
 
   const [busqueda, setBusqueda] = useState('')
   const [formNuevo, setFormNuevo] = useState({
@@ -189,6 +336,13 @@ function TabUsuarios({ salas, roles }) {
         </button>
       </div>
 
+      {mensajeExito && (
+        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm flex items-center justify-between">
+          {mensajeExito}
+          <button onClick={() => setMensajeExito('')} className="ml-2 text-green-400 hover:text-green-600">×</button>
+        </div>
+      )}
+
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
           {error}
@@ -240,6 +394,13 @@ function TabUsuarios({ salas, roles }) {
                       className="border border-gray-300 text-gray-700 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-50"
                     >
                       Editar
+                    </button>
+                    <button
+                      onClick={() => setModalPermisos(u)}
+                      className="border border-purple-200 text-purple-700 px-3 py-1.5 rounded-lg text-xs hover:bg-purple-50"
+                      title="Configurar permisos de módulos"
+                    >
+                      🔑 Permisos
                     </button>
                   </td>
                 </tr>
@@ -418,6 +579,15 @@ function TabUsuarios({ salas, roles }) {
             </div>
           </form>
         </Modal>
+      )}
+
+      {/* Modal: Permisos modulares */}
+      {modalPermisos && (
+        <ModalPermisos
+          usuario={modalPermisos}
+          onClose={() => setModalPermisos(null)}
+          onSuccess={(msg) => { setMensajeExito(msg); cargar() }}
+        />
       )}
     </div>
   )

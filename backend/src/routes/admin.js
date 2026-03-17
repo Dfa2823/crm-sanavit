@@ -4,6 +4,15 @@ const pool = require('../db');
 
 const router = express.Router();
 
+// Auto-migración: columna permisos JSONB
+;(async () => {
+  try {
+    await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS permisos JSONB DEFAULT NULL');
+  } catch (e) {
+    console.error('Migration permisos:', e.message);
+  }
+})();
+
 // ── Middleware de rol admin/director ──────────────────────────
 function requireAdmin(req, res, next) {
   if (req.user.rol !== 'admin' && req.user.rol !== 'director') {
@@ -21,7 +30,7 @@ router.get('/usuarios', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        u.id, u.nombre, u.username, u.activo, u.created_at,
+        u.id, u.nombre, u.username, u.activo, u.created_at, u.permisos,
         r.id AS rol_id, r.nombre AS rol, r.label AS rol_label,
         s.id AS sala_id, s.nombre AS sala_nombre, s.ciudad AS sala_ciudad
       FROM usuarios u
@@ -429,6 +438,23 @@ router.post('/formas-pago', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al crear forma de pago' });
+  }
+});
+
+// PATCH /api/admin/usuarios/:id/permisos — actualizar permisos modulares
+router.patch('/usuarios/:id/permisos', requireAdmin, async (req, res) => {
+  const { permisos } = req.body;
+  try {
+    const valor = permisos === null ? null : JSON.stringify(permisos);
+    const result = await pool.query(
+      'UPDATE usuarios SET permisos = $1 WHERE id = $2 RETURNING id, permisos',
+      [valor, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Usuario no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar permisos' });
   }
 });
 

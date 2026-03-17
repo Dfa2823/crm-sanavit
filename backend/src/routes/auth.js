@@ -15,7 +15,7 @@ router.post('/login', async (req, res) => {
 
   try {
     const result = await pool.query(`
-      SELECT u.id, u.nombre, u.username, u.password_hash, u.activo,
+      SELECT u.id, u.nombre, u.username, u.password_hash, u.activo, u.permisos,
              r.nombre AS rol, r.label AS rol_label,
              s.id AS sala_id, s.nombre AS sala_nombre, s.ciudad AS sala_ciudad
       FROM usuarios u
@@ -48,6 +48,7 @@ router.post('/login', async (req, res) => {
       sala_id: user.sala_id,
       sala_nombre: user.sala_nombre,
       sala_ciudad: user.sala_ciudad,
+      permisos: user.permisos || null,
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, {

@@ -5,6 +5,7 @@ export const createUsuario  = (data)     => api.post('/api/admin/usuarios', data
 export const updateUsuario  = (id, data) => api.patch(`/api/admin/usuarios/${id}`, data).then(r => r.data)
 
 export const toggleUsuario  = (id, activo) => api.patch(`/api/admin/usuarios/${id}`, { activo }).then(r => r.data)
+export const updatePermisos = (id, permisos) => api.patch(`/api/admin/usuarios/${id}/permisos`, { permisos }).then(r => r.data)
 
 export const getSalas       = ()         => api.get('/api/admin/salas').then(r => r.data)
 export const createSala     = (data)     => api.post('/api/admin/salas', data).then(r => r.data)

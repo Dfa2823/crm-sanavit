@@ -53,7 +53,7 @@ app.get('/health', (req, res) => {
     status: 'ok',
     sistema: 'CRM Sanavit Ecuador',
     version: '2.0.0',
-    fase: 'Fase 10 - Sidebar Colapsable, Exportación PDF/CSV, Reportes Completos',
+    fase: 'Fase 11 — Permisos modulares, Importar Excel, Toasts, Mejoras UX',
     timestamp: new Date().toISOString(),
     rutas: ['/api/auth','/api/personas','/api/leads','/api/citas','/api/kpis',
             '/api/admin','/api/cartera','/api/reportes','/api/outsourcing',

@@ -1,6 +1,27 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 
+// Catálogo completo de módulos — usado para permisos personalizados
+const TODOS_LOS_MODULOS = {
+  kpis:          { label: 'Dashboard KPIs',    path: '/kpis',                   icon: '📊' },
+  premanifiesto: { label: 'Pre-manifiesto',    path: '/mercadeo/premanifiesto', icon: '📋' },
+  recepcion:     { label: 'Recepción',         path: '/sala/recepcion',         icon: '🏥' },
+  leads:         { label: 'Leads',             path: '/mercadeo/captura',       icon: '📞' },
+  supervisor:    { label: 'Supervisor CC',     path: '/mercadeo/supervisor',    icon: '🎯' },
+  calendario:    { label: 'Calendario',        path: '/mercadeo/calendario',    icon: '📅' },
+  cartera:       { label: 'Cartera',           path: '/cartera',                icon: '💳' },
+  ventas:        { label: 'Ventas',            path: '/ventas',                 icon: '💼' },
+  reportes:      { label: 'Reportes',          path: '/reportes',               icon: '📈' },
+  outsourcing:   { label: 'Outsourcing',       path: '/outsourcing',            icon: '🏢' },
+  comisiones:    { label: 'Comisiones',        path: '/comisiones',             icon: '💰' },
+  liquidaciones: { label: 'Liquidaciones',     path: '/liquidaciones',          icon: '✅' },
+  sac:           { label: 'SAC / PQR',         path: '/sac',                    icon: '🎫' },
+  inventario:    { label: 'Inventario',        path: '/inventario',             icon: '📦' },
+  alertas:       { label: 'Alertas',           path: '/alertas',                icon: '🔔' },
+  importar:      { label: 'Importar Base',     path: '/importar',               icon: '📥' },
+  admin:         { label: 'Administración',    path: '/admin',                  icon: '⚙️' },
+}
+
 const MENU_POR_ROL = {
   admin: [
     { label: 'Dashboard KPIs', path: '/kpis', icon: '📊' },
@@ -79,7 +100,10 @@ const MENU_POR_ROL = {
 
 export default function Sidebar({ isOpen = true, onToggle }) {
   const { usuario } = useAuth()
-  const menuItems = MENU_POR_ROL[usuario?.rol] || []
+  // Si el usuario tiene permisos personalizados (array), usarlos; si no, usar los del rol
+  const menuItems = Array.isArray(usuario?.permisos)
+    ? usuario.permisos.map(k => TODOS_LOS_MODULOS[k]).filter(Boolean)
+    : (MENU_POR_ROL[usuario?.rol] || [])
 
   return (
     <aside
