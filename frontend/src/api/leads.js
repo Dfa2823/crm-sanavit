@@ -10,6 +10,9 @@ export const apiLeads = {
   calendario: (params = {}) =>
     client.get('/api/leads/calendario', { params }).then(r => r.data),
 
+  citasCalendario: (params = {}) =>
+    client.get('/api/leads/citas', { params }).then(r => r.data),
+
   configuracion: () =>
     client.get('/api/leads/configuracion').then(r => r.data),
 

@@ -104,6 +104,34 @@ router.get('/configuracion', auth, async (req, res) => {
   }
 });
 
+// GET /api/leads/citas?inicio=YYYY-MM-DD&fin=YYYY-MM-DD&sala_id=X
+// Citas para el calendario visual (leads con fecha_cita en el rango)
+router.get('/citas', auth, async (req, res) => {
+  const { inicio, fin, sala_id } = req.query;
+  const { sala_id: userSalaId, rol } = req.user;
+  const salaId = sala_id || (['admin','director','supervisor_cc','confirmador'].includes(rol) ? null : userSalaId);
+
+  const now = new Date();
+  const y = now.getFullYear(), m = String(now.getMonth() + 1).padStart(2, '0');
+  const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+  const inicioFinal = inicio || `${y}-${m}-01`;
+  const finFinal    = fin    || `${y}-${m}-${lastDay}`;
+
+  try {
+    const result = await pool.query(`
+      ${buildLeadSelect()}
+      WHERE l.fecha_cita BETWEEN $1::date AND ($2::date + INTERVAL '1 day')
+        AND l.estado IN ('confirmada','tentativa','tour','no_tour','no_show')
+        AND ($3::integer IS NULL OR l.sala_id = $3)
+      ORDER BY l.fecha_cita ASC
+    `, [inicioFinal, finFinal, salaId || null]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener citas' });
+  }
+});
+
 // GET /api/leads/calendario — pendientes "Volver a llamar" para el Confirmador
 router.get('/calendario', auth, async (req, res) => {
   const { sala_id } = req.query;
