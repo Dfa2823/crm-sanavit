@@ -77,6 +77,7 @@ router.get('/', async (req, res) => {
         p.telefono,
         p.email,
         u.nombre                                                       AS consultor_nombre,
+        s.id                                                           AS sala_id,
         s.nombre                                                       AS sala_nombre
       FROM cuotas cu
       JOIN contratos c  ON cu.contrato_id = c.id
