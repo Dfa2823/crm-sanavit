@@ -23,6 +23,76 @@ function Spinner() {
   )
 }
 
+// ─────────────────── Export functions ───────────────────────────────────────
+function exportarCarteraCSV(cuotas) {
+  if (!cuotas.length) return
+  const cols = ['Cliente', 'Teléfono', 'N° Contrato', 'Cuota', 'Vence', 'Días vencido', 'Saldo', 'Tramo mora', 'Consultor', 'Sala', 'Observación']
+  const rows = cuotas.map(c => [
+    `${c.nombres || ''} ${c.apellidos || ''}`.trim(),
+    c.telefono || '',
+    c.numero_contrato || '',
+    c.numero_cuota || '',
+    c.fecha_vencimiento ? new Date(c.fecha_vencimiento).toLocaleDateString('es-EC') : '',
+    c.dias_vencido ?? '',
+    c.saldo_cuota ?? '',
+    c.tramo_mora || '',
+    c.consultor_nombre || '',
+    c.sala_nombre || '',
+    c.observacion_gestion || '',
+  ])
+  const csv = [cols, ...rows]
+    .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href = url; a.download = `cartera-${new Date().toISOString().split('T')[0]}.csv`
+  a.click(); URL.revokeObjectURL(url)
+}
+
+function exportarCarteraPDF(cuotas) {
+  if (!cuotas.length) return
+  const filas = cuotas.map(c => `
+    <tr>
+      <td>${c.nombres || ''} ${c.apellidos || ''}</td>
+      <td>${c.telefono || '—'}</td>
+      <td>${c.numero_contrato || '—'}</td>
+      <td style="text-align:center">${c.numero_cuota || '—'}</td>
+      <td>${c.fecha_vencimiento ? new Date(c.fecha_vencimiento).toLocaleDateString('es-EC') : '—'}</td>
+      <td style="text-align:center">${c.dias_vencido ?? '—'}</td>
+      <td style="text-align:right">$${Number(c.saldo_cuota || 0).toLocaleString('es-EC', { minimumFractionDigits: 2 })}</td>
+      <td>${c.tramo_mora || '—'}</td>
+      <td>${c.consultor_nombre || '—'}</td>
+    </tr>`).join('')
+  const totalSaldo = cuotas.reduce((s, c) => s + Number(c.saldo_cuota || 0), 0)
+  const html = `<!DOCTYPE html><html lang="es"><head>
+    <meta charset="UTF-8"><title>Cartera — ${new Date().toLocaleDateString('es-EC')}</title>
+    <style>
+      body{font-family:Arial,sans-serif;font-size:9px;color:#222;margin:0}
+      h1{font-size:14px;margin:0 0 2px} .sub{color:#6b7280;font-size:8px;margin:0 0 8px}
+      table{width:100%;border-collapse:collapse}
+      th{background:#f3f4f6;padding:4px 5px;font-size:8px;border:1px solid #d1d5db;text-align:left}
+      td{padding:3px 5px;border:1px solid #e5e7eb;vertical-align:top}
+      tr:nth-child(even) td{background:#f9fafb}
+      .total{font-weight:bold;background:#f0fdf4;color:#166534}
+      @page{margin:1cm;size:A4 landscape}
+    </style></head><body>
+    <h1>Gestión de Cartera</h1>
+    <p class="sub">Generado el ${new Date().toLocaleString('es-EC')} — ${cuotas.length} cuotas — Total saldo: $${totalSaldo.toLocaleString('es-EC',{minimumFractionDigits:2})}</p>
+    <table>
+      <thead><tr>
+        <th>Cliente</th><th>Teléfono</th><th>N° Contrato</th><th>Cuota</th>
+        <th>Vence</th><th>Días</th><th>Saldo</th><th>Tramo</th><th>Consultor</th>
+      </tr></thead>
+      <tbody>${filas}</tbody>
+    </table>
+  </body></html>`
+  const w = window.open('', '_blank', 'width=1100,height=750')
+  if (!w) { alert('Permite ventanas emergentes para exportar PDF'); return }
+  w.document.write(html); w.document.close(); w.focus()
+  setTimeout(() => { w.print(); w.close() }, 600)
+}
+
 // ─────────────────── Badge de tramo de mora ──────────────────────────────────
 const TRAMO_CONFIG = {
   vigente:      { label: 'Vigente',    cls: 'bg-gray-100 text-gray-600' },
@@ -320,12 +390,26 @@ export default function CarteraPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-gray-800">Gestión de Cartera</h1>
-        <button
-          onClick={cargar}
-          className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
-        >
-          Actualizar
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => exportarCarteraCSV(cuotasFiltradas)}
+            className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+          >
+            📥 CSV
+          </button>
+          <button
+            onClick={() => exportarCarteraPDF(cuotasFiltradas)}
+            className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+          >
+            🖨️ PDF
+          </button>
+          <button
+            onClick={cargar}
+            className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+          >
+            Actualizar
+          </button>
+        </div>
       </div>
 
       {/* Filtros */}

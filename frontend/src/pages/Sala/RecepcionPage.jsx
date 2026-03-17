@@ -4,6 +4,7 @@ import { apiCitas } from '../../api/citas'
 import { apiPersonas } from '../../api/personas'
 import { apiUsuarios } from '../../api/usuarios'
 import { useAuth } from '../../context/AuthContext'
+import { useToast } from '../../context/ToastContext'
 
 function exportarManifiestoPDF(citas, hoyStr) {
   if (!citas.length) return
@@ -111,6 +112,7 @@ const ESTADO_LABEL = {
 export default function RecepcionPage() {
   const { usuario } = useAuth()
   const navigate = useNavigate()
+  const { addToast } = useToast()
   const [citas, setCitas] = useState([])
   const [consultores, setConsultores] = useState([])
   const [loading, setLoading] = useState(true)
@@ -125,7 +127,6 @@ export default function RecepcionPage() {
     acompanante: '',
   })
   const [guardando, setGuardando] = useState(false)
-  const [mensaje, setMensaje] = useState('')
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -165,7 +166,7 @@ export default function RecepcionPage() {
         consultor_id: formCalificar.consultor_id || null,
         acompanante: formCalificar.acompanante || null,
       })
-      setMensaje(`✅ Cliente calificado como ${formCalificar.calificacion}`)
+      addToast(`Cliente calificado como ${formCalificar.calificacion}`)
       setModalCalificar(null)
       cargar()
     } catch (err) {
@@ -206,14 +207,6 @@ export default function RecepcionPage() {
           <div className="text-xs text-gray-500">Por calificar ⏳</div>
         </div>
       </div>
-
-      {/* Alerta mensaje */}
-      {mensaje && (
-        <div className="p-4 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex justify-between">
-          {mensaje}
-          <button onClick={() => setMensaje('')} className="text-green-500">×</button>
-        </div>
-      )}
 
       {/* Buscador de clientes sin cita */}
       <div className="card p-4">

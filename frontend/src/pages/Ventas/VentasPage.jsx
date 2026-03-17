@@ -41,6 +41,8 @@ export default function VentasPage() {
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
   const [busqueda, setBusqueda]   = useState('')
+  const [pagina, setPagina]       = useState(1)
+  const POR_PAGINA = 50
 
   const cargar = useCallback(async () => {
     setLoading(true); setError('')
@@ -59,6 +61,7 @@ export default function VentasPage() {
   }, [salaId, estado])
 
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => { setPagina(1) }, [busqueda, salaId, estado])
 
   const totalMonto  = ventas.reduce((s, v) => s + parseFloat(v.monto_total || 0), 0)
   const totalPagado = ventas.reduce((s, v) => s + parseFloat(v.total_pagado || 0), 0)
@@ -77,6 +80,9 @@ export default function VentasPage() {
           (v.consultor_nombre || '').toLowerCase().includes(q)
         )
       })
+
+  const totalPaginas  = Math.ceil(ventasFiltradas.length / POR_PAGINA)
+  const ventasPagina  = ventasFiltradas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
 
   return (
     <div className="p-6 space-y-6">
@@ -162,6 +168,7 @@ export default function VentasPage() {
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="font-semibold text-gray-700">Detalle de contratos</h2>
               <span className="text-sm text-gray-400">{ventasFiltradas.length} registros</span>
+
             </div>
             {ventasFiltradas.length === 0 ? (
               <div className="p-12 text-center text-gray-400">
@@ -186,7 +193,7 @@ export default function VentasPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {ventasFiltradas.map((v, i) => (
+                    {ventasPagina.map((v, i) => (
                       <tr key={v.id}
                         className={`border-b border-gray-50 hover:bg-gray-50 cursor-pointer ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
                         onClick={() => navigate(`/ventas/${v.id}`)}
@@ -218,6 +225,40 @@ export default function VentasPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {/* Paginación */}
+            {totalPaginas > 1 && (
+              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-xs text-gray-500">
+                  Mostrando {(pagina - 1) * POR_PAGINA + 1}–{Math.min(pagina * POR_PAGINA, ventasFiltradas.length)} de {ventasFiltradas.length}
+                </span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setPagina(p => Math.max(1, p - 1))}
+                    disabled={pagina === 1}
+                    className="px-3 py-1 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                  >‹ Anterior</button>
+                  {Array.from({ length: Math.min(totalPaginas, 7) }, (_, i) => {
+                    let p = i + 1
+                    if (totalPaginas > 7) {
+                      if (pagina <= 4) p = i + 1
+                      else if (pagina >= totalPaginas - 3) p = totalPaginas - 6 + i
+                      else p = pagina - 3 + i
+                    }
+                    return (
+                      <button key={p} onClick={() => setPagina(p)}
+                        className={`px-3 py-1 rounded-lg border text-sm ${p === pagina ? 'bg-teal-600 text-white border-teal-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                        {p}
+                      </button>
+                    )
+                  })}
+                  <button
+                    onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}
+                    disabled={pagina === totalPaginas}
+                    className="px-3 py-1 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                  >Siguiente ›</button>
+                </div>
               </div>
             )}
           </div>

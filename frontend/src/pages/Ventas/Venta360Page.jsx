@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { getVenta360, updateEstadoVenta, updateNotasVenta, despacharProducto, anularVenta } from '../../api/ventas'
 import { createRecibo, anularRecibo } from '../../api/recibos'
 import { getFormasPago } from '../../api/admin'
+import { useToast } from '../../context/ToastContext'
 
 function fmt(val) {
   if (val === null || val === undefined) return '—'
@@ -30,6 +31,7 @@ export default function Venta360Page() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { usuario } = useAuth()
+  const { addToast } = useToast()
   const [data, setData]       = useState(null)
   const [tab, setTab]         = useState('cliente')
   const [loading, setLoading] = useState(true)
@@ -94,6 +96,7 @@ export default function Venta360Page() {
         observacion: pago.observacion || undefined,
         sala_id: data.contrato.sala_id,
       })
+      addToast(`Pago de $${Number(pago.valor).toLocaleString('es-EC', { minimumFractionDigits: 2 })} registrado`)
       setMostrarPago(false)
       setPago({ cuota_id: '', valor: '', forma_pago_id: '', fecha_pago: new Date().toISOString().split('T')[0], referencia_pago: '', observacion: '' })
       cargar()
@@ -108,9 +111,10 @@ export default function Venta360Page() {
     if (!window.confirm('¿Anular este recibo? Esta acción no se puede deshacer.')) return
     try {
       await anularRecibo(reciboId)
+      addToast('Recibo anulado correctamente', 'warning')
       cargar()
     } catch (err) {
-      alert(err.response?.data?.error || 'Error al anular el recibo')
+      addToast(err.response?.data?.error || 'Error al anular el recibo', 'error')
     }
   }
 
@@ -121,9 +125,10 @@ export default function Venta360Page() {
     setCambiandoEstado(true)
     try {
       await updateEstadoVenta(id, { estado: nuevoEstado })
+      addToast('Estado del contrato actualizado')
       cargar()
     } catch (err) {
-      alert(err.response?.data?.error || 'Error al cambiar estado')
+      addToast(err.response?.data?.error || 'Error al cambiar estado', 'error')
     } finally {
       setCambiandoEstado(false)
     }
@@ -136,9 +141,10 @@ export default function Venta360Page() {
     setCambiandoEstado(true)
     try {
       await anularVenta(id, motivo || 'Caída en mesa')
+      addToast('Contrato anulado — Caída en mesa', 'warning')
       cargar()
     } catch (err) {
-      alert(err.response?.data?.error || 'Error al anular el contrato')
+      addToast(err.response?.data?.error || 'Error al anular el contrato', 'error')
     } finally {
       setCambiandoEstado(false)
     }
@@ -149,10 +155,10 @@ export default function Venta360Page() {
     setGuardandoNotas(true); setNotasMsg('')
     try {
       await updateNotasVenta(id, notasEdit)
-      setNotasMsg('✅ Notas guardadas')
-      setTimeout(() => setNotasMsg(''), 3000)
+      addToast('Notas guardadas correctamente')
       cargar()
     } catch (err) {
+      addToast('Error al guardar notas', 'error')
       setNotasMsg('❌ Error al guardar notas')
     } finally {
       setGuardandoNotas(false)
@@ -164,9 +170,10 @@ export default function Venta360Page() {
     setDespachando(prev => new Set(prev).add(productoId))
     try {
       await despacharProducto(productoId)
+      addToast('Producto despachado correctamente')
       cargar()
     } catch (err) {
-      alert(err.response?.data?.error || 'Error al registrar el despacho')
+      addToast(err.response?.data?.error || 'Error al registrar el despacho', 'error')
     } finally {
       setDespachando(prev => { const s = new Set(prev); s.delete(productoId); return s })
     }

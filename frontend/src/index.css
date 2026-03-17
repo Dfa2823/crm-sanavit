@@ -92,3 +92,10 @@
     @apply bg-blue-50 cursor-pointer;
   }
 }
+
+@layer utilities {
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+}

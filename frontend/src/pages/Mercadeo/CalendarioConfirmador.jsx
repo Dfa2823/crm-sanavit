@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiLeads } from '../../api/leads'
 import { apiUsuarios } from '../../api/usuarios'
+import { useToast } from '../../context/ToastContext'
 
 export default function CalendarioConfirmador() {
   const navigate = useNavigate()
+  const { addToast } = useToast()
   const [pendientes, setPendientes] = useState([])
   const [tmks, setTmks] = useState([])
   const [loading, setLoading] = useState(true)
@@ -12,7 +14,6 @@ export default function CalendarioConfirmador() {
   const [formConfirmar, setFormConfirmar] = useState({ fecha_cita: '', hora_cita: '' })
   const [formReasignar, setFormReasignar] = useState({ tmk_id: '' })
   const [guardando, setGuardando] = useState(false)
-  const [mensaje, setMensaje] = useState('')
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -39,7 +40,7 @@ export default function CalendarioConfirmador() {
         estado: 'confirmada',
         fecha_cita,
       })
-      setMensaje('✅ Cita confirmada y añadida al pre-manifiesto')
+      addToast('Cita confirmada y añadida al pre-manifiesto')
       setModal(null)
       cargar()
     } catch (err) {
@@ -56,7 +57,7 @@ export default function CalendarioConfirmador() {
       await apiLeads.actualizar(modal.lead.id, {
         tmk_id: Number(formReasignar.tmk_id),
       })
-      setMensaje('✅ TMK reasignado correctamente')
+      addToast('TMK reasignado correctamente')
       setModal(null)
       cargar()
     } catch (err) {
@@ -76,14 +77,6 @@ export default function CalendarioConfirmador() {
 
   return (
     <div className="space-y-5">
-
-      {/* Alerta de mensaje */}
-      {mensaje && (
-        <div className="p-4 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex justify-between">
-          {mensaje}
-          <button onClick={() => setMensaje('')} className="text-green-500 hover:text-green-700">×</button>
-        </div>
-      )}
 
       {/* Info de contexto */}
       <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700">

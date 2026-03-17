@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { getSalas, getUsuarios, getFormasPago } from '../../api/admin'
+import { getSalas, getUsuarios, getFormasPago, getFuentes, getTipificaciones } from '../../api/admin'
 import { previewImport, ejecutarImport } from '../../api/importar'
 import { useEffect } from 'react'
 
@@ -63,11 +63,8 @@ export default function ImportarPage() {
   useEffect(() => {
     getSalas().then(s => setSalas(Array.isArray(s) ? s : [])).catch(console.error)
     getUsuarios().then(u => setUsuarios(Array.isArray(u) ? u : [])).catch(console.error)
-    // Obtener fuentes y tipificaciones del endpoint de admin
-    fetch('/api/admin/fuentes', { headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } })
-      .then(r => r.json()).then(d => setFuentes(Array.isArray(d) ? d : [])).catch(console.error)
-    fetch('/api/admin/tipificaciones', { headers: { Authorization: `Bearer ${localStorage.getItem('crm_token')}` } })
-      .then(r => r.json()).then(d => setTipificaciones(Array.isArray(d) ? d : [])).catch(console.error)
+    getFuentes().then(d => setFuentes(Array.isArray(d) ? d.filter(f => f.activo) : [])).catch(console.error)
+    getTipificaciones().then(d => setTipificaciones(Array.isArray(d) ? d.filter(t => t.activo) : [])).catch(console.error)
   }, [])
 
   // ── Drag & Drop ────────────────────────────────────────────

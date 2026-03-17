@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getStock, getMovimientos, registrarMovimiento, crearProducto, actualizarProducto } from '../../api/inventario'
 import { useAuth } from '../../context/AuthContext'
+import { useToast } from '../../context/ToastContext'
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -412,6 +413,7 @@ function DrawerMovimiento({ abierto, onClose, productoInicial, stockData, onExit
 
 export default function InventarioPage() {
   const { usuario } = useAuth()
+  const { addToast } = useToast()
   const esPrivilegiado = ['admin', 'director'].includes(usuario?.rol)
 
   const [tab,        setTab]        = useState('stock')      // 'stock' | 'historial'
@@ -489,6 +491,12 @@ export default function InventarioPage() {
   function onMovimientoExitoso() {
     cargarStock()
     if (tab === 'historial') cargarHistorial()
+    addToast('Movimiento registrado correctamente')
+  }
+
+  function onProductoExitoso() {
+    cargarStock()
+    addToast('Producto guardado correctamente')
   }
 
   return (
@@ -802,7 +810,7 @@ export default function InventarioPage() {
         abierto={drawerProdAbierto}
         onClose={() => setDrawerProdAbierto(false)}
         productoEditar={productoEditar}
-        onExito={cargarStock}
+        onExito={onProductoExitoso}
       />
     </div>
   )
