@@ -28,6 +28,7 @@ import AlertasPage from './pages/Alertas/AlertasPage'
 import PerfilPage from './pages/Perfil/PerfilPage'
 import ImportarPage from './pages/Importar/ImportarPage'
 import NominaPage from './pages/Nomina/NominaPage'
+import MetasPage from './pages/Metas/MetasPage'
 
 // Rutas protegidas: solo usuarios autenticados
 function PrivateRoute({ children }) {
@@ -83,6 +84,7 @@ function AppRoutes() {
         <Route path="perfil" element={<PerfilPage />} />
         <Route path="importar" element={<ImportarPage />} />
         <Route path="nomina" element={<NominaPage />} />
+        <Route path="metas" element={<MetasPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -185,6 +185,34 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           AND estado IN ('confirmada', 'tour', 'venta')
       `, [u.id, mes]);
 
+      // 2e. Verificar meta mensual para bono_meta
+      let bono_meta = 0;
+      const metaRes = await pool.query(
+        `SELECT meta_contratos, meta_ventas_monto, meta_tours, bono_cumplimiento
+         FROM metas_mensuales WHERE usuario_id = $1 AND mes = $2`,
+        [u.id, mes]
+      );
+      if (metaRes.rows.length > 0) {
+        const meta = metaRes.rows[0];
+        const realContratosRes = await pool.query(
+          `SELECT COUNT(*)::integer AS total,
+                  COALESCE(SUM(monto_total), 0)::numeric AS monto
+           FROM contratos
+           WHERE consultor_id = $1 AND TO_CHAR(fecha_contrato,'YYYY-MM') = $2 AND estado NOT IN ('cancelado')`,
+          [u.id, mes]
+        );
+        const realTours = parseInt(tourRes.rows[0].tours_count) || 0;
+        const realContratos = parseInt(realContratosRes.rows[0].total) || 0;
+        const realMonto = parseFloat(realContratosRes.rows[0].monto) || 0;
+        const checks = [];
+        if (Number(meta.meta_contratos) > 0)    checks.push(realContratos >= Number(meta.meta_contratos));
+        if (Number(meta.meta_ventas_monto) > 0)  checks.push(realMonto >= Number(meta.meta_ventas_monto));
+        if (Number(meta.meta_tours) > 0)         checks.push(realTours >= Number(meta.meta_tours));
+        if (checks.length > 0 && checks.every(Boolean)) {
+          bono_meta = parseFloat(meta.bono_cumplimiento) || 0;
+        }
+      }
+
       // 3. Calcular totales
       const sueldo_base          = parseFloat(u.sueldo_base);
       const comision_ventas      = parseFloat(cvRes.rows[0].comision_ventas) || 0;
@@ -195,7 +223,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
       const bono_tours           = parseFloat((tours_count * parseFloat(u.bono_por_tour)).toFixed(2));
       const bono_citas           = parseFloat((citas_count * parseFloat(u.bono_por_cita)).toFixed(2));
       const aporte_iess          = parseFloat((sueldo_base * 0.0945).toFixed(2));
-      const total_ingresos       = parseFloat((sueldo_base + comision_ventas + comision_cobros + bono_tours + bono_citas).toFixed(2));
+      const total_ingresos       = parseFloat((sueldo_base + comision_ventas + comision_cobros + bono_tours + bono_citas + bono_meta).toFixed(2));
       const total_deducciones    = aporte_iess;
       const neto_a_pagar         = parseFloat((total_ingresos - total_deducciones).toFixed(2));
 
@@ -205,7 +233,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
         pct_comision_venta_config: parseFloat(u.pct_comision_venta),
         pct_desbloqueo_config: parseFloat(u.pct_desbloqueo),
         sueldo_base, comision_ventas, comision_cobros,
-        bono_tours, bono_citas,
+        bono_tours, bono_citas, bono_meta,
         contratos_desbloqueados: contratos_desbloq,
         tours_count, citas_count,
         aporte_iess, total_ingresos, total_deducciones, neto_a_pagar,
@@ -218,10 +246,10 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
         INSERT INTO nomina_mensual (
           usuario_id, sala_id, mes,
           sueldo_base_config, pct_comision_venta_config, pct_desbloqueo_config,
-          sueldo_base, comision_ventas, comision_cobros, bono_tours, bono_citas,
+          sueldo_base, comision_ventas, comision_cobros, bono_tours, bono_citas, bono_meta,
           contratos_desbloqueados, tours_count, citas_count,
           aporte_iess, total_ingresos, total_deducciones, neto_a_pagar
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
         ON CONFLICT (usuario_id, mes) DO UPDATE SET
           sala_id                   = EXCLUDED.sala_id,
           sueldo_base_config        = EXCLUDED.sueldo_base_config,
@@ -232,6 +260,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           comision_cobros           = EXCLUDED.comision_cobros,
           bono_tours                = EXCLUDED.bono_tours,
           bono_citas                = EXCLUDED.bono_citas,
+          bono_meta                 = EXCLUDED.bono_meta,
           contratos_desbloqueados   = EXCLUDED.contratos_desbloqueados,
           tours_count               = EXCLUDED.tours_count,
           citas_count               = EXCLUDED.citas_count,
@@ -244,7 +273,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
       `, [
         r.usuario_id, r.sala_id, r.mes,
         r.sueldo_base_config, r.pct_comision_venta_config, r.pct_desbloqueo_config,
-        r.sueldo_base, r.comision_ventas, r.comision_cobros, r.bono_tours, r.bono_citas,
+        r.sueldo_base, r.comision_ventas, r.comision_cobros, r.bono_tours, r.bono_citas, r.bono_meta,
         r.contratos_desbloqueados, r.tours_count, r.citas_count,
         r.aporte_iess, r.total_ingresos, r.total_deducciones, r.neto_a_pagar,
       ]);

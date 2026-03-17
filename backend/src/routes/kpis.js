@@ -225,4 +225,45 @@ router.get('/top-consultores', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET /api/kpis/hoy?sala_id=X
+// Datos en tiempo real del día actual (para dashboard live)
+router.get('/hoy', auth, async (req, res) => {
+  const { sala_id } = req.query;
+  const { sala_id: userSalaId, rol } = req.user;
+  const salaId = sala_id || (['admin', 'director'].includes(rol) ? null : userSalaId);
+  try {
+    const result = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM leads
+         WHERE DATE(created_at) = CURRENT_DATE
+           AND ($1::integer IS NULL OR sala_id = $1)) AS leads_hoy,
+        (SELECT COUNT(*) FROM leads
+         WHERE DATE(fecha_cita) = CURRENT_DATE + INTERVAL '1 day'
+           AND ($1::integer IS NULL OR sala_id = $1)
+           AND estado IN ('confirmada','tentativa')) AS citas_manana,
+        (SELECT COUNT(*) FROM visitas_sala
+         WHERE fecha = CURRENT_DATE
+           AND ($1::integer IS NULL OR sala_id = $1)
+           AND calificacion = 'TOUR') AS tours_hoy,
+        (SELECT COALESCE(SUM(r.monto), 0)
+         FROM recibos r
+         JOIN contratos c ON r.contrato_id = c.id
+         WHERE DATE(r.fecha_pago) = CURRENT_DATE
+           AND r.estado IN ('pagado','activo')
+           AND ($1::integer IS NULL OR c.sala_id = $1)) AS cobros_dia
+    `, [salaId || null]);
+    const row = result.rows[0];
+    res.json({
+      timestamp: new Date().toISOString(),
+      leads_hoy:    Number(row.leads_hoy),
+      citas_manana: Number(row.citas_manana),
+      tours_hoy:    Number(row.tours_hoy),
+      cobros_dia:   Number(row.cobros_dia),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener KPIs de hoy' });
+  }
+});
+
 module.exports = router;

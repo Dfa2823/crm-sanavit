@@ -25,6 +25,7 @@ const TITULOS = {
   '/perfil':                'Mi Perfil',
   '/importar':              'Importar Base de Datos',
   '/nomina':                'Nómina Mensual',
+  '/metas':                 'Metas Mensuales',
 }
 
 export default function AppLayout() {

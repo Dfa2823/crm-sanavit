@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import client from '../../api/client'
@@ -99,12 +99,24 @@ function Section({ title, children }) {
   return (
     <div className="mb-6">
       {title && (
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-1">
+        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-1">
           {title}
-        </h3>
+        </div>
       )}
       {children}
     </div>
+  )
+}
+
+function LiveDot({ segsDesde }) {
+  return (
+    <span className="flex items-center gap-1.5 normal-case font-normal text-gray-400 text-xs tracking-normal">
+      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block" />
+      En tiempo real
+      {segsDesde !== null && (
+        <span className="text-gray-300">· actualizado hace {segsDesde}s</span>
+      )}
+    </span>
   )
 }
 
@@ -119,6 +131,10 @@ function DashboardAdmin() {
   const [loading, setLoading] = useState(true)
   const [mes, setMes]         = useState(getMesActual())
 
+  // Live data
+  const [kpisHoy, setKpisHoy]     = useState(null)
+  const [segsDesde, setSegsDesde] = useState(null)
+
   useEffect(() => {
     setLoading(true)
     const params = mes ? `?periodo=${mes}` : ''
@@ -130,6 +146,25 @@ function DashboardAdmin() {
       setAlertas(alertasRes.data)
     }).finally(() => setLoading(false))
   }, [mes])
+
+  // Polling live cada 30s
+  const fetchHoy = useCallback(() => {
+    client.get('/api/kpis/hoy')
+      .then(r => { setKpisHoy(r.data); setSegsDesde(0) })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    fetchHoy()
+    const interval = setInterval(fetchHoy, 30_000)
+    return () => clearInterval(interval)
+  }, [fetchHoy])
+
+  // Contador de segundos desde última actualización
+  useEffect(() => {
+    const timer = setInterval(() => setSegsDesde(s => s !== null ? s + 1 : null), 1_000)
+    return () => clearInterval(timer)
+  }, [])
 
   const m  = kpis?.mercadeo  || {}
   const sa = kpis?.sala      || {}
@@ -165,6 +200,23 @@ function DashboardAdmin() {
         <Loading />
       ) : (
         <>
+          {/* Row 0: Live */}
+          <Section title={<LiveDot segsDesde={segsDesde} />}>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <KPICard label="Leads hoy"    valor={kpisHoy?.leads_hoy ?? '—'}    icon="🎯" color="teal"  />
+              <KPICard label="Citas mañana" valor={kpisHoy?.citas_manana ?? '—'} icon="📅" color="blue"  />
+              <KPICard label="Tours hoy"    valor={kpisHoy?.tours_hoy ?? '—'}    icon="🏥" color="green" />
+              <KPICard
+                label="Cobros hoy"
+                valor={kpisHoy?.cobros_dia != null
+                  ? `$${Number(kpisHoy.cobros_dia).toLocaleString('es-EC', { maximumFractionDigits: 0 })}`
+                  : '—'}
+                icon="💰"
+                color="green"
+              />
+            </div>
+          </Section>
+
           {/* Row 1: KPIs de mercadeo */}
           <Section title="KPIs de mercadeo">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

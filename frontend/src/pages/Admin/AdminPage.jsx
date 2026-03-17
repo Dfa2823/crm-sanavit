@@ -54,12 +54,13 @@ const TODOS_LOS_MODULOS = [
   { key: 'alertas',       label: 'Alertas' },
   { key: 'importar',      label: 'Importar Base' },
   { key: 'nomina',        label: 'Nómina' },
+  { key: 'metas',         label: 'Metas' },
   { key: 'admin',         label: 'Administración' },
 ]
 
 const ROL_DEFAULTS = {
-  admin:         ['kpis','premanifiesto','recepcion','leads','supervisor','calendario','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar','nomina','admin'],
-  director:      ['kpis','premanifiesto','recepcion','leads','supervisor','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar','nomina'],
+  admin:         ['kpis','premanifiesto','recepcion','leads','supervisor','calendario','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar','nomina','metas','admin'],
+  director:      ['kpis','premanifiesto','recepcion','leads','supervisor','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar','nomina','metas'],
   supervisor_cc: ['supervisor','premanifiesto','leads','calendario','reportes','outsourcing','importar'],
   tmk:           ['leads'],
   confirmador:   ['calendario','premanifiesto'],
