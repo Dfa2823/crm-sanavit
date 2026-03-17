@@ -24,7 +24,9 @@ export default function NuevaVentaPage() {
   const [catalogo, setCatalogo]     = useState([])
 
   // ── Sección 1: Cliente ────────────────────────────────────
-  const [busquedaTel, setBusquedaTel]           = useState('')
+  const [modoBusqueda, setModoBusqueda]         = useState('telefono') // 'telefono' | 'cedula' | 'nombre'
+  const [busqueda, setBusqueda]                 = useState('')
+  const [resultadosBusqueda, setResultadosBusqueda] = useState([]) // para modo nombre
   const [personaEncontrada, setPersonaEncontrada] = useState(null)
   const [buscando, setBuscando]                 = useState(false)
   const [nuevaPersona, setNuevaPersona]         = useState({
@@ -37,6 +39,7 @@ export default function NuevaVentaPage() {
     consultor_id: (usuario?.rol === 'consultor' ? usuario?.id : '') || '',
     tipo_plan: 'mensual',
     segunda_venta: false,
+    sac_asesor_id: '',
     outsourcing_empresa_id: '',
     observaciones: '',
   })
@@ -88,19 +91,41 @@ export default function NuevaVentaPage() {
     }
   }, [totalCarrito])
 
-  // ── Buscar persona por teléfono (debounce) ───────────────
+  // Resetear búsqueda al cambiar modo
   useEffect(() => {
-    if (busquedaTel.length < 7) { setPersonaEncontrada(null); return }
+    setBusqueda('')
+    setPersonaEncontrada(null)
+    setResultadosBusqueda([])
+  }, [modoBusqueda])
+
+  // ── Buscar persona (debounce, multi-modo) ─────────────────
+  useEffect(() => {
+    const minLen = modoBusqueda === 'nombre' ? 3 : 6
+    if (busqueda.length < minLen) {
+      setPersonaEncontrada(null)
+      setResultadosBusqueda([])
+      return
+    }
     const timer = setTimeout(async () => {
       setBuscando(true)
       try {
-        const res = await apiPersonas.buscar(busquedaTel)
-        const exacto = res.find(p => p.telefono === busquedaTel)
-        setPersonaEncontrada(exacto || null)
+        const res = await apiPersonas.buscar(busqueda)
+        if (modoBusqueda === 'nombre') {
+          setResultadosBusqueda(res)
+          setPersonaEncontrada(null)
+        } else if (modoBusqueda === 'telefono') {
+          const exacto = res.find(p => p.telefono === busqueda || p.telefono2 === busqueda)
+          setPersonaEncontrada(exacto || null)
+          setResultadosBusqueda([])
+        } else { // cedula
+          const exacto = res.find(p => p.num_documento === busqueda)
+          setPersonaEncontrada(exacto || null)
+          setResultadosBusqueda([])
+        }
       } finally { setBuscando(false) }
     }, 500)
     return () => clearTimeout(timer)
-  }, [busquedaTel])
+  }, [busqueda, modoBusqueda])
 
   // ── Gestión del carrito ───────────────────────────────────
   function agregarProducto(prod) {
@@ -149,8 +174,8 @@ export default function NuevaVentaPage() {
     e.preventDefault()
     setError('')
 
-    if (!busquedaTel && !personaEncontrada) {
-      setError('Ingresa el teléfono del cliente para buscarlo o crear uno nuevo')
+    if (!busqueda && !personaEncontrada) {
+      setError('Busca al cliente por teléfono, cédula o nombre')
       return
     }
 
@@ -164,15 +189,25 @@ export default function NuevaVentaPage() {
           setGuardando(false)
           return
         }
+        // Solo creamos persona nueva cuando buscamos por teléfono
+        if (modoBusqueda !== 'telefono') {
+          setError('Para crear un cliente nuevo, usa la búsqueda por teléfono')
+          setGuardando(false)
+          return
+        }
         const p = await apiPersonas.crear({
           nombres: nuevaPersona.nombres,
           apellidos: nuevaPersona.apellidos,
-          telefono: busquedaTel,
+          telefono: busqueda,
           ciudad: nuevaPersona.ciudad,
           email: nuevaPersona.email,
         })
         persona_id = p.id
       }
+
+      const montoTotal = Number(plan.monto_total) || 0
+      const cuotaInicial = Number(plan.cuota_inicial) || 0
+      const valorFinanciado = montoTotal - cuotaInicial
 
       const payload = {
         persona_id,
@@ -180,10 +215,12 @@ export default function NuevaVentaPage() {
         consultor_id: contrato.consultor_id || undefined,
         tipo_plan: contrato.tipo_plan,
         segunda_venta: contrato.segunda_venta,
+        sac_asesor_id: contrato.sac_asesor_id || undefined,
         outsourcing_empresa_id: contrato.outsourcing_empresa_id || undefined,
         observaciones: contrato.observaciones || undefined,
-        monto_total: Number(plan.monto_total) || 0,
-        cuota_inicial: Number(plan.cuota_inicial) || 0,
+        monto_total: montoTotal,
+        cuota_inicial: cuotaInicial,
+        valor_financiado: valorFinanciado,
         forma_pago_inicial_id: plan.forma_pago_inicial_id || undefined,
         n_cuotas: contrato.tipo_plan !== 'pago_unico' ? Number(plan.n_cuotas) || 1 : 1,
         dia_pago: contrato.tipo_plan !== 'pago_unico' ? Number(plan.dia_pago) || 1 : undefined,
@@ -227,15 +264,45 @@ export default function NuevaVentaPage() {
             Cliente
           </h2>
 
+          {/* Selector de modo de búsqueda */}
+          <div className="flex gap-2">
+            {[
+              { key: 'telefono', label: '📱 Teléfono' },
+              { key: 'cedula',   label: '🪪 Cédula' },
+              { key: 'nombre',   label: '👤 Nombre' },
+            ].map(m => (
+              <button
+                key={m.key}
+                type="button"
+                onClick={() => setModoBusqueda(m.key)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  modoBusqueda === m.key
+                    ? 'bg-teal-600 text-white border-teal-600'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-teal-400'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Buscar por teléfono</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              {modoBusqueda === 'telefono' ? 'Número de teléfono' :
+               modoBusqueda === 'cedula'   ? 'N° de cédula / documento' :
+               'Nombre o apellido del cliente'}
+            </label>
             <div className="relative max-w-sm">
               <input
-                type="tel"
+                type={modoBusqueda === 'telefono' ? 'tel' : 'text'}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 pr-10"
-                placeholder="09XXXXXXXX"
-                value={busquedaTel}
-                onChange={e => setBusquedaTel(e.target.value)}
+                placeholder={
+                  modoBusqueda === 'telefono' ? '09XXXXXXXX' :
+                  modoBusqueda === 'cedula'   ? '0900000000' :
+                  'Ej: García, María...'
+                }
+                value={busqueda}
+                onChange={e => setBusqueda(e.target.value)}
               />
               {buscando && (
                 <span className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -243,18 +310,42 @@ export default function NuevaVentaPage() {
                 </span>
               )}
             </div>
+
+            {/* Dropdown para modo nombre */}
+            {modoBusqueda === 'nombre' && resultadosBusqueda.length > 0 && !personaEncontrada && (
+              <div className="absolute z-10 mt-1 max-w-sm w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                {resultadosBusqueda.map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => { setPersonaEncontrada(p); setResultadosBusqueda([]) }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-teal-50 border-b border-gray-50 last:border-0"
+                  >
+                    <span className="font-medium text-gray-800">{p.nombres} {p.apellidos}</span>
+                    <span className="text-gray-400 ml-2 text-xs">{p.telefono} · {p.ciudad || '—'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {modoBusqueda === 'nombre' && busqueda.length >= 3 && !buscando && resultadosBusqueda.length === 0 && !personaEncontrada && (
+              <p className="text-xs text-gray-400 mt-1">Sin resultados para "{busqueda}"</p>
+            )}
           </div>
 
           {personaEncontrada && (
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg max-w-sm">
-              <p className="text-green-800 text-sm font-medium">
-                ✅ {personaEncontrada.nombres} {personaEncontrada.apellidos}
-              </p>
-              <p className="text-green-600 text-xs mt-0.5">{personaEncontrada.ciudad} · {personaEncontrada.email || 'Sin email'}</p>
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg max-w-sm flex items-start justify-between gap-2">
+              <div>
+                <p className="text-green-800 text-sm font-medium">
+                  ✅ {personaEncontrada.nombres} {personaEncontrada.apellidos}
+                </p>
+                <p className="text-green-600 text-xs mt-0.5">{personaEncontrada.telefono} · {personaEncontrada.ciudad} · {personaEncontrada.email || 'Sin email'}</p>
+              </div>
+              <button type="button" onClick={() => { setPersonaEncontrada(null); setBusqueda('') }}
+                className="text-green-400 hover:text-green-600 text-xs mt-0.5 shrink-0">Cambiar</button>
             </div>
           )}
 
-          {!personaEncontrada && busquedaTel.length >= 7 && !buscando && (
+          {!personaEncontrada && modoBusqueda === 'telefono' && busqueda.length >= 7 && !buscando && (
             <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100">
               <p className="col-span-2 text-xs text-blue-600 font-medium">Cliente nuevo — completar datos:</p>
               <div>
@@ -339,9 +430,24 @@ export default function NuevaVentaPage() {
           <div className="flex items-center gap-3">
             <input type="checkbox" id="segunda_venta" className="w-4 h-4 accent-teal-600"
               checked={contrato.segunda_venta}
-              onChange={e => setContrato(c => ({ ...c, segunda_venta: e.target.checked }))} />
+              onChange={e => setContrato(c => ({ ...c, segunda_venta: e.target.checked, sac_asesor_id: '' }))} />
             <label htmlFor="segunda_venta" className="text-sm text-gray-700">Segunda venta (cliente ya tenía contrato previo)</label>
           </div>
+
+          {contrato.segunda_venta && (
+            <div className="max-w-sm">
+              <label className="block text-xs font-medium text-gray-500 mb-1">Asesor SAC que gestionó la renovación</label>
+              <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={contrato.sac_asesor_id}
+                onChange={e => setContrato(c => ({ ...c, sac_asesor_id: e.target.value }))}>
+                <option value="">Sin asesor asignado</option>
+                {usuarios
+                  .filter(u => ['sac', 'asesor_cartera', 'confirmador'].includes(u.rol))
+                  .map(u => <option key={u.id} value={u.id}>{u.nombre} ({u.rol})</option>)
+                }
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Observaciones</label>

@@ -71,6 +71,7 @@ router.get('/', async (req, res) => {
         c.id                                                           AS contrato_id,
         c.numero_contrato,
         c.monto_total,
+        p.id                                                           AS persona_id,
         p.nombres,
         p.apellidos,
         p.telefono,

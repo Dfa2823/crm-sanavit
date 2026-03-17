@@ -223,6 +223,34 @@ router.post('/movimiento', auth, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// POST /api/inventario/productos
+// Crea un nuevo producto (solo admin/director)
+// ─────────────────────────────────────────────────────────────
+router.post('/productos', auth, async (req, res) => {
+  const { rol } = req.user;
+  if (!['admin', 'director'].includes(rol)) {
+    return res.status(403).json({ error: 'Sin permiso. Solo admin o director.' });
+  }
+  const { codigo, nombre, tipo, descripcion, precio_venta } = req.body;
+  if (!nombre || !nombre.trim()) {
+    return res.status(400).json({ error: 'El nombre del producto es requerido' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO productos (codigo, nombre, tipo, descripcion, precio_venta, activo)
+       VALUES ($1, $2, $3, $4, $5, true)
+       RETURNING *`,
+      [codigo || null, nombre.trim(), tipo || 'servicio', descripcion || null, Number(precio_venta) || 0]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') return res.status(409).json({ error: 'Ya existe un producto con ese código' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
 // PATCH /api/inventario/productos/:id
 // Actualiza datos de un producto (solo admin)
 // ─────────────────────────────────────────────────────────────

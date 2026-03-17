@@ -4,6 +4,31 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
+// Auto-migrate: agregar columnas de anulación y SAC si no existen
+async function initMigrations() {
+  try {
+    await pool.query(`
+      ALTER TABLE contratos ADD COLUMN IF NOT EXISTS sac_asesor_id INTEGER REFERENCES usuarios(id);
+      ALTER TABLE contratos ADD COLUMN IF NOT EXISTS anulado_por INTEGER REFERENCES usuarios(id);
+      ALTER TABLE contratos ADD COLUMN IF NOT EXISTS fecha_anulacion TIMESTAMPTZ;
+      ALTER TABLE contratos ADD COLUMN IF NOT EXISTS motivo_anulacion VARCHAR(255);
+    `);
+    // Agregar requiere_referencia a formas_pago si no existe
+    await pool.query(`
+      ALTER TABLE formas_pago ADD COLUMN IF NOT EXISTS requiere_referencia BOOLEAN DEFAULT false;
+    `);
+    // Marcar formas de pago que requieren referencia
+    await pool.query(`
+      UPDATE formas_pago SET requiere_referencia = true
+      WHERE requiere_referencia = false
+        AND LOWER(nombre) ~ '(transferencia|deposito|depósito|tarjeta|link de pago|cheque)';
+    `);
+  } catch (err) {
+    console.error('Ventas migrations warning:', err.message);
+  }
+}
+initMigrations();
+
 // Helper: build 360° contract view
 async function getVenta360(id) {
   const contrato = await pool.query(`
@@ -144,7 +169,7 @@ router.post('/', auth, async (req, res) => {
     tipo_plan, descripcion_plan,
     monto_total, cuota_inicial = 0, forma_pago_inicial_id,
     valor_financiado, n_cuotas = 1, dia_pago = 1, fecha_primer_pago,
-    outsourcing_empresa_id, segunda_venta = false, observaciones,
+    outsourcing_empresa_id, segunda_venta = false, sac_asesor_id, observaciones,
     productos = []   // array de { producto_id, cantidad, precio_unitario }
   } = req.body;
 
@@ -187,8 +212,8 @@ router.post('/', auth, async (req, res) => {
         monto_total, valor_bruto, iva_porcentaje, valor_iva,
         cuota_inicial, forma_pago_inicial_id,
         monto_cuota, n_cuotas, dia_pago, fecha_primer_pago,
-        outsourcing_empresa_id, segunda_venta, observaciones
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+        outsourcing_empresa_id, segunda_venta, sac_asesor_id, observaciones
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING *
     `, [
       numeroContrato, persona_id, salaId, consultor_id || userId, visita_sala_id,
@@ -197,7 +222,7 @@ router.post('/', auth, async (req, res) => {
       cuota_inicial, forma_pago_inicial_id,
       n_cuotas > 0 ? parseFloat(valor_financiado || 0) / n_cuotas : 0,
       n_cuotas, dia_pago, fecha_primer_pago,
-      outsourcing_empresa_id, segunda_venta, observaciones
+      outsourcing_empresa_id, segunda_venta, sac_asesor_id || null, observaciones
     ]);
 
     const contrato = contratoResult.rows[0];
@@ -243,6 +268,64 @@ router.post('/', auth, async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+// PATCH /api/ventas/:id/anular — anulación por caída en mesa (mismo día)
+router.patch('/:id/anular', auth, async (req, res) => {
+  const { rol, id: userId } = req.user;
+  if (!['admin', 'director', 'hostess', 'confirmador', 'consultor'].includes(rol)) {
+    return res.status(403).json({ error: 'Sin permiso para anular contratos' });
+  }
+
+  const { motivo } = req.body;
+  const contratoId = parseInt(req.params.id, 10);
+
+  try {
+    // Verificar que el contrato existe y está activo
+    const check = await pool.query(
+      `SELECT id, estado, fecha_contrato FROM contratos WHERE id = $1`,
+      [contratoId]
+    );
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Contrato no encontrado' });
+    const c = check.rows[0];
+    if (c.estado !== 'activo') return res.status(400).json({ error: 'Solo se pueden anular contratos activos' });
+
+    // Hostess/confirmador/consultor solo pueden anular si fue creado hoy
+    if (['hostess', 'confirmador', 'consultor'].includes(rol)) {
+      const hoy = new Date().toISOString().split('T')[0];
+      const fechaContrato = new Date(c.fecha_contrato).toISOString().split('T')[0];
+      if (fechaContrato !== hoy) {
+        return res.status(403).json({ error: 'Solo puedes anular contratos creados hoy (caída en mesa)' });
+      }
+    }
+
+    const result = await pool.query(
+      `UPDATE contratos
+       SET estado = 'cancelado',
+           motivo_anulacion = $1,
+           anulado_por = $2,
+           fecha_anulacion = NOW(),
+           updated_at = NOW()
+       WHERE id = $3
+       RETURNING id, numero_contrato, estado, motivo_anulacion`,
+      [motivo || 'Caída en mesa', userId, contratoId]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    // Columnas de anulación pueden no existir aún, usar fallback
+    try {
+      const result = await pool.query(
+        `UPDATE contratos SET estado = 'cancelado', updated_at = NOW()
+         WHERE id = $1 RETURNING id, numero_contrato, estado`,
+        [contratoId]
+      );
+      res.json(result.rows[0]);
+    } catch (err2) {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getStock, getMovimientos, registrarMovimiento } from '../../api/inventario'
+import { getStock, getMovimientos, registrarMovimiento, crearProducto, actualizarProducto } from '../../api/inventario'
 import { useAuth } from '../../context/AuthContext'
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -44,6 +44,125 @@ function colorStock(stock) {
   if (stock === 0)  return 'text-red-600 font-bold'
   if (stock <= 10)  return 'text-orange-500 font-semibold'
   return 'text-green-600 font-semibold'
+}
+
+// ─── Drawer: Crear/Editar Producto ──────────────────────────
+
+function DrawerProducto({ abierto, onClose, productoEditar, onExito }) {
+  const [nombre,      setNombre]      = useState('')
+  const [codigo,      setCodigo]      = useState('')
+  const [tipo,        setTipo]        = useState('servicio')
+  const [descripcion, setDescripcion] = useState('')
+  const [precio,      setPrecio]      = useState('')
+  const [activo,      setActivo]      = useState(true)
+  const [guardando,   setGuardando]   = useState(false)
+  const [error,       setError]       = useState('')
+
+  useEffect(() => {
+    if (abierto) {
+      if (productoEditar) {
+        setNombre(productoEditar.nombre || '')
+        setCodigo(productoEditar.codigo || '')
+        setTipo(productoEditar.tipo || 'servicio')
+        setDescripcion(productoEditar.descripcion || '')
+        setPrecio(productoEditar.precio_venta || '')
+        setActivo(productoEditar.activo !== false)
+      } else {
+        setNombre(''); setCodigo(''); setTipo('servicio')
+        setDescripcion(''); setPrecio(''); setActivo(true)
+      }
+      setError('')
+    }
+  }, [abierto, productoEditar])
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!nombre.trim()) return setError('El nombre es obligatorio')
+    setGuardando(true)
+    setError('')
+    try {
+      const data = { nombre: nombre.trim(), codigo: codigo || undefined, tipo, descripcion: descripcion || undefined, precio_venta: Number(precio) || 0, activo }
+      if (productoEditar) {
+        await actualizarProducto(productoEditar.id, data)
+      } else {
+        await crearProducto(data)
+      }
+      onExito()
+      onClose()
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al guardar producto')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  if (!abierto) return null
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full w-96 bg-white shadow-xl z-50 flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-bold text-gray-800">{productoEditar ? 'Editar Producto' : 'Nuevo Producto'}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+            <input value={nombre} onChange={e => setNombre(e.target.value)} required
+              placeholder="Ej: Programa Nutrición Premium"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Código</label>
+              <input value={codigo} onChange={e => setCodigo(e.target.value)}
+                placeholder="Ej: PRO-001"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+              <select value={tipo} onChange={e => setTipo(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                <option value="servicio">Servicio</option>
+                <option value="producto">Producto físico</option>
+                <option value="kit">Kit</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Precio de venta ($)</label>
+            <input type="number" min="0" step="0.01" value={precio} onChange={e => setPrecio(e.target.value)}
+              placeholder="0.00"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Descripción <span className="font-normal text-gray-400">(opcional)</span></label>
+            <textarea rows={3} value={descripcion} onChange={e => setDescripcion(e.target.value)}
+              placeholder="Descripción del producto o servicio..."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none" />
+          </div>
+          {productoEditar && (
+            <div className="flex items-center gap-3">
+              <input type="checkbox" id="activo_prod" checked={activo} onChange={e => setActivo(e.target.checked)} className="w-4 h-4 accent-teal-600" />
+              <label htmlFor="activo_prod" className="text-sm text-gray-700">Producto activo (visible en catálogo)</label>
+            </div>
+          )}
+          {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
+        </form>
+        <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
+          <button type="button" onClick={onClose}
+            className="flex-1 border border-gray-300 text-gray-700 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={handleSubmit} disabled={guardando}
+            className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:bg-teal-300 text-white rounded-lg py-2.5 text-sm font-medium">
+            {guardando ? 'Guardando...' : productoEditar ? 'Actualizar' : 'Crear Producto'}
+          </button>
+        </div>
+      </div>
+    </>
+  )
 }
 
 // ─── Componente Drawer ──────────────────────────────────────
@@ -301,9 +420,13 @@ export default function InventarioPage() {
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState('')
 
-  // Drawer
+  // Drawer Movimiento
   const [drawerAbierto,          setDrawerAbierto]          = useState(false)
   const [productoSeleccionado,   setProductoSeleccionado]   = useState(null)
+
+  // Drawer Producto (CRUD)
+  const [drawerProdAbierto,      setDrawerProdAbierto]      = useState(false)
+  const [productoEditar,         setProductoEditar]         = useState(null)
 
   // Filtros historial
   const [filtroProducto,  setFiltroProducto]  = useState('')
@@ -375,12 +498,20 @@ export default function InventarioPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Inventario</h1>
         {esPrivilegiado && (
-          <button
-            onClick={() => abrirDrawer(null)}
-            className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition"
-          >
-            + Registrar Movimiento
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setProductoEditar(null); setDrawerProdAbierto(true) }}
+              className="border border-teal-600 text-teal-700 hover:bg-teal-50 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition"
+            >
+              + Nuevo Producto
+            </button>
+            <button
+              onClick={() => abrirDrawer(null)}
+              className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition"
+            >
+              + Registrar Movimiento
+            </button>
+          </div>
         )}
       </div>
 
@@ -493,13 +624,22 @@ export default function InventarioPage() {
                       </td>
                       {esPrivilegiado && (
                         <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => abrirDrawer(p.id)}
-                            className="text-teal-600 hover:text-teal-800 border border-teal-200 hover:border-teal-400 rounded-md px-2 py-1 text-xs font-medium transition"
-                            title="Registrar movimiento para este producto"
-                          >
-                            +/-
-                          </button>
+                          <div className="flex gap-1 justify-center">
+                            <button
+                              onClick={() => { setProductoEditar(p); setDrawerProdAbierto(true) }}
+                              className="text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-400 rounded-md px-2 py-1 text-xs font-medium transition"
+                              title="Editar producto"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => abrirDrawer(p.id)}
+                              className="text-teal-600 hover:text-teal-800 border border-teal-200 hover:border-teal-400 rounded-md px-2 py-1 text-xs font-medium transition"
+                              title="Registrar movimiento"
+                            >
+                              +/-
+                            </button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -648,13 +788,21 @@ export default function InventarioPage() {
         </div>
       )}
 
-      {/* ── Drawer ── */}
+      {/* ── Drawer Movimiento ── */}
       <DrawerMovimiento
         abierto={drawerAbierto}
         onClose={() => setDrawerAbierto(false)}
         productoInicial={productoSeleccionado}
         stockData={stock}
         onExito={onMovimientoExitoso}
+      />
+
+      {/* ── Drawer Producto (CRUD) ── */}
+      <DrawerProducto
+        abierto={drawerProdAbierto}
+        onClose={() => setDrawerProdAbierto(false)}
+        productoEditar={productoEditar}
+        onExito={cargarStock}
       />
     </div>
   )

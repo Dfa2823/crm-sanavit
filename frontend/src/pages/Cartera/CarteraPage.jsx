@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { getCartera, getCarteraResumen, updateGestion } from '../../api/cartera'
-import { getSalas } from '../../api/admin'
+import { getSalas, getFormasPago } from '../../api/admin'
+import { createRecibo } from '../../api/recibos'
 
 // ─────────────────── Helpers ─────────────────────────────────────────────────
 function fmt(val) {
@@ -121,6 +122,123 @@ function PanelGestion({ cuota, onClose, onSaved }) {
   )
 }
 
+// ─────────────────── Panel de Cobro ──────────────────────────────────────────
+function PanelCobro({ cuota, formasPago, onClose, onSaved }) {
+  const hoy = new Date().toISOString().split('T')[0]
+  const [formaPagoId, setFormaPagoId] = useState('')
+  const [monto, setMonto]             = useState(String(cuota.saldo_cuota || ''))
+  const [fecha, setFecha]             = useState(hoy)
+  const [referencia, setReferencia]   = useState('')
+  const [observacion, setObservacion] = useState('')
+  const [saving, setSaving]           = useState(false)
+  const [error, setError]             = useState('')
+
+  const formaSeleccionada = formasPago.find(f => String(f.id) === String(formaPagoId))
+  const requiereRef = formaSeleccionada?.requiere_referencia
+
+  const guardar = async () => {
+    if (!monto || Number(monto) <= 0) { setError('El monto debe ser mayor a 0'); return }
+    if (!formaPagoId) { setError('Selecciona una forma de pago'); return }
+    if (requiereRef && !referencia.trim()) { setError('Ingresa el N° de aprobación / referencia'); return }
+    setSaving(true)
+    setError('')
+    try {
+      await createRecibo({
+        persona_id: cuota.persona_id,
+        contrato_id: cuota.contrato_id,
+        cuota_id: cuota.cuota_id,
+        valor: Number(monto),
+        forma_pago_id: Number(formaPagoId),
+        fecha_pago: fecha,
+        referencia_pago: referencia || undefined,
+        observacion: observacion || undefined,
+        sala_id: cuota.sala_id,
+      })
+      onSaved()
+      onClose()
+    } catch (err) {
+      setError(err.response?.data?.error || err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-gray-800 text-base">Registrar Cobro</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+        </div>
+
+        <div className="text-sm text-gray-600 space-y-1 bg-teal-50 rounded-lg p-3">
+          <p><span className="font-semibold">Cliente:</span> {cuota.nombres} {cuota.apellidos}</p>
+          <p><span className="font-semibold">Contrato:</span> {cuota.numero_contrato} · Cuota #{cuota.numero_cuota}</p>
+          <p><span className="font-semibold">Saldo cuota:</span> {fmt(cuota.saldo_cuota)}</p>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Monto a cobrar *</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+              <input type="number" min="0.01" step="0.01" required
+                value={monto} onChange={e => setMonto(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Forma de pago *</label>
+            <select value={formaPagoId} onChange={e => setFormaPagoId(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+              <option value="">Seleccionar...</option>
+              {formasPago.map(fp => <option key={fp.id} value={fp.id}>{fp.nombre}</option>)}
+            </select>
+          </div>
+
+          {(requiereRef || formaPagoId) && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                N° Aprobación / Referencia {!requiereRef && <span className="font-normal text-gray-400">(opcional)</span>}
+              </label>
+              <input type="text" value={referencia} onChange={e => setReferencia(e.target.value)}
+                placeholder="Ej: 123456 / REF-ABC"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Fecha de pago</label>
+            <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Observación <span className="font-normal text-gray-400">(opcional)</span></label>
+            <textarea rows={2} value={observacion} onChange={e => setObservacion(e.target.value)}
+              placeholder="Notas sobre el cobro..."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none" />
+          </div>
+        </div>
+
+        {error && <p className="text-red-600 text-xs bg-red-50 rounded-md px-2 py-1">{error}</p>}
+
+        <div className="flex gap-3 justify-end pt-1">
+          <button onClick={onClose}
+            className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={guardar} disabled={saving}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
+            {saving ? 'Registrando...' : '💰 Registrar Cobro'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─────────────────── Página principal ────────────────────────────────────────
 export default function CarteraPage() {
   const { usuario } = useAuth()
@@ -139,8 +257,10 @@ export default function CarteraPage() {
   // Filtro frontend (búsqueda libre)
   const [busqueda,     setBusqueda]     = useState('')
 
-  // Panel de gestión abierto
+  // Paneles
   const [panelCuota,   setPanelCuota]   = useState(null)
+  const [panelCobro,   setPanelCobro]   = useState(null)
+  const [formasPago,   setFormasPago]   = useState([])
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -167,6 +287,9 @@ export default function CarteraPage() {
   }, [filtroSala, filtroEstado, filtroAging])
 
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    getFormasPago().then(fps => setFormasPago(Array.isArray(fps) ? fps.filter(f => f.activo) : [])).catch(console.error)
+  }, [])
 
   // Aplicar búsqueda libre en frontend
   const cuotasFiltradas = cuotas.filter(c => {
@@ -416,13 +539,22 @@ export default function CarteraPage() {
 
                         {/* Acciones */}
                         <td className="px-4 py-3 text-center whitespace-nowrap">
-                          <button
-                            onClick={() => setPanelCuota(c)}
-                            className="bg-teal-600 text-white px-3 py-1.5 rounded-lg hover:bg-teal-700 text-xs font-medium"
-                            title="Registrar gestión de cobranza"
-                          >
-                            Gestionar
-                          </button>
+                          <div className="flex items-center gap-2 justify-center">
+                            <button
+                              onClick={() => setPanelCobro(c)}
+                              className="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-xs font-medium"
+                              title="Registrar pago de esta cuota"
+                            >
+                              💰 Cobrar
+                            </button>
+                            <button
+                              onClick={() => setPanelCuota(c)}
+                              className="bg-teal-600 text-white px-3 py-1.5 rounded-lg hover:bg-teal-700 text-xs font-medium"
+                              title="Registrar gestión de cobranza"
+                            >
+                              Gestionar
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -440,6 +572,16 @@ export default function CarteraPage() {
           cuota={panelCuota}
           onClose={() => setPanelCuota(null)}
           onSaved={handleGestionSaved}
+        />
+      )}
+
+      {/* Modal de cobro */}
+      {panelCobro && (
+        <PanelCobro
+          cuota={panelCobro}
+          formasPago={formasPago}
+          onClose={() => setPanelCobro(null)}
+          onSaved={cargar}
         />
       )}
     </div>

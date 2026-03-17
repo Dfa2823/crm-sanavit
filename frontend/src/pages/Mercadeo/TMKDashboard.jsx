@@ -65,16 +65,24 @@ export default function TMKDashboard() {
     )
   })
 
-  // Stats del día
+  // Auto-refresh cada 2 minutos
+  useEffect(() => {
+    const interval = setInterval(() => { cargarLeads() }, 2 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [cargarLeads])
+
+  // Stats del día / mes
   const leadsHoy = leads.filter(l => l.created_at?.startsWith(hoy))
   const citasAgendadas = leads.filter(l => ['confirmada','tentativa'].includes(l.estado))
   const pendientes = leads.filter(l => l.estado === 'pendiente')
+  const mesActual = hoy.substring(0, 7) // YYYY-MM
+  const toursMes = leads.filter(l => l.estado === 'tour' && l.created_at?.startsWith(mesActual))
 
   return (
     <div className="space-y-5">
 
       {/* Stats rápidos */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <div className="card p-5 text-center">
           <div className="text-3xl font-bold text-blue-600">{leadsHoy.length}</div>
           <div className="text-sm text-gray-500 mt-1">Leads hoy</div>
@@ -86,6 +94,10 @@ export default function TMKDashboard() {
         <div className="card p-5 text-center">
           <div className="text-3xl font-bold text-yellow-600">{pendientes.length}</div>
           <div className="text-sm text-gray-500 mt-1">Pendientes</div>
+        </div>
+        <div className="card p-5 text-center">
+          <div className="text-3xl font-bold text-teal-600">{toursMes.length}</div>
+          <div className="text-sm text-gray-500 mt-1">Tours del mes</div>
         </div>
       </div>
 

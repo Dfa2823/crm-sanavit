@@ -4,3 +4,4 @@ export const getStock            = ()       => client.get('/api/inventario/stock
 export const getMovimientos      = (params) => client.get('/api/inventario/movimientos', { params }).then(r => r.data)
 export const registrarMovimiento = (data)   => client.post('/api/inventario/movimiento', data).then(r => r.data)
 export const actualizarProducto  = (id, data) => client.patch(`/api/inventario/productos/${id}`, data).then(r => r.data)
+export const crearProducto       = (data)     => client.post('/api/inventario/productos', data).then(r => r.data)

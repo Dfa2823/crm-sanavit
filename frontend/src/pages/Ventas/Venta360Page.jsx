@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { getVenta360, updateEstadoVenta, updateNotasVenta, despacharProducto } from '../../api/ventas'
+import { getVenta360, updateEstadoVenta, updateNotasVenta, despacharProducto, anularVenta } from '../../api/ventas'
 import { createRecibo, anularRecibo } from '../../api/recibos'
 import { getFormasPago } from '../../api/admin'
 
@@ -129,6 +129,21 @@ export default function Venta360Page() {
     }
   }
 
+  async function handleAnularContrato() {
+    const motivo = window.prompt('Motivo de la anulación (caída en mesa):')
+    if (motivo === null) return // canceló
+    if (!window.confirm(`¿Confirmas anular el contrato ${contrato.numero_contrato}? Esta acción no se puede deshacer.`)) return
+    setCambiandoEstado(true)
+    try {
+      await anularVenta(id, motivo || 'Caída en mesa')
+      cargar()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al anular el contrato')
+    } finally {
+      setCambiandoEstado(false)
+    }
+  }
+
   async function handleGuardarNotas(e) {
     e.preventDefault()
     setGuardandoNotas(true); setNotasMsg('')
@@ -184,6 +199,19 @@ export default function Venta360Page() {
           >
             🖨️ Imprimir contrato
           </button>
+          {/* Botón Caída en Mesa — para hostess/confirmador/consultor solo contratos de hoy */}
+          {['hostess','confirmador','consultor','admin','director'].includes(usuario?.rol) &&
+           contrato.estado === 'activo' &&
+           new Date(contrato.fecha_contrato).toISOString().split('T')[0] === new Date().toISOString().split('T')[0] && (
+            <button
+              disabled={cambiandoEstado}
+              onClick={handleAnularContrato}
+              className="border border-red-400 text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-sm disabled:opacity-60 flex items-center gap-1"
+            >
+              🚫 Caída en Mesa
+            </button>
+          )}
+
           {/* Botones de cambio de estado — solo admin/director */}
           {['admin','director'].includes(usuario?.rol) && (
             <div className="flex items-center gap-2">
