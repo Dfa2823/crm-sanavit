@@ -17,6 +17,7 @@ const MENU_POR_ROL = {
     { label: 'SAC / PQR', path: '/sac', icon: '🎫' },
     { label: 'Inventario', path: '/inventario', icon: '📦' },
     { label: 'Alertas', path: '/alertas', icon: '🔔' },
+    { label: 'Importar Base', path: '/importar', icon: '📥' },
     { label: 'Administración', path: '/admin', icon: '⚙️' },
   ],
   director: [
@@ -34,6 +35,7 @@ const MENU_POR_ROL = {
     { label: 'SAC / PQR', path: '/sac', icon: '🎫' },
     { label: 'Inventario', path: '/inventario', icon: '📦' },
     { label: 'Alertas', path: '/alertas', icon: '🔔' },
+    { label: 'Importar Base', path: '/importar', icon: '📥' },
   ],
   supervisor_cc: [
     { label: 'Mi Equipo TMK', path: '/mercadeo/supervisor', icon: '🎯' },
@@ -42,6 +44,7 @@ const MENU_POR_ROL = {
     { label: 'Calendario', path: '/mercadeo/calendario', icon: '📅' },
     { label: 'Reportes', path: '/reportes', icon: '📈' },
     { label: 'Outsourcing', path: '/outsourcing', icon: '🏢' },
+    { label: 'Importar Base', path: '/importar', icon: '📥' },
   ],
   tmk: [
     { label: 'Mis Leads de Hoy', path: '/mercadeo/captura', icon: '📞' },

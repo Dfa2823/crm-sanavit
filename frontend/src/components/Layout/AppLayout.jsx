@@ -23,6 +23,7 @@ const TITULOS = {
   '/alertas':               'Alertas y Notificaciones',
   '/admin':                 'Administración del Sistema',
   '/perfil':                'Mi Perfil',
+  '/importar':              'Importar Base de Datos',
 }
 
 export default function AppLayout() {

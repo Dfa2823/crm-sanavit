@@ -25,6 +25,7 @@ import InventarioPage from './pages/Inventario/InventarioPage'
 import LiquidacionesPage from './pages/Comisiones/LiquidacionesPage'
 import AlertasPage from './pages/Alertas/AlertasPage'
 import PerfilPage from './pages/Perfil/PerfilPage'
+import ImportarPage from './pages/Importar/ImportarPage'
 
 // Rutas protegidas: solo usuarios autenticados
 function PrivateRoute({ children }) {
@@ -78,6 +79,7 @@ function AppRoutes() {
         <Route path="liquidaciones" element={<LiquidacionesPage />} />
         <Route path="alertas" element={<AlertasPage />} />
         <Route path="perfil" element={<PerfilPage />} />
+        <Route path="importar" element={<ImportarPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

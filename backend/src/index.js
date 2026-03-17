@@ -37,6 +37,7 @@ app.use('/api/inventario',   authMiddleware, require('./routes/inventario'));
 app.use('/api/alertas',      authMiddleware, require('./routes/alertas'));
 app.use('/api/liquidaciones', authMiddleware, require('./routes/liquidaciones'));
 app.use('/api/perfil',       authMiddleware, require('./routes/perfil'));
+app.use('/api/importar',     authMiddleware, require('./routes/importar'));
 
 const productosRouter = require('./routes/productos');
 const ventasRouter = require('./routes/ventas');
