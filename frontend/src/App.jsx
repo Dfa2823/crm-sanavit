@@ -17,6 +17,7 @@ import CarteraPage from './pages/Cartera/CarteraPage'
 import ReportesPage from './pages/Reportes/ReportesPage'
 import OutsourcingPage from './pages/Outsourcing/OutsourcingPage'
 import ComisionesPage from './pages/Comisiones/ComisionesPage'
+import ConsultorPage from './pages/Consultor/ConsultorPage'
 import VentasPage from './pages/Ventas/VentasPage'
 import Venta360Page from './pages/Ventas/Venta360Page'
 import NuevaVentaPage from './pages/Ventas/NuevaVentaPage'
@@ -73,6 +74,7 @@ function AppRoutes() {
         <Route path="reportes" element={<ReportesPage />} />
         <Route path="outsourcing" element={<OutsourcingPage />} />
         <Route path="comisiones" element={<ComisionesPage />} />
+        <Route path="consultor" element={<ConsultorPage />} />
         <Route path="ventas" element={<VentasPage />} />
         <Route path="ventas/nueva" element={<NuevaVentaPage />} />
         <Route path="ventas/:id" element={<Venta360Page />} />

@@ -83,8 +83,8 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
     mapeo,            // { nombre_completo: 0, nombres: null, apellidos: null, telefono: 1, telefono2: 2, ciudad: 3, ... }
   } = config;
 
-  if (!sala_id || !fuente_id || !tipificacion_id) {
-    return res.status(400).json({ error: 'Faltan campos requeridos: sala, fuente, tipificación' });
+  if (!sala_id || !fuente_id) {
+    return res.status(400).json({ error: 'Faltan campos requeridos: sala y fuente' });
   }
   if (mapeo.nombre_completo === null && mapeo.nombres === null) {
     return res.status(400).json({ error: 'Debes mapear al menos la columna de nombre' });
@@ -119,7 +119,8 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
     const tipRes = await pool.query('SELECT requiere_fecha_cita FROM tipificaciones WHERE id = $1', [tipificacion_id]);
     const estadoInicial = (tipRes.rows[0]?.requiere_fecha_cita) ? 'confirmada' : 'pendiente';
 
-    const stats = { importados: 0, duplicados: 0, errores: 0, detalles_errores: [] };
+    const stats = { importados: 0, duplicados: 0, errores: 0, detalles_errores: [], duplicados_detalle: [] };
+    const nombreArchivo = req.file?.originalname || 'desconocido';
 
     // Helpers
     function normalizarTelefono(val) {
@@ -187,13 +188,17 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
 
         if (!telefono && !telefono2) { stats.errores++; continue; }
 
-        // Buscar persona existente por teléfono
+        // Buscar persona existente por teléfono, cédula o email
         const telCheck = [telefono, telefono2].filter(Boolean);
         let personaId = null;
-        const existing = await pool.query(
-          `SELECT id FROM personas WHERE telefono = ANY($1) OR telefono2 = ANY($1) LIMIT 1`,
-          [telCheck]
-        );
+        let existQuery = `SELECT id FROM personas WHERE (telefono = ANY($1) OR telefono2 = ANY($1))`;
+        let existParams = [telCheck];
+        if (cedula) {
+          existParams.push(cedula);
+          existQuery += ` OR num_documento = $${existParams.length}`;
+        }
+        existQuery += ` LIMIT 1`;
+        const existing = await pool.query(existQuery, existParams);
         if (existing.rows.length > 0) {
           personaId = existing.rows[0].id;
         } else {
@@ -214,6 +219,9 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
         );
         if (leadExist.rows.length > 0) {
           stats.duplicados++;
+          if (stats.duplicados_detalle.length < 200) {
+            stats.duplicados_detalle.push({ nombres, apellidos, telefono, cedula, fila: i + 2 });
+          }
           continue;
         }
 
@@ -221,11 +229,12 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
         const asignadoTmk = tmk_id || tmkIds[tmkIndex % tmkIds.length];
         if (!tmk_id) tmkIndex++;
 
-        // Crear lead
+        // Crear lead (tipificacion_id opcional)
         await pool.query(
-          `INSERT INTO leads (persona_id, sala_id, tmk_id, fuente_id, tipificacion_id, estado)
-           VALUES ($1,$2,$3,$4,$5,$6)`,
-          [personaId, sala_id, asignadoTmk, fuente_id, tipificacion_id, estadoInicial]
+          `INSERT INTO leads (persona_id, sala_id, tmk_id, fuente_id, tipificacion_id, estado, observacion)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [personaId, sala_id, asignadoTmk, fuente_id, tipificacion_id || null, estadoInicial,
+           `Importado desde: ${nombreArchivo}`]
         );
 
         stats.importados++;
@@ -249,6 +258,8 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
       duplicados: stats.duplicados,
       errores: stats.errores,
       detalles_errores: stats.detalles_errores,
+      duplicados_detalle: stats.duplicados_detalle,
+      archivo_nombre: nombreArchivo,
     });
   } catch (err) {
     console.error('Importar ejecutar error:', err);

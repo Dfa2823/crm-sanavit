@@ -365,4 +365,142 @@ router.patch('/tickets/:id', auth, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────
+// GET /api/sac/control-calidad
+// Contratos de 5+ días sin ticket de control_calidad
+// ─────────────────────────────────────────────────────────
+router.get('/control-calidad', auth, async (req, res) => {
+  const { sala_id } = req.query;
+  try {
+    const params = [];
+    let salaFilter = '';
+    if (sala_id) {
+      params.push(sala_id);
+      salaFilter = `AND c.sala_id = $${params.length}`;
+    }
+
+    const result = await pool.query(`
+      SELECT c.id, c.numero_contrato, c.fecha_contrato, c.monto_total, c.estado,
+             p.nombres, p.apellidos, p.telefono,
+             s.nombre AS sala_nombre, u.nombre AS consultor_nombre,
+             CURRENT_DATE - c.fecha_contrato AS dias_desde_venta
+      FROM contratos c
+      JOIN personas p ON c.persona_id = p.id
+      LEFT JOIN salas s ON c.sala_id = s.id
+      LEFT JOIN usuarios u ON c.consultor_id = u.id
+      WHERE c.estado = 'activo'
+        AND c.fecha_contrato <= CURRENT_DATE - INTERVAL '5 days'
+        AND NOT EXISTS (
+          SELECT 1 FROM pqr_tickets t
+          WHERE t.contrato_id = c.id AND t.tipo = 'control_calidad'
+        )
+        ${salaFilter}
+      ORDER BY c.fecha_contrato ASC
+      LIMIT 100
+    `, params);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────
+// POST /api/sac/activar/:contrato_id
+// Crea ticket control_calidad resuelto (activa la venta)
+// ─────────────────────────────────────────────────────────
+router.post('/activar/:contrato_id', auth, async (req, res) => {
+  const contratoId = req.params.contrato_id;
+  const { id: userId, sala_id: userSalaId } = req.user;
+  try {
+    // Generar número de ticket
+    const seqRes = await pool.query(
+      `SELECT COALESCE(MAX(CAST(SUBSTRING(numero_ticket FROM 5) AS INTEGER)), 0) + 1 AS next_num FROM pqr_tickets`
+    );
+    const nextNum = seqRes.rows[0].next_num;
+    const numTicket = `SAC-${String(nextNum).padStart(4, '0')}`;
+
+    // Obtener datos del contrato
+    const cRes = await pool.query('SELECT persona_id, sala_id FROM contratos WHERE id = $1', [contratoId]);
+    if (cRes.rows.length === 0) return res.status(404).json({ error: 'Contrato no encontrado' });
+    const { persona_id, sala_id } = cRes.rows[0];
+
+    await pool.query(`
+      INSERT INTO pqr_tickets (numero_ticket, persona_id, contrato_id, sala_id,
+        tipo, categoria, descripcion, estado, prioridad, asignado_a, creado_por, fecha_cierre, resolucion)
+      VALUES ($1, $2, $3, $4, 'control_calidad', 'servicio', 'Venta activada — control de calidad aprobado', 'resuelto', 'normal', $5, $5, NOW(), 'Venta verificada y activada correctamente')
+    `, [numTicket, persona_id, contratoId, sala_id || userSalaId, userId]);
+
+    res.json({ ok: true, numero_ticket: numTicket });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────
+// GET /api/sac/fidelizacion
+// Contratos de 90+ días sin re-cita reciente
+// ─────────────────────────────────────────────────────────
+router.get('/fidelizacion', auth, async (req, res) => {
+  const { sala_id } = req.query;
+  try {
+    const params = [];
+    let salaFilter = '';
+    if (sala_id) {
+      params.push(sala_id);
+      salaFilter = `AND c.sala_id = $${params.length}`;
+    }
+
+    const result = await pool.query(`
+      SELECT c.id, c.numero_contrato, c.fecha_contrato, c.monto_total,
+             p.id AS persona_id, p.nombres, p.apellidos, p.telefono,
+             s.nombre AS sala_nombre,
+             CURRENT_DATE - c.fecha_contrato AS dias_desde_venta
+      FROM contratos c
+      JOIN personas p ON c.persona_id = p.id
+      LEFT JOIN salas s ON c.sala_id = s.id
+      WHERE c.estado IN ('activo', 'completado')
+        AND c.fecha_contrato <= CURRENT_DATE - INTERVAL '90 days'
+        AND NOT EXISTS (
+          SELECT 1 FROM leads l2
+          WHERE l2.persona_id = p.id
+            AND l2.estado IN ('confirmada', 'tentativa', 'tour')
+            AND l2.created_at >= NOW() - INTERVAL '30 days'
+        )
+        ${salaFilter}
+      ORDER BY c.fecha_contrato ASC
+      LIMIT 100
+    `, params);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────
+// POST /api/sac/recitar/:persona_id
+// Crea nuevo lead para re-citar al cliente (fidelización)
+// ─────────────────────────────────────────────────────────
+router.post('/recitar/:persona_id', auth, async (req, res) => {
+  const personaId = req.params.persona_id;
+  const { id: userId, sala_id: userSalaId } = req.user;
+  try {
+    // Tipificación "Cita" = id 2
+    const result = await pool.query(`
+      INSERT INTO leads (persona_id, sala_id, tmk_id, fuente_id, tipificacion_id, estado, observacion)
+      VALUES ($1, $2, $3, 1, 2, 'pendiente', 'Re-cita generada desde módulo de fidelización SAC')
+      RETURNING id
+    `, [personaId, userSalaId || 1, userId]);
+
+    res.json({ ok: true, lead_id: result.rows[0].id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

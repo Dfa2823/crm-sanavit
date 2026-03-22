@@ -22,6 +22,7 @@ const TODOS_LOS_MODULOS = {
   importar:      { label: 'Importar Base',     path: '/importar',               icon: '📥' },
   nomina:        { label: 'Nómina',            path: '/nomina',                 icon: '💵' },
   metas:         { label: 'Metas',             path: '/metas',                  icon: '🎯' },
+  consultor_panel: { label: 'Mi Panel',        path: '/consultor',              icon: '📊' },
   admin:         { label: 'Administración',    path: '/admin',                  icon: '⚙️' },
 }
 
@@ -86,6 +87,7 @@ const MENU_POR_ROL = {
     { label: 'Ventas', path: '/ventas', icon: '💼' },
   ],
   consultor: [
+    { label: 'Mi Panel', path: '/consultor', icon: '📊' },
     { label: 'Mis Clientes Hoy', path: '/sala/recepcion', icon: '🏥' },
     { label: 'Ventas', path: '/ventas', icon: '💼' },
   ],

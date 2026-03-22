@@ -194,11 +194,33 @@ router.patch('/usuarios/:id', requireAdmin, async (req, res) => {
 });
 
 // DELETE /api/admin/usuarios/:id — soft delete (activo = false)
+// Si es TMK con leads pendientes, exige reasignación previa
 router.delete('/usuarios/:id', requireAdmin, async (req, res) => {
   try {
-    // Prevenir auto-desactivación
     if (Number(req.params.id) === req.user.id) {
       return res.status(400).json({ error: 'No puedes desactivar tu propia cuenta' });
+    }
+
+    // Verificar si es TMK con leads pendientes
+    const userRes = await pool.query(
+      `SELECT u.id, r.nombre AS rol FROM usuarios u JOIN roles r ON u.rol_id = r.id WHERE u.id = $1`,
+      [req.params.id]
+    );
+    if (userRes.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    if (userRes.rows[0].rol === 'tmk') {
+      const leadsRes = await pool.query(
+        `SELECT COUNT(*)::integer AS pendientes FROM leads WHERE tmk_id = $1 AND estado IN ('pendiente', 'tentativa')`,
+        [req.params.id]
+      );
+      const pendientes = leadsRes.rows[0].pendientes;
+      if (pendientes > 0) {
+        return res.status(409).json({
+          error: 'requiere_reasignacion',
+          leads_pendientes: pendientes,
+          message: `Este TMK tiene ${pendientes} leads pendientes. Reasígnelos antes de inactivar.`,
+        });
+      }
     }
 
     const result = await pool.query(
@@ -206,14 +228,50 @@ router.delete('/usuarios/:id', requireAdmin, async (req, res) => {
       [req.params.id]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuario no encontrado' });
-    }
-
     res.json({ message: 'Usuario desactivado correctamente', id: result.rows[0].id });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al desactivar usuario' });
+  }
+});
+
+// POST /api/admin/usuarios/:id/reasignar — reasignar leads de un TMK a otros TMKs activos
+router.post('/usuarios/:id/reasignar', requireAdmin, async (req, res) => {
+  try {
+    const tmkId = req.params.id;
+    // Obtener leads pendientes del TMK
+    const leadsRes = await pool.query(
+      `SELECT id, sala_id FROM leads WHERE tmk_id = $1 AND estado IN ('pendiente', 'tentativa')`,
+      [tmkId]
+    );
+    if (leadsRes.rows.length === 0) {
+      return res.json({ reasignados: 0 });
+    }
+
+    // Obtener TMKs activos de la misma sala (o todas las salas)
+    const tmkSala = (await pool.query('SELECT sala_id FROM usuarios WHERE id = $1', [tmkId])).rows[0]?.sala_id;
+    const tmksRes = await pool.query(
+      `SELECT id FROM usuarios u JOIN roles r ON u.rol_id = r.id
+       WHERE r.nombre = 'tmk' AND u.activo = true AND u.id != $1
+         AND ($2::integer IS NULL OR u.sala_id = $2)`,
+      [tmkId, tmkSala]
+    );
+    if (tmksRes.rows.length === 0) {
+      return res.status(400).json({ error: 'No hay otros TMKs activos para reasignar' });
+    }
+
+    const tmkIds = tmksRes.rows.map(t => t.id);
+    let idx = 0;
+    for (const lead of leadsRes.rows) {
+      const nuevoTmk = tmkIds[idx % tmkIds.length];
+      await pool.query('UPDATE leads SET tmk_id = $1, updated_at = NOW() WHERE id = $2', [nuevoTmk, lead.id]);
+      idx++;
+    }
+
+    res.json({ reasignados: leadsRes.rows.length, tmks_destino: tmkIds.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 });
 

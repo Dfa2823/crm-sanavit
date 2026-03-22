@@ -13,7 +13,6 @@ const ESTADO_BADGE = {
   inasistencia:'badge-red',
   tour:        'badge-green',
   no_tour:     'badge-yellow',
-  no_show:     'badge-gray',
 }
 
 const ESTADO_LABEL = {
@@ -24,7 +23,6 @@ const ESTADO_LABEL = {
   inasistencia:'🚫 Inasistencia',
   tour:        '🟢 TOUR',
   no_tour:     '🔴 NO TOUR',
-  no_show:     '⚫ NO SHOW',
 }
 
 export default function TMKDashboard() {
@@ -34,6 +32,11 @@ export default function TMKDashboard() {
   const [loading, setLoading] = useState(true)
   const [mostrarForm, setMostrarForm] = useState(false)
   const [busqueda, setBusqueda] = useState('')
+  const [tipificaciones, setTipificaciones] = useState([])
+  const [editandoObs, setEditandoObs] = useState(null) // lead.id que está editando observación
+  const [obsTemp, setObsTemp] = useState('')
+  const [editandoRellamar, setEditandoRellamar] = useState(null) // lead.id que muestra date picker
+  const [fechaRellamar, setFechaRellamar] = useState('')
 
   const hoy = new Date().toISOString().split('T')[0]
 
@@ -51,11 +54,64 @@ export default function TMKDashboard() {
     }
   }, [usuario])
 
+  // Cargar tipificaciones para el dropdown inline
+  useEffect(() => {
+    apiLeads.configuracion().then(cfg => {
+      if (cfg?.tipificaciones) setTipificaciones(cfg.tipificaciones)
+    }).catch(console.error)
+  }, [])
+
+  // Cambiar tipificación inline
+  async function cambiarTipificacion(leadId, tipificacionId) {
+    try {
+      const tip = tipificaciones.find(t => t.id == tipificacionId)
+      await apiLeads.actualizar(leadId, { tipificacion_id: tipificacionId })
+      setLeads(prev => prev.map(l => l.id === leadId
+        ? { ...l, tipificacion_id: tipificacionId, tipificacion_nombre: tip?.nombre }
+        : l
+      ))
+      // Si la tipificación requiere fecha de rellamada, mostrar date picker
+      if (tip?.requiere_fecha_rellamar) {
+        setEditandoRellamar(leadId)
+        setFechaRellamar('')
+      }
+    } catch (err) { console.error(err) }
+  }
+
+  // Guardar fecha de rellamada
+  async function guardarFechaRellamar(leadId) {
+    if (!fechaRellamar) return
+    try {
+      await apiLeads.actualizar(leadId, { fecha_rellamar: fechaRellamar })
+      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, fecha_rellamar: fechaRellamar } : l))
+      setEditandoRellamar(null)
+      setFechaRellamar('')
+    } catch (err) { console.error(err) }
+  }
+
+  // Guardar observación rápida
+  async function guardarObservacion(leadId) {
+    try {
+      await apiLeads.actualizar(leadId, { observacion: obsTemp })
+      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, observacion: obsTemp } : l))
+      setEditandoObs(null)
+      setObsTemp('')
+    } catch (err) { console.error(err) }
+  }
+
   useEffect(() => {
     cargarLeads()
   }, [cargarLeads])
 
-  const leadsFiltrados = leads.filter(l => {
+  // Separar leads prioritarios (volver a llamar hoy o antes)
+  const leadsPrioridad = leads.filter(l =>
+    l.estado === 'pendiente' && l.fecha_rellamar && l.fecha_rellamar.split('T')[0] <= hoy
+  )
+  const leadsNormales = leads.filter(l =>
+    !(l.estado === 'pendiente' && l.fecha_rellamar && l.fecha_rellamar.split('T')[0] <= hoy)
+  )
+
+  const leadsFiltrados = [...leadsPrioridad, ...leadsNormales].filter(l => {
     if (!busqueda) return true
     const q = busqueda.toLowerCase()
     return (
@@ -153,16 +209,23 @@ export default function TMKDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {leadsFiltrados.map(lead => (
+                {leadsFiltrados.map(lead => {
+                  const esPrioridad = lead.estado === 'pendiente' && lead.fecha_rellamar && lead.fecha_rellamar.split('T')[0] <= hoy
+                  return (
                   <tr
                     key={lead.id}
-                    onClick={() => navigate(`/sala/cliente/${lead.persona_id}`)}
+                    className={esPrioridad ? 'bg-amber-50 border-l-4 border-l-amber-400' : ''}
                   >
-                    <td>
+                    <td className="cursor-pointer" onClick={() => navigate(`/sala/cliente/${lead.persona_id}`)}>
                       <div className="font-medium text-gray-800">
                         {lead.nombres} {lead.apellidos}
                       </div>
                       <div className="text-xs text-gray-400">{lead.ciudad}</div>
+                      {esPrioridad && (
+                        <span className="inline-block mt-0.5 text-[10px] font-bold text-amber-700 bg-amber-200 px-1.5 py-0.5 rounded">
+                          PENDIENTE HOY
+                        </span>
+                      )}
                     </td>
                     <td className="text-gray-600 font-mono whitespace-nowrap">
                       {lead.telefono}
@@ -180,7 +243,55 @@ export default function TMKDashboard() {
                     <td>
                       <span className="badge-blue badge">{lead.fuente_nombre}</span>
                     </td>
-                    <td className="text-gray-600">{lead.tipificacion_nombre}</td>
+                    <td onClick={e => e.stopPropagation()}>
+                      <select
+                        className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-teal-400 bg-white w-full max-w-[140px]"
+                        value={lead.tipificacion_id || ''}
+                        onChange={e => cambiarTipificacion(lead.id, e.target.value)}
+                      >
+                        <option value="">Sin tipificar</option>
+                        {tipificaciones.map(t => (
+                          <option key={t.id} value={t.id}>{t.nombre}</option>
+                        ))}
+                      </select>
+                      {/* Date picker para "Volver a llamar" */}
+                      {editandoRellamar === lead.id && (
+                        <div className="mt-1 flex gap-1">
+                          <input type="datetime-local"
+                            className="text-xs border border-amber-300 rounded px-2 py-1 flex-1 focus:outline-none focus:ring-1 focus:ring-amber-400 bg-amber-50"
+                            value={fechaRellamar}
+                            onChange={e => setFechaRellamar(e.target.value)}
+                            autoFocus
+                          />
+                          <button onClick={() => guardarFechaRellamar(lead.id)} className="text-xs text-amber-700 font-medium">OK</button>
+                          <button onClick={() => setEditandoRellamar(null)} className="text-xs text-gray-400">X</button>
+                        </div>
+                      )}
+                      {/* Observación rápida */}
+                      {editandoObs === lead.id ? (
+                        <div className="mt-1 flex gap-1">
+                          <input
+                            type="text"
+                            className="text-xs border border-gray-200 rounded px-2 py-1 flex-1 focus:outline-none focus:ring-1 focus:ring-teal-400"
+                            placeholder="Observación..."
+                            value={obsTemp}
+                            onChange={e => setObsTemp(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && guardarObservacion(lead.id)}
+                            autoFocus
+                          />
+                          <button onClick={() => guardarObservacion(lead.id)} className="text-xs text-teal-600 font-medium">OK</button>
+                          <button onClick={() => setEditandoObs(null)} className="text-xs text-gray-400">X</button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setEditandoObs(lead.id); setObsTemp(lead.observacion || '') }}
+                          className="mt-0.5 text-[10px] text-gray-400 hover:text-teal-600 block truncate max-w-[140px]"
+                          title={lead.observacion || 'Agregar observación'}
+                        >
+                          {lead.observacion ? `💬 ${lead.observacion}` : '+ Nota'}
+                        </button>
+                      )}
+                    </td>
                     <td className="text-gray-500 text-sm">
                       {lead.fecha_cita
                         ? new Date(lead.fecha_cita).toLocaleDateString('es-EC', {
@@ -208,7 +319,8 @@ export default function TMKDashboard() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

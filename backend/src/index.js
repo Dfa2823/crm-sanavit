@@ -16,6 +16,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Servir archivos estáticos (documentos subidos)
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // ── Middlewares de autenticación ───────────────────────────
 const authMiddleware = require('./middleware/auth');
 
@@ -42,13 +46,9 @@ app.use('/api/nomina',       authMiddleware, require('./routes/nomina'));
 app.use('/api/metas',        authMiddleware, require('./routes/metas'));
 app.use('/api/buscar',       authMiddleware, require('./routes/buscar'));
 
-const productosRouter = require('./routes/productos');
-const ventasRouter = require('./routes/ventas');
-const recibosRouter = require('./routes/recibos');
-
-app.use('/api/productos', productosRouter);
-app.use('/api/ventas', ventasRouter);
-app.use('/api/recibos', recibosRouter);
+app.use('/api/productos', authMiddleware, require('./routes/productos'));
+app.use('/api/ventas',    authMiddleware, require('./routes/ventas'));
+app.use('/api/recibos',   authMiddleware, require('./routes/recibos'));
 
 // ── Health check ───────────────────────────────────────────
 app.get('/health', (req, res) => {
@@ -56,13 +56,14 @@ app.get('/health', (req, res) => {
     status: 'ok',
     sistema: 'CRM Sanavit Ecuador',
     version: '2.0.0',
-    fase: 'Fase 19 — Timeline, Búsqueda Global, Notificaciones, Gráficos, Firma Digital',
+    fase: 'Fases 12–19 — Nómina, Metas, Timeline, Búsqueda Global, Notificaciones, Gráficos, Firma Digital, Dark Mode',
     timestamp: new Date().toISOString(),
     rutas: ['/api/auth','/api/personas','/api/leads','/api/citas','/api/kpis',
             '/api/admin','/api/cartera','/api/reportes','/api/outsourcing',
             '/api/comisiones','/api/sac','/api/supervisor','/api/inventario',
             '/api/productos','/api/ventas','/api/recibos',
-            '/api/alertas','/api/liquidaciones','/api/perfil','/api/nomina','/api/metas'],
+            '/api/alertas','/api/liquidaciones','/api/perfil','/api/importar',
+            '/api/nomina','/api/metas','/api/buscar'],
   });
 });
 

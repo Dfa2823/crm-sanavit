@@ -1,10 +1,124 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { getVenta360, updateEstadoVenta, updateNotasVenta, despacharProducto, anularVenta } from '../../api/ventas'
 import { createRecibo, anularRecibo } from '../../api/recibos'
 import { getFormasPago } from '../../api/admin'
 import { useToast } from '../../context/ToastContext'
+import client from '../../api/client'
+
+const TIPOS_DOC = [
+  { value: 'contrato_firmado', label: 'Contrato firmado' },
+  { value: 'acta_entrega', label: 'Acta de entrega' },
+  { value: 'acta_recepcion_credito', label: 'Acta recepcion credito' },
+  { value: 'soporte_pago', label: 'Soporte de pago' },
+  { value: 'cedula', label: 'Cedula del cliente' },
+  { value: 'otro', label: 'Otro documento' },
+]
+
+function TabDocumentos({ contratoId }) {
+  const { usuario } = useAuth()
+  const fileRef = useRef()
+  const [docs, setDocs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [tipoDoc, setTipoDoc] = useState('contrato_firmado')
+
+  useEffect(() => {
+    client.get(`/api/ventas/${contratoId}/documentos`)
+      .then(r => setDocs(r.data))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [contratoId])
+
+  const subirArchivo = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setUploading(true)
+    const formData = new FormData()
+    formData.append('archivo', file)
+    formData.append('tipo', tipoDoc)
+    try {
+      const r = await client.post(`/api/ventas/${contratoId}/documentos`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      setDocs(prev => [r.data, ...prev])
+    } catch (err) { console.error(err) }
+    finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  const eliminar = async (docId) => {
+    if (!confirm('Eliminar este documento?')) return
+    try {
+      await client.delete(`/api/ventas/${contratoId}/documentos/${docId}`)
+      setDocs(prev => prev.filter(d => d.id !== docId))
+    } catch (err) { console.error(err) }
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <select value={tipoDoc} onChange={e => setTipoDoc(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+          {TIPOS_DOC.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+        <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors
+          ${uploading ? 'bg-gray-300 text-gray-500' : 'bg-teal-600 text-white hover:bg-teal-700'}`}>
+          {uploading ? 'Subiendo...' : '📎 Subir archivo'}
+          <input ref={fileRef} type="file" className="hidden" onChange={subirArchivo} disabled={uploading}
+            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+        </label>
+      </div>
+
+      {loading ? (
+        <div className="p-8 text-center text-gray-400">Cargando documentos...</div>
+      ) : docs.length === 0 ? (
+        <div className="p-8 text-center text-gray-400">
+          <div className="text-3xl mb-2">📁</div>
+          <p className="text-sm">No hay documentos adjuntos</p>
+        </div>
+      ) : (
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th className="text-left px-4 py-2 font-semibold text-gray-600">Tipo</th>
+              <th className="text-left px-4 py-2 font-semibold text-gray-600">Archivo</th>
+              <th className="text-left px-4 py-2 font-semibold text-gray-600">Subido por</th>
+              <th className="text-left px-4 py-2 font-semibold text-gray-600">Fecha</th>
+              <th className="text-center px-4 py-2 font-semibold text-gray-600"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {docs.map(d => (
+              <tr key={d.id} className="border-b border-gray-50 hover:bg-gray-50">
+                <td className="px-4 py-2">
+                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                    {TIPOS_DOC.find(t => t.value === d.tipo)?.label || d.tipo}
+                  </span>
+                </td>
+                <td className="px-4 py-2 text-gray-700">{d.nombre_archivo}</td>
+                <td className="px-4 py-2 text-gray-500 text-xs">{d.uploaded_by_nombre || '—'}</td>
+                <td className="px-4 py-2 text-gray-500 text-xs">{new Date(d.created_at).toLocaleDateString('es-EC')}</td>
+                <td className="px-4 py-2 text-center">
+                  <div className="flex items-center gap-2 justify-center">
+                    <a href={d.url} target="_blank" rel="noreferrer"
+                      className="text-teal-600 hover:text-teal-800 text-xs font-medium">Descargar</a>
+                    {['admin','director'].includes(usuario?.rol) && (
+                      <button onClick={() => eliminar(d.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
 
 function fmt(val) {
   if (val === null || val === undefined) return '—'
@@ -25,6 +139,7 @@ const TABS = [
   { key: 'productos',  label: '🛒 Productos' },
   { key: 'cartera',    label: '💳 Cartera' },
   { key: 'pagos',      label: '💰 Pagos' },
+  { key: 'documentos', label: '📎 Documentos' },
 ]
 
 export default function Venta360Page() {
@@ -216,6 +331,29 @@ export default function Venta360Page() {
               className="border border-red-400 text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-sm disabled:opacity-60 flex items-center gap-1"
             >
               🚫 Caída en Mesa
+            </button>
+          )}
+
+          {/* Botón Refinanciar — solo admin/director/asesor_cartera, contrato activo sin refinanciación previa */}
+          {['admin','director','asesor_cartera'].includes(usuario?.rol) &&
+           contrato.estado === 'activo' && (
+            <button
+              onClick={() => {
+                const cuotas = prompt('¿Cuántas cuotas nuevas? (ej: 6)')
+                const fecha = prompt('Fecha primer pago nueva (YYYY-MM-DD):')
+                if (!cuotas || !fecha) return
+                client.post(`/api/cartera/refinanciar/${id}`, {
+                  n_cuotas_nuevas: Number(cuotas),
+                  fecha_primer_pago: fecha,
+                  motivo: 'Refinanciación solicitada por el cliente'
+                }).then(() => {
+                  alert('Contrato refinanciado exitosamente')
+                  cargar()
+                }).catch(err => alert(err.response?.data?.error || 'Error al refinanciar'))
+              }}
+              className="border border-blue-400 text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"
+            >
+              🔄 Refinanciar
             </button>
           )}
 
@@ -622,6 +760,9 @@ export default function Venta360Page() {
         </div>
       </div>
     </div>
+
+    {/* TAB: Documentos */}
+    {tab === 'documentos' && <TabDocumentos contratoId={id} />}
 
     {/* ── Drawer: Registrar Pago ── */}
     {mostrarPago && (

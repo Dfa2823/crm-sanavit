@@ -79,8 +79,10 @@ router.get('/', auth, async (req, res) => {
     const result = await pool.query(`
       ${buildLeadSelect()}
       ${whereStr}
-      ORDER BY l.created_at DESC
-      LIMIT 100
+      ORDER BY
+        CASE WHEN l.estado = 'pendiente' AND l.fecha_rellamar IS NOT NULL AND l.fecha_rellamar::date <= CURRENT_DATE THEN 0 ELSE 1 END,
+        l.created_at DESC
+      LIMIT 200
     `, params);
 
     res.json(result.rows);
@@ -121,7 +123,7 @@ router.get('/citas', auth, async (req, res) => {
     const result = await pool.query(`
       ${buildLeadSelect()}
       WHERE l.fecha_cita BETWEEN $1::date AND ($2::date + INTERVAL '1 day')
-        AND l.estado IN ('confirmada','tentativa','tour','no_tour','no_show')
+        AND l.estado IN ('confirmada','tentativa','tour','no_tour')
         AND ($3::integer IS NULL OR l.sala_id = $3)
       ORDER BY l.fecha_cita ASC
     `, [inicioFinal, finFinal, salaId || null]);
@@ -238,7 +240,7 @@ router.post('/', auth, async (req, res) => {
 
 // PATCH /api/leads/:id — actualizar estado, confirmar, etc.
 router.patch('/:id', auth, async (req, res) => {
-  const { estado, fecha_cita, fecha_rellamar, confirmador_id, observacion, tmk_id } = req.body;
+  const { estado, fecha_cita, fecha_rellamar, confirmador_id, observacion, tmk_id, tipificacion_id } = req.body;
 
   const allowed = ['admin','director','supervisor_cc','confirmador','tmk','hostess','outsourcing'];
   if (!allowed.includes(req.user.rol)) {
@@ -250,12 +252,13 @@ router.patch('/:id', auth, async (req, res) => {
     const params = [];
     let idx = 1;
 
-    if (estado !== undefined)         { updates.push(`estado = $${idx++}`);          params.push(estado); }
-    if (fecha_cita !== undefined)     { updates.push(`fecha_cita = $${idx++}`);      params.push(fecha_cita); }
-    if (fecha_rellamar !== undefined) { updates.push(`fecha_rellamar = $${idx++}`);  params.push(fecha_rellamar); }
-    if (confirmador_id !== undefined) { updates.push(`confirmador_id = $${idx++}`);  params.push(confirmador_id); }
-    if (observacion !== undefined)    { updates.push(`observacion = $${idx++}`);     params.push(observacion); }
-    if (tmk_id !== undefined)         { updates.push(`tmk_id = $${idx++}`);          params.push(tmk_id); }
+    if (estado !== undefined)           { updates.push(`estado = $${idx++}`);           params.push(estado); }
+    if (fecha_cita !== undefined)       { updates.push(`fecha_cita = $${idx++}`);       params.push(fecha_cita); }
+    if (fecha_rellamar !== undefined)   { updates.push(`fecha_rellamar = $${idx++}`);   params.push(fecha_rellamar); }
+    if (confirmador_id !== undefined)   { updates.push(`confirmador_id = $${idx++}`);   params.push(confirmador_id); }
+    if (observacion !== undefined)      { updates.push(`observacion = $${idx++}`);      params.push(observacion); }
+    if (tmk_id !== undefined)           { updates.push(`tmk_id = $${idx++}`);           params.push(tmk_id); }
+    if (tipificacion_id !== undefined)  { updates.push(`tipificacion_id = $${idx++}`);  params.push(tipificacion_id); }
 
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No hay campos para actualizar' });

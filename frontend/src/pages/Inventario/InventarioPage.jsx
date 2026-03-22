@@ -289,8 +289,6 @@ function DrawerMovimiento({ abierto, onClose, productoInicial, stockData, onExit
             <div className="grid grid-cols-3 gap-2">
               {[
                 { value: 'entrada', label: 'Entrada',  icon: 'E', cls: 'border-green-400 bg-green-50 text-green-700' },
-                { value: 'salida',  label: 'Salida',   icon: 'S', cls: 'border-red-400 bg-red-50 text-red-700' },
-                { value: 'ajuste',  label: 'Ajuste',   icon: 'A', cls: 'border-blue-400 bg-blue-50 text-blue-700' },
               ].map(opt => (
                 <button
                   key={opt.value}
@@ -687,8 +685,6 @@ export default function InventarioPage() {
               >
                 <option value="">Todos</option>
                 <option value="entrada">Entrada</option>
-                <option value="salida">Salida</option>
-                <option value="ajuste">Ajuste</option>
               </select>
             </div>
             <div>

@@ -52,8 +52,6 @@ const ESTADO_COLORES = {
   TOUR:       'bg-green-200 text-green-800',
   no_tour:    'bg-red-100 text-red-700',
   NO_TOUR:    'bg-red-100 text-red-700',
-  no_show:    'bg-gray-100 text-gray-600',
-  NO_SHOW:    'bg-gray-100 text-gray-600',
   activo:     'bg-green-100 text-green-700',
   completado: 'bg-blue-100 text-blue-700',
   suspendido: 'bg-yellow-100 text-yellow-700',

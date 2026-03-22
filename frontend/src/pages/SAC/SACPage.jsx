@@ -602,16 +602,135 @@ function DrawerVerTicket({ ticket, onClose, onUpdated, usuario, usuariosList }) 
 }
 
 // ─── Página principal ─────────────────────────────────────
+// ─── Sub-módulo Control de Calidad ─────────────────────────────
+function TabControlCalidad() {
+  const [contratos, setContratos] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [activando, setActivando] = useState(null)
+
+  useEffect(() => {
+    client.get('/api/sac/control-calidad').then(r => setContratos(r.data)).catch(console.error).finally(() => setLoading(false))
+  }, [])
+
+  const activar = async (id) => {
+    setActivando(id)
+    try {
+      await client.post(`/api/sac/activar/${id}`)
+      setContratos(prev => prev.filter(c => c.id !== id))
+    } catch (err) { console.error(err) }
+    finally { setActivando(null) }
+  }
+
+  if (loading) return <div className="p-8 text-center text-gray-400">Cargando...</div>
+  if (!contratos.length) return <div className="p-12 text-center text-gray-400"><div className="text-4xl mb-3">✅</div><p className="font-medium">No hay ventas pendientes de activar</p><p className="text-sm mt-1">Todas las ventas de 5+ dias ya fueron verificadas</p></div>
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 border-b border-gray-100">
+          <tr>
+            <th className="text-left px-4 py-3 font-semibold text-gray-600">Cliente</th>
+            <th className="text-left px-4 py-3 font-semibold text-gray-600">Contrato</th>
+            <th className="text-center px-4 py-3 font-semibold text-gray-600">Dias</th>
+            <th className="text-right px-4 py-3 font-semibold text-gray-600">Monto</th>
+            <th className="text-left px-4 py-3 font-semibold text-gray-600">Consultor</th>
+            <th className="text-center px-4 py-3 font-semibold text-gray-600">Accion</th>
+          </tr>
+        </thead>
+        <tbody>
+          {contratos.map(c => (
+            <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
+              <td className="px-4 py-3"><div className="font-medium text-gray-800">{c.nombres} {c.apellidos}</div><div className="text-xs text-gray-400">{c.telefono}</div></td>
+              <td className="px-4 py-3 font-mono text-xs text-teal-700 font-bold">{c.numero_contrato}</td>
+              <td className="px-4 py-3 text-center"><span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-semibold">{c.dias_desde_venta}d</span></td>
+              <td className="px-4 py-3 text-right font-semibold text-gray-800">${Number(c.monto_total).toFixed(2)}</td>
+              <td className="px-4 py-3 text-sm text-gray-500">{c.consultor_nombre || '—'}</td>
+              <td className="px-4 py-3 text-center">
+                <button onClick={() => activar(c.id)} disabled={activando === c.id} className="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-xs font-medium disabled:opacity-50">
+                  {activando === c.id ? 'Activando...' : '✅ Activar venta'}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ─── Sub-módulo Fidelización ─────────────────────────────────
+function TabFidelizacion() {
+  const [clientes, setClientes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [citando, setCitando] = useState(null)
+
+  useEffect(() => {
+    client.get('/api/sac/fidelizacion').then(r => setClientes(r.data)).catch(console.error).finally(() => setLoading(false))
+  }, [])
+
+  const recitar = async (personaId) => {
+    setCitando(personaId)
+    try {
+      await client.post(`/api/sac/recitar/${personaId}`)
+      setClientes(prev => prev.filter(c => c.persona_id !== personaId))
+    } catch (err) { console.error(err) }
+    finally { setCitando(null) }
+  }
+
+  if (loading) return <div className="p-8 text-center text-gray-400">Cargando...</div>
+  if (!clientes.length) return <div className="p-12 text-center text-gray-400"><div className="text-4xl mb-3">🎯</div><p className="font-medium">No hay clientes pendientes de re-cita</p><p className="text-sm mt-1">Los clientes de 90+ dias ya fueron contactados</p></div>
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 border-b border-gray-100">
+          <tr>
+            <th className="text-left px-4 py-3 font-semibold text-gray-600">Cliente</th>
+            <th className="text-left px-4 py-3 font-semibold text-gray-600">Contrato</th>
+            <th className="text-center px-4 py-3 font-semibold text-gray-600">Dias desde venta</th>
+            <th className="text-right px-4 py-3 font-semibold text-gray-600">Monto</th>
+            <th className="text-center px-4 py-3 font-semibold text-gray-600">Accion</th>
+          </tr>
+        </thead>
+        <tbody>
+          {clientes.map(c => (
+            <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
+              <td className="px-4 py-3"><div className="font-medium text-gray-800">{c.nombres} {c.apellidos}</div><div className="text-xs text-gray-400">{c.telefono}</div></td>
+              <td className="px-4 py-3 font-mono text-xs text-teal-700 font-bold">{c.numero_contrato}</td>
+              <td className="px-4 py-3 text-center"><span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-semibold">{c.dias_desde_venta}d</span></td>
+              <td className="px-4 py-3 text-right font-semibold text-gray-800">${Number(c.monto_total).toFixed(2)}</td>
+              <td className="px-4 py-3 text-center">
+                <button onClick={() => recitar(c.persona_id)} disabled={citando === c.persona_id} className="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 text-xs font-medium disabled:opacity-50">
+                  {citando === c.persona_id ? 'Citando...' : '📅 Citar de nuevo'}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ─── Página principal SAC ──────────────────────────────────────
+
+const SAC_TABS = [
+  { key: 'calidad',       label: 'Control de Calidad', icon: '🔍' },
+  { key: 'pqr',           label: 'PQR',                icon: '📋' },
+  { key: 'fidelizacion',  label: 'Fidelización',       icon: '🎯' },
+]
+
 export default function SACPage() {
   const { usuario } = useAuth()
 
+  const [tabActivo, setTabActivo] = useState('calidad')
   const [tickets, setTickets]     = useState([])
   const [stats, setStats]         = useState(null)
   const [usuarios, setUsuarios]   = useState([])
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
 
-  // Filtros
+  // Filtros (solo para tab PQR)
   const [filtroEstado, setFiltroEstado]     = useState('')
   const [filtroTipo, setFiltroTipo]         = useState('')
   const [filtroPrioridad, setFiltroPrioridad] = useState('')
@@ -673,17 +792,53 @@ export default function SACPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">SAC / PQR</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Servicio al Cliente — Peticiones, Quejas y Reclamos</p>
+          <h1 className="text-2xl font-bold text-gray-800">Servicio al Cliente</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Control de Calidad — PQR — Fidelización</p>
         </div>
+        {tabActivo === 'pqr' && (
         <button
           onClick={() => setDrawerNuevo(true)}
           className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 text-sm font-medium flex items-center gap-2"
         >
           + Nuevo Ticket
         </button>
+        )}
       </div>
 
+      {/* Tabs SAC */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+        {SAC_TABS.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setTabActivo(tab.key)}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all
+              ${tabActivo === tab.key ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            <span>{tab.icon}</span> {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Render del tab activo */}
+      {tabActivo === 'calidad' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h2 className="font-semibold text-gray-700">Ventas pendientes de activar (5+ dias)</h2>
+          </div>
+          <TabControlCalidad />
+        </div>
+      )}
+
+      {tabActivo === 'fidelizacion' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h2 className="font-semibold text-gray-700">Clientes para re-citar (90+ dias)</h2>
+          </div>
+          <TabFidelizacion />
+        </div>
+      )}
+
+      {tabActivo === 'pqr' && (<>
       {/* Stat Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
@@ -868,6 +1023,8 @@ export default function SACPage() {
           )}
         </div>
       )}
+
+      </>)}
 
       {/* Drawer: Nuevo Ticket */}
       {drawerNuevo && (

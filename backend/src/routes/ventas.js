@@ -19,6 +19,24 @@ async function initMigrations() {
     await pool.query(`
       ALTER TABLE formas_pago ADD COLUMN IF NOT EXISTS requiere_referencia BOOLEAN DEFAULT false;
     `);
+    // Tabla de documentos adjuntos por contrato
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS documentos_contrato (
+        id SERIAL PRIMARY KEY,
+        contrato_id INTEGER REFERENCES contratos(id) NOT NULL,
+        persona_id INTEGER REFERENCES personas(id),
+        tipo VARCHAR(50) NOT NULL DEFAULT 'otro',
+        nombre_archivo VARCHAR(255) NOT NULL,
+        url TEXT NOT NULL,
+        uploaded_by INTEGER REFERENCES usuarios(id),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    // Soporte de pago en recibos
+    await pool.query(`
+      ALTER TABLE recibos ADD COLUMN IF NOT EXISTS soporte_url TEXT;
+      ALTER TABLE recibos ADD COLUMN IF NOT EXISTS soporte_nombre VARCHAR(255);
+    `);
     // Marcar formas de pago que requieren referencia
     await pool.query(`
       UPDATE formas_pago SET requiere_referencia = true
@@ -392,6 +410,87 @@ router.patch('/:id/notas', auth, async (req, res) => {
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Contrato no encontrado' });
     res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── DOCUMENTOS POR CONTRATO ─────────────────────────────────────────────────
+
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+const uploadDir = path.join(__dirname, '../../uploads/documentos');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `doc_${req.params.id}_${Date.now()}${ext}`);
+  },
+});
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB
+
+// GET /api/ventas/:id/documentos
+router.get('/:id/documentos', auth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT d.*, u.nombre AS uploaded_by_nombre
+      FROM documentos_contrato d
+      LEFT JOIN usuarios u ON d.uploaded_by = u.id
+      WHERE d.contrato_id = $1
+      ORDER BY d.created_at DESC
+    `, [req.params.id]);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/ventas/:id/documentos
+router.post('/:id/documentos', auth, upload.single('archivo'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Archivo requerido' });
+
+  const { tipo = 'otro' } = req.body;
+  const contratoId = req.params.id;
+  const url = `/uploads/documentos/${req.file.filename}`;
+
+  try {
+    // Obtener persona_id del contrato
+    const cRes = await pool.query('SELECT persona_id FROM contratos WHERE id = $1', [contratoId]);
+    const personaId = cRes.rows[0]?.persona_id || null;
+
+    const result = await pool.query(`
+      INSERT INTO documentos_contrato (contrato_id, persona_id, tipo, nombre_archivo, url, uploaded_by)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `, [contratoId, personaId, tipo, req.file.originalname, url, req.user.id]);
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/ventas/:id/documentos/:docId
+router.delete('/:id/documentos/:docId', auth, async (req, res) => {
+  if (!['admin', 'director'].includes(req.user.rol)) {
+    return res.status(403).json({ error: 'Solo admin puede eliminar documentos' });
+  }
+  try {
+    const result = await pool.query(
+      'DELETE FROM documentos_contrato WHERE id = $1 AND contrato_id = $2 RETURNING *',
+      [req.params.docId, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Documento no encontrado' });
+
+    // Eliminar archivo físico
+    const filePath = path.join(__dirname, '../..', result.rows[0].url);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

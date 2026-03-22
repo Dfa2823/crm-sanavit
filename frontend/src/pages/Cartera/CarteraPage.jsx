@@ -123,8 +123,19 @@ function AgingCard({ titulo, count, monto, bgCls, textCls, borderCls }) {
 }
 
 // ─────────────────── Modal / inline panel de gestión ─────────────────────────
+const TIPIF_CARTERA = [
+  { value: 'contactado',     label: 'Contactado' },
+  { value: 'promesa_pago',   label: 'Promesa de pago' },
+  { value: 'no_contesta',    label: 'No contesta' },
+  { value: 'buzon',          label: 'Buzón' },
+  { value: 'numero_errado',  label: 'Número errado' },
+  { value: 'volver_a_llamar',label: 'Volver a llamar' },
+  { value: 'pagado',         label: 'Ya pagó' },
+]
+
 function PanelGestion({ cuota, onClose, onSaved }) {
   const [observacion, setObservacion] = useState(cuota.observacion_gestion || '')
+  const [tipificacion, setTipificacion] = useState(cuota.tipificacion_cartera || '')
   const [saving, setSaving]           = useState(false)
   const [error, setError]             = useState('')
 
@@ -132,8 +143,8 @@ function PanelGestion({ cuota, onClose, onSaved }) {
     setSaving(true)
     setError('')
     try {
-      await updateGestion(cuota.cuota_id, { observacion })
-      onSaved(cuota.cuota_id, observacion)
+      await updateGestion(cuota.cuota_id, { observacion, tipificacion_cartera: tipificacion })
+      onSaved(cuota.cuota_id, observacion, tipificacion)
       onClose()
     } catch (err) {
       setError(err.response?.data?.error || err.message)
@@ -158,9 +169,20 @@ function PanelGestion({ cuota, onClose, onSaved }) {
         </div>
 
         <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Tipificación de gestión</label>
+          <select
+            value={tipificacion}
+            onChange={e => setTipificacion(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 mb-3"
+          >
+            <option value="">Seleccionar...</option>
+            {TIPIF_CARTERA.map(t => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
           <label className="block text-xs font-medium text-gray-500 mb-1">Observación de gestión</label>
           <textarea
-            rows={4}
+            rows={3}
             value={observacion}
             onChange={e => setObservacion(e.target.value)}
             placeholder="Ej: Contactado por WhatsApp, prometió pago el lunes..."
@@ -371,10 +393,10 @@ export default function CarteraPage() {
     return nombre.includes(term) || telefono.includes(term) || contrato.includes(term)
   })
 
-  // Actualizar observación en lista local tras guardar
-  const handleGestionSaved = (cuotaId, observacion) => {
+  // Actualizar observación y tipificación en lista local tras guardar
+  const handleGestionSaved = (cuotaId, observacion, tipificacion) => {
     setCuotas(prev =>
-      prev.map(c => c.cuota_id === cuotaId ? { ...c, observacion_gestion: observacion } : c)
+      prev.map(c => c.cuota_id === cuotaId ? { ...c, observacion_gestion: observacion, tipificacion_cartera: tipificacion } : c)
     )
   }
 
@@ -536,6 +558,7 @@ export default function CarteraPage() {
                       <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Días</th>
                       <th className="text-right px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Saldo</th>
                       <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Tramo</th>
+                      <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Gestión</th>
                       <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Consultor</th>
                       <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Acciones</th>
                     </tr>
@@ -614,6 +637,24 @@ export default function CarteraPage() {
                         {/* Tramo */}
                         <td className="px-4 py-3 text-center">
                           <BadgeTramo tramo={c.tramo_mora} />
+                        </td>
+
+                        {/* Gestión / Tipificación */}
+                        <td className="px-4 py-3 text-center">
+                          {c.tipificacion_cartera ? (
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                              c.tipificacion_cartera === 'volver_a_llamar' ? 'bg-amber-100 text-amber-700' :
+                              c.tipificacion_cartera === 'promesa_pago' ? 'bg-blue-100 text-blue-700' :
+                              c.tipificacion_cartera === 'contactado' ? 'bg-green-100 text-green-700' :
+                              c.tipificacion_cartera === 'no_contesta' ? 'bg-gray-100 text-gray-600' :
+                              c.tipificacion_cartera === 'pagado' ? 'bg-emerald-100 text-emerald-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>
+                              {TIPIF_CARTERA.find(t => t.value === c.tipificacion_cartera)?.label || c.tipificacion_cartera}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-gray-300">—</span>
+                          )}
                         </td>
 
                         {/* Consultor */}

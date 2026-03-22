@@ -14,7 +14,6 @@ const ESTADO_LEAD_COLOR = {
   tour:       'bg-teal-100 text-teal-800',
   no_tour:    'bg-orange-100 text-orange-800',
   cancelada:  'bg-red-100 text-red-800',
-  no_show:    'bg-gray-100 text-gray-800',
   pendiente:  'bg-blue-100 text-blue-800',
   tentativa:  'bg-yellow-100 text-yellow-800',
   inasistencia: 'bg-red-100 text-red-800',

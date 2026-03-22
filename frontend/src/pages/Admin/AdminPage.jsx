@@ -1207,7 +1207,7 @@ function TabProductos() {
   const [modalEditar, setModalEditar] = useState(null)
   const [guardando, setGuardando]   = useState(false)
 
-  const formVacio = { codigo: '', nombre: '', tipo: 'servicio', precio_venta: '', tiene_iva: false, descripcion: '' }
+  const formVacio = { codigo: '', nombre: '', tipo: 'servicio', precio_venta: '', precio_compra: '', iva_porcentaje: '15', tiene_iva: false, descripcion: '', laboratorio: '', lote: '', fecha_vencimiento: '' }
   const [form, setForm] = useState(formVacio)
   const [formEditar, setFormEditar] = useState(formVacio)
 
@@ -1234,6 +1234,9 @@ function TabProductos() {
       await createProducto({
         ...form,
         precio_venta: form.precio_venta === '' ? null : Number(form.precio_venta),
+        precio_compra: form.precio_compra === '' ? null : Number(form.precio_compra),
+        iva_porcentaje: form.iva_porcentaje === '' ? 15 : Number(form.iva_porcentaje),
+        fecha_vencimiento: form.fecha_vencimiento || null,
       })
       setModalNuevo(false)
       setForm(formVacio)
@@ -1253,6 +1256,9 @@ function TabProductos() {
       await updateProducto(modalEditar.id, {
         ...formEditar,
         precio_venta: formEditar.precio_venta === '' ? null : Number(formEditar.precio_venta),
+        precio_compra: formEditar.precio_compra === '' ? null : Number(formEditar.precio_compra),
+        iva_porcentaje: formEditar.iva_porcentaje === '' ? 15 : Number(formEditar.iva_porcentaje),
+        fecha_vencimiento: formEditar.fecha_vencimiento || null,
       })
       setModalEditar(null)
       cargar()
@@ -1269,8 +1275,13 @@ function TabProductos() {
       nombre:       item.nombre      || '',
       tipo:         item.tipo        || 'servicio',
       precio_venta: item.precio_venta != null ? String(item.precio_venta) : '',
+      precio_compra: item.precio_compra != null ? String(item.precio_compra) : '',
+      iva_porcentaje: item.iva_porcentaje != null ? String(item.iva_porcentaje) : '15',
       tiene_iva:    item.tiene_iva   || false,
       descripcion:  item.descripcion || '',
+      laboratorio:  item.laboratorio || '',
+      lote:         item.lote        || '',
+      fecha_vencimiento: item.fecha_vencimiento ? item.fecha_vencimiento.split('T')[0] : '',
     })
     setModalEditar(item)
   }
@@ -1337,6 +1348,45 @@ function TabProductos() {
               <span className="text-sm font-medium text-gray-700">Incluye IVA</span>
             </label>
           </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Precio Compra (costo)</label>
+            <input type="number" min="0" step="0.01"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={values.precio_compra || ''}
+              onChange={e => onChange(f => ({ ...f, precio_compra: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">IVA %</label>
+            <input type="number" min="0" max="100" step="1"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={values.iva_porcentaje || '15'}
+              onChange={e => onChange(f => ({ ...f, iva_porcentaje: e.target.value }))} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Laboratorio</label>
+            <input type="text"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={values.laboratorio || ''}
+              onChange={e => onChange(f => ({ ...f, laboratorio: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Lote</label>
+            <input type="text"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={values.lote || ''}
+              onChange={e => onChange(f => ({ ...f, lote: e.target.value }))} />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de vencimiento</label>
+          <input type="date"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            value={values.fecha_vencimiento || ''}
+            onChange={e => onChange(f => ({ ...f, fecha_vencimiento: e.target.value }))} />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>

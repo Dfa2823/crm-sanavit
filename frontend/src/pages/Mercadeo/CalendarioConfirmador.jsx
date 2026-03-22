@@ -45,7 +45,6 @@ const ESTADO = {
   tentativa:  { color: '#fff', bg: '#d97706', label: 'Tentativa'  },
   tour:       { color: '#fff', bg: '#059669', label: 'Tour'       },
   no_tour:    { color: '#fff', bg: '#dc2626', label: 'No Tour'    },
-  no_show:    { color: '#fff', bg: '#6b7280', label: 'No Show'    },
 }
 
 // ─── Drawer detalle de cita ──────────────────────────────────────────────────
@@ -77,10 +76,12 @@ function DrawerCita({ lead, onClose, onActualizar }) {
     if (!nuevaFecha) return
     setGuardando(true)
     try {
+      // Al reagendar, el estado vuelve a tentativa (no confirmada)
       await apiLeads.actualizar(lead.id, {
         fecha_cita: `${nuevaFecha}T${nuevaHora || '09:00'}:00`,
+        estado: 'tentativa',
       })
-      addToast('Cita reprogramada')
+      addToast('Cita reagendada — requiere nueva confirmación')
       setEditFecha(false)
       onActualizar()
     } catch { addToast('Error al reprogramar', 'error') }
@@ -360,7 +361,6 @@ function PendientesVista() {
   const [loading, setLoading]       = useState(true)
   const [modal, setModal]           = useState(null)
   const [formConfirmar, setFormConfirmar] = useState({ fecha_cita: '', hora_cita: '' })
-  const [formReasignar, setFormReasignar] = useState({ tmk_id: '' })
   const [guardando, setGuardando]   = useState(false)
 
   const cargar = useCallback(async () => {
@@ -386,18 +386,6 @@ function PendientesVista() {
         fecha_cita: `${formConfirmar.fecha_cita}T${formConfirmar.hora_cita || '09:00'}:00`,
       })
       addToast('Cita confirmada y añadida al pre-manifiesto')
-      setModal(null)
-      cargar()
-    } catch (err) { console.error(err) }
-    finally { setGuardando(false) }
-  }
-
-  async function reasignarTmk() {
-    if (!formReasignar.tmk_id) return
-    setGuardando(true)
-    try {
-      await apiLeads.actualizar(modal.lead.id, { tmk_id: Number(formReasignar.tmk_id) })
-      addToast('TMK reasignado correctamente')
       setModal(null)
       cargar()
     } catch (err) { console.error(err) }
@@ -482,12 +470,7 @@ function PendientesVista() {
                           >
                             ✅ Confirmar cita
                           </button>
-                          <button
-                            onClick={() => { setModal({ tipo: 'reasignar', lead }); setFormReasignar({ tmk_id: '' }) }}
-                            className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg whitespace-nowrap"
-                          >
-                            Reasignar TMK
-                          </button>
+                          {/* Reasignar TMK eliminado — el confirmador resuelve el dato */}
                         </div>
                       </td>
                     </tr>
@@ -531,31 +514,7 @@ function PendientesVista() {
         </div>
       )}
 
-      {/* Modal Reasignar TMK */}
-      {modal?.tipo === 'reasignar' && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="font-bold text-gray-800 text-lg mb-1">Reasignar TMK</h3>
-            <p className="text-sm text-gray-500 mb-4">{modal.lead.nombres} {modal.lead.apellidos}</p>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Seleccionar nuevo TMK</label>
-              <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                value={formReasignar.tmk_id}
-                onChange={e => setFormReasignar({ tmk_id: e.target.value })}>
-                <option value="">Seleccionar TMK…</option>
-                {tmks.map(t => <option key={t.id} value={t.id}>{t.nombre} — {t.sala_nombre}</option>)}
-              </select>
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => setModal(null)} className="flex-1 text-sm border border-gray-200 rounded-xl py-2.5 hover:bg-gray-50">Cancelar</button>
-              <button onClick={reasignarTmk} disabled={guardando || !formReasignar.tmk_id}
-                className="flex-1 text-sm bg-teal-500 hover:bg-teal-600 text-white rounded-xl py-2.5 font-medium disabled:opacity-50">
-                {guardando ? 'Guardando…' : 'Reasignar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal Reasignar TMK eliminado */}
     </>
   )
 }

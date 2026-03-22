@@ -22,7 +22,6 @@ function exportarManifiestoPDF(citas, hoyStr) {
 
   const tours   = citas.filter(c => c.calificacion === 'TOUR').length
   const noTours = citas.filter(c => c.calificacion === 'NO_TOUR').length
-  const noShows = citas.filter(c => c.calificacion === 'NO_SHOW').length
   const sinCal  = citas.filter(c => !c.calificacion).length
 
   const html = `<!DOCTYPE html><html lang="es"><head>
@@ -46,7 +45,6 @@ function exportarManifiestoPDF(citas, hoyStr) {
     <div class="stats">
       <div class="stat">${tours} <span>TOUR</span></div>
       <div class="stat">${noTours} <span>NO TOUR</span></div>
-      <div class="stat">${noShows} <span>NO SHOW</span></div>
       <div class="stat">${sinCal} <span>Por calificar</span></div>
     </div>
     <table>
@@ -97,7 +95,6 @@ function exportarManifiestoCSV(citas) {
 const CAL_LABEL = {
   TOUR:    { label: '🟢 TOUR',    cls: 'badge-green' },
   NO_TOUR: { label: '🔴 NO TOUR', cls: 'badge-red' },
-  NO_SHOW: { label: '⚫ NO SHOW', cls: 'badge-gray' },
 }
 
 const ESTADO_LABEL = {
@@ -105,7 +102,6 @@ const ESTADO_LABEL = {
   tentativa:   { label: '📋 Tentativa',  cls: 'badge-yellow' },
   tour:        { label: '🟢 TOUR',       cls: 'badge-green' },
   no_tour:     { label: '🔴 NO TOUR',    cls: 'badge-red' },
-  no_show:     { label: '⚫ NO SHOW',    cls: 'badge-gray' },
   inasistencia:{ label: '🚫 Inasistencia', cls: 'badge-gray' },
 }
 
@@ -182,7 +178,6 @@ export default function RecepcionPage() {
 
   const tours    = citas.filter(c => c.calificacion === 'TOUR').length
   const noTours  = citas.filter(c => c.calificacion === 'NO_TOUR').length
-  const noShows  = citas.filter(c => c.calificacion === 'NO_SHOW').length
   const sinCal   = citas.filter(c => !c.calificacion).length
 
   return (
@@ -373,7 +368,6 @@ export default function RecepcionPage() {
                 {[
                   { val: 'TOUR',    label: 'TOUR',    icon: '🟢', cls: 'border-green-400 bg-green-50 text-green-700' },
                   { val: 'NO_TOUR', label: 'NO TOUR', icon: '🔴', cls: 'border-red-400 bg-red-50 text-red-700' },
-                  { val: 'NO_SHOW', label: 'NO SHOW', icon: '⚫', cls: 'border-gray-400 bg-gray-50 text-gray-700' },
                 ].map(({ val, label, icon, cls }) => (
                   <button
                     key={val}

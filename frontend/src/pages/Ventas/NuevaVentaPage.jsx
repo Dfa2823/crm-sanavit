@@ -6,7 +6,7 @@ import { apiPersonas } from '../../api/personas'
 import { getProductos } from '../../api/productos'
 import { getSalas, getUsuarios, getFormasPago } from '../../api/admin'
 import { getEmpresas } from '../../api/outsourcing'
-import SignatureCanvas from 'react-signature-canvas'
+// Firma digital eliminada — en Ecuador se firma con tinta azul
 
 function fmt(val) {
   if (!val && val !== 0) return '$0.00'
@@ -54,16 +54,12 @@ export default function NuevaVentaPage() {
     cuota_inicial: '0',
     forma_pago_inicial_id: '',
     n_cuotas: '1',
-    dia_pago: '1',
     fecha_primer_pago: '',
   })
 
   // ── Estado UI ─────────────────────────────────────────────
   const [guardando, setGuardando] = useState(false)
   const [error, setError]         = useState('')
-  // Fase 19: Firma digital
-  const sigCanvasRef  = useRef(null)
-  const [firmaTouched, setFirmaTouched] = useState(false)
 
   // ── Cargar config al montar ───────────────────────────────
   useEffect(() => {
@@ -79,6 +75,10 @@ export default function NuevaVentaPage() {
       setFormasPago(Array.isArray(fp) ? fp.filter(f => f.activo) : [])
       setEmpresas(Array.isArray(emp) ? emp : [])
       setCatalogo(Array.isArray(prod) ? prod.filter(p => p.activo) : [])
+      // Preseleccionar sala del usuario logueado
+      if (user?.sala_id) {
+        setContrato(c => ({ ...c, sala_id: String(user.sala_id) }))
+      }
     }).catch(console.error)
   }, [])
 
@@ -213,12 +213,6 @@ export default function NuevaVentaPage() {
       const cuotaInicial = Number(plan.cuota_inicial) || 0
       const valorFinanciado = montoTotal - cuotaInicial
 
-      // Capturar firma si se dibujó
-      let firma_cliente = undefined
-      if (sigCanvasRef.current && !sigCanvasRef.current.isEmpty()) {
-        firma_cliente = sigCanvasRef.current.getTrimmedCanvas().toDataURL('image/png')
-      }
-
       const payload = {
         persona_id,
         sala_id: contrato.sala_id || undefined,
@@ -233,9 +227,7 @@ export default function NuevaVentaPage() {
         valor_financiado: valorFinanciado,
         forma_pago_inicial_id: plan.forma_pago_inicial_id || undefined,
         n_cuotas: contrato.tipo_plan !== 'pago_unico' ? Number(plan.n_cuotas) || 1 : 1,
-        dia_pago: contrato.tipo_plan !== 'pago_unico' ? Number(plan.dia_pago) || 1 : undefined,
         fecha_primer_pago: contrato.tipo_plan !== 'pago_unico' ? plan.fecha_primer_pago || fechaDefaultPrimerPago : undefined,
-        firma_cliente,
         productos: carrito.map(i => ({
           producto_id: i.producto_id,
           cantidad: Number(i.cantidad),
@@ -402,7 +394,8 @@ export default function NuevaVentaPage() {
               <label className="block text-xs font-medium text-gray-500 mb-1">Sala</label>
               <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 value={contrato.sala_id}
-                onChange={e => setContrato(c => ({ ...c, sala_id: e.target.value, consultor_id: '' }))}>
+                onChange={e => setContrato(c => ({ ...c, sala_id: e.target.value, consultor_id: '' }))}
+                disabled={!!user?.sala_id && !['admin','director'].includes(user?.rol)}>
                 <option value="">Seleccionar sala...</option>
                 {salas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
               </select>
@@ -421,21 +414,11 @@ export default function NuevaVentaPage() {
               <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 value={contrato.tipo_plan}
                 onChange={e => setContrato(c => ({ ...c, tipo_plan: e.target.value }))}>
-                <option value="mensual">Mensual</option>
-                <option value="trimestral">Trimestral</option>
-                <option value="anual">Anual</option>
-                <option value="pago_unico">Pago único</option>
+                <option value="mensual">Mensual (cuotas)</option>
+                <option value="pago_unico">Pago único (contado)</option>
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Outsourcing <span className="font-normal text-gray-400">(opcional)</span></label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                value={contrato.outsourcing_empresa_id}
-                onChange={e => setContrato(c => ({ ...c, outsourcing_empresa_id: e.target.value }))}>
-                <option value="">Ninguno</option>
-                {empresas.map(emp => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
-              </select>
-            </div>
+            {/* Outsourcing se asigna automáticamente desde el lead — no editable */}
           </div>
 
           <div className="flex items-center gap-3">
@@ -594,14 +577,7 @@ export default function NuevaVentaPage() {
                     value={plan.n_cuotas}
                     onChange={e => setPlan(p => ({ ...p, n_cuotas: e.target.value }))} />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Día de pago</label>
-                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    value={plan.dia_pago}
-                    onChange={e => setPlan(p => ({ ...p, dia_pago: e.target.value }))}>
-                    {diasPago.map(d => <option key={d} value={d}>Día {d}</option>)}
-                  </select>
-                </div>
+                {/* Día de pago se calcula automáticamente desde Fecha primer pago */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Primer pago</label>
                   <input type="date"
@@ -627,39 +603,15 @@ export default function NuevaVentaPage() {
           )}
         </div>
 
-        {/* ── SECCIÓN 5: Firma del cliente ── */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-3">
+        {/* ── SECCIÓN 5: Instrucciones de firma ── */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <h2 className="font-semibold text-gray-700 flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-teal-500 text-white text-xs flex items-center justify-center font-bold">5</span>
-            Firma del Cliente
-            <span className="text-xs font-normal text-gray-400">(opcional)</span>
+            Firma del Contrato
           </h2>
-          <p className="text-xs text-gray-500">El cliente puede firmar directamente en pantalla o con tablet/stylus.</p>
-          <div className="relative border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-gray-50"
-            style={{ touchAction: 'none' }}>
-            <SignatureCanvas
-              ref={sigCanvasRef}
-              penColor="#0f766e"
-              canvasProps={{ width: 600, height: 180, className: 'w-full' }}
-              onEnd={() => setFirmaTouched(true)}
-            />
-            {!firmaTouched && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <p className="text-gray-300 text-sm">✍️ Firmar aquí</p>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => { sigCanvasRef.current?.clear(); setFirmaTouched(false) }}
-              className="text-xs text-gray-500 hover:text-red-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:border-red-300 transition-colors"
-            >
-              🗑️ Limpiar firma
-            </button>
-            {firmaTouched && (
-              <span className="text-xs text-teal-600 font-medium">✅ Firma capturada</span>
-            )}
+          <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
+            <p className="font-medium mb-1">El cliente firma el contrato impreso con tinta azul</p>
+            <p className="text-xs text-blue-600">Imprima el contrato desde la vista de detalle y solicite la firma manuscrita del cliente.</p>
           </div>
         </div>
 

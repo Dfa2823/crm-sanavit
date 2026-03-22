@@ -23,6 +23,20 @@ async function initTable() {
 }
 initTable().catch(console.error);
 
+// Auto-migraciones: campos adicionales en productos
+(async () => {
+  try {
+    await pool.query(`
+      ALTER TABLE productos ADD COLUMN IF NOT EXISTS precio_compra NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE productos ADD COLUMN IF NOT EXISTS iva_porcentaje NUMERIC(5,2) DEFAULT 15;
+      ALTER TABLE productos ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
+      ALTER TABLE productos ADD COLUMN IF NOT EXISTS lote VARCHAR(50);
+      ALTER TABLE productos ADD COLUMN IF NOT EXISTS laboratorio VARCHAR(150);
+      ALTER TABLE productos ADD COLUMN IF NOT EXISTS foto_url TEXT;
+    `);
+  } catch (e) { /* ya existen */ }
+})();
+
 // Helper: calcula stock actual de un producto
 async function calcularStock(productoId) {
   const res = await pool.query(
@@ -231,16 +245,18 @@ router.post('/productos', auth, async (req, res) => {
   if (!['admin', 'director'].includes(rol)) {
     return res.status(403).json({ error: 'Sin permiso. Solo admin o director.' });
   }
-  const { codigo, nombre, tipo, descripcion, precio_venta } = req.body;
+  const { codigo, nombre, tipo, descripcion, precio_venta, precio_compra, iva_porcentaje, fecha_vencimiento, lote, laboratorio } = req.body;
   if (!nombre || !nombre.trim()) {
     return res.status(400).json({ error: 'El nombre del producto es requerido' });
   }
   try {
     const result = await pool.query(
-      `INSERT INTO productos (codigo, nombre, tipo, descripcion, precio_venta, activo)
-       VALUES ($1, $2, $3, $4, $5, true)
+      `INSERT INTO productos (codigo, nombre, tipo, descripcion, precio_venta, precio_compra, iva_porcentaje, fecha_vencimiento, lote, laboratorio, activo)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
        RETURNING *`,
-      [codigo || null, nombre.trim(), tipo || 'servicio', descripcion || null, Number(precio_venta) || 0]
+      [codigo || null, nombre.trim(), tipo || 'servicio', descripcion || null,
+       Number(precio_venta) || 0, Number(precio_compra) || 0, Number(iva_porcentaje) || 15,
+       fecha_vencimiento || null, lote || null, laboratorio || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -260,7 +276,7 @@ router.patch('/productos/:id', auth, async (req, res) => {
     return res.status(403).json({ error: 'Sin permiso. Solo admin o director.' });
   }
 
-  const allowedFields = ['nombre', 'descripcion', 'precio_venta', 'activo', 'codigo'];
+  const allowedFields = ['nombre', 'descripcion', 'precio_venta', 'precio_compra', 'iva_porcentaje', 'fecha_vencimiento', 'lote', 'laboratorio', 'activo', 'codigo'];
   const updates = [];
   const values  = [];
   let idx = 1;

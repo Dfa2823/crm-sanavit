@@ -6,7 +6,6 @@ const TABS = [
   { key: 'confirmadas',  label: 'Confirmadas',  icon: '✅', color: 'green' },
   { key: 'tentativas',   label: 'Tentativas',   icon: '📋', color: 'yellow' },
   { key: 'canceladas',   label: 'Canceladas',   icon: '❌', color: 'red' },
-  { key: 'inasistencias',label: 'Inasistencias',icon: '🚫', color: 'gray' },
 ]
 
 const TAB_STYLE = {

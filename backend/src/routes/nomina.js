@@ -41,6 +41,38 @@ pool.query(`
   )
 `).catch(console.error);
 
+// Auto-migraciones: columnas avanzadas de nómina
+(async () => {
+  try {
+    await pool.query(`
+      ALTER TABLE nomina_mensual ADD COLUMN IF NOT EXISTS comision_venta_recurrente NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE nomina_mensual ADD COLUMN IF NOT EXISTS comision_abonos_cartera NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE nomina_mensual ADD COLUMN IF NOT EXISTS comision_reactivaciones NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE nomina_mensual ADD COLUMN IF NOT EXISTS comisiones_suspendidas JSONB DEFAULT '[]';
+      ALTER TABLE nomina_mensual ADD COLUMN IF NOT EXISTS dias_trabajados INTEGER DEFAULT 0;
+      ALTER TABLE nomina_mensual ADD COLUMN IF NOT EXISTS dias_laborables INTEGER DEFAULT 0;
+      ALTER TABLE nomina_mensual ADD COLUMN IF NOT EXISTS garantizado NUMERIC(10,2) DEFAULT 0;
+    `);
+    // Tabla de asistencia
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS asistencia (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER REFERENCES usuarios(id) NOT NULL,
+        sala_id INTEGER REFERENCES salas(id),
+        fecha DATE NOT NULL,
+        hora_entrada TIME,
+        hora_salida TIME,
+        estado VARCHAR(20) DEFAULT 'presente'
+          CHECK (estado IN ('presente','ausente','tardanza','permiso','vacacion')),
+        justificacion TEXT,
+        registrado_por INTEGER REFERENCES usuarios(id),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(usuario_id, fecha)
+      )
+    `);
+  } catch (e) { /* ya existen */ }
+})();
+
 function requireAdminOrDirector(req, res, next) {
   if (!['admin', 'director'].includes(req.user.rol)) {
     return res.status(403).json({ error: 'No autorizado. Se requiere rol admin o director.' });
@@ -213,29 +245,79 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
         }
       }
 
+      // 2f. Asistencia — calcular días trabajados y garantizado
+      const asistRes = await pool.query(`
+        SELECT COUNT(*)::integer AS dias_trabajados
+        FROM asistencia
+        WHERE usuario_id = $1 AND TO_CHAR(fecha, 'YYYY-MM') = $2
+          AND estado IN ('presente', 'tardanza')
+      `, [u.id, mes]);
+      const dias_trabajados = parseInt(asistRes.rows[0]?.dias_trabajados) || 0;
+
+      // Días laborables del mes (L-V aproximado)
+      const [anio, mesNum] = mes.split('-').map(Number);
+      const diasEnMes = new Date(anio, mesNum, 0).getDate();
+      let dias_laborables = 0;
+      for (let d = 1; d <= diasEnMes; d++) {
+        const dow = new Date(anio, mesNum - 1, d).getDay();
+        if (dow !== 0 && dow !== 6) dias_laborables++;
+      }
+
+      // 2g. Comisión por abonos a cartera de meses anteriores
+      const abonosRes = await pool.query(`
+        SELECT COALESCE(SUM(r.valor), 0) * $3 / 100 AS comision_abonos
+        FROM recibos r
+        JOIN contratos c ON r.contrato_id = c.id
+        WHERE c.consultor_id = $1
+          AND TO_CHAR(r.fecha_pago, 'YYYY-MM') = $2
+          AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') != $2
+          AND r.estado = 'activo'
+          AND c.estado NOT IN ('cancelado')
+      `, [u.id, mes, u.pct_comision_venta]);
+
+      // 2h. Comisión por ventas reactivadas en el período
+      const reactivRes = await pool.query(`
+        SELECT COALESCE(SUM(COALESCE(pagado.total, 0)) * $3 / 100, 0) AS comision_react
+        FROM contratos c
+        LEFT JOIN (SELECT contrato_id, SUM(valor) AS total FROM recibos WHERE estado='activo' GROUP BY contrato_id) pagado ON pagado.contrato_id = c.id
+        WHERE c.consultor_id = $1
+          AND TO_CHAR(c.updated_at, 'YYYY-MM') = $2
+          AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') != $2
+          AND c.estado = 'activo'
+      `, [u.id, mes, u.pct_comision_venta]);
+
       // 3. Calcular totales
-      const sueldo_base          = parseFloat(u.sueldo_base);
-      const comision_ventas      = parseFloat(cvRes.rows[0].comision_ventas) || 0;
+      const sueldo_base_cfg      = parseFloat(u.sueldo_base);
+      // Garantizado: proporcional a días trabajados (si hay asistencia registrada)
+      const garantizado          = dias_trabajados > 0
+        ? parseFloat((sueldo_base_cfg * dias_trabajados / Math.max(dias_laborables, 1)).toFixed(2))
+        : sueldo_base_cfg; // Si no hay asistencia registrada, paga completo
+      const comision_venta_recurrente = parseFloat(cvRes.rows[0].comision_ventas) || 0;
+      const comision_abonos_cartera   = parseFloat(abonosRes.rows[0]?.comision_abonos) || 0;
+      const comision_reactivaciones   = parseFloat(reactivRes.rows[0]?.comision_react) || 0;
+      const comision_ventas      = comision_venta_recurrente + comision_abonos_cartera + comision_reactivaciones;
       const contratos_desbloq    = parseInt(cvRes.rows[0].contratos_desbloqueados) || 0;
       const comision_cobros      = parseFloat(ccRes.rows[0].comision_cobros) || 0;
       const tours_count          = parseInt(tourRes.rows[0].tours_count) || 0;
       const citas_count          = parseInt(citaRes.rows[0].citas_count) || 0;
       const bono_tours           = parseFloat((tours_count * parseFloat(u.bono_por_tour)).toFixed(2));
       const bono_citas           = parseFloat((citas_count * parseFloat(u.bono_por_cita)).toFixed(2));
-      const aporte_iess          = parseFloat((sueldo_base * 0.0945).toFixed(2));
-      const total_ingresos       = parseFloat((sueldo_base + comision_ventas + comision_cobros + bono_tours + bono_citas + bono_meta).toFixed(2));
+      const aporte_iess          = parseFloat((garantizado * 0.0945).toFixed(2)); // IESS solo sobre sueldo base/garantizado
+      const total_ingresos       = parseFloat((garantizado + comision_ventas + comision_cobros + bono_tours + bono_citas + bono_meta).toFixed(2));
       const total_deducciones    = aporte_iess;
       const neto_a_pagar         = parseFloat((total_ingresos - total_deducciones).toFixed(2));
 
       resultados.push({
         usuario_id: u.id, sala_id: u.sala_id, mes,
-        sueldo_base_config: sueldo_base,
+        sueldo_base_config: sueldo_base_cfg,
         pct_comision_venta_config: parseFloat(u.pct_comision_venta),
         pct_desbloqueo_config: parseFloat(u.pct_desbloqueo),
-        sueldo_base, comision_ventas, comision_cobros,
+        sueldo_base: garantizado, comision_ventas, comision_cobros,
+        comision_venta_recurrente, comision_abonos_cartera, comision_reactivaciones,
         bono_tours, bono_citas, bono_meta,
         contratos_desbloqueados: contratos_desbloq,
         tours_count, citas_count,
+        dias_trabajados, dias_laborables, garantizado,
         aporte_iess, total_ingresos, total_deducciones, neto_a_pagar,
       });
     }
@@ -247,34 +329,44 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           usuario_id, sala_id, mes,
           sueldo_base_config, pct_comision_venta_config, pct_desbloqueo_config,
           sueldo_base, comision_ventas, comision_cobros, bono_tours, bono_citas, bono_meta,
+          comision_venta_recurrente, comision_abonos_cartera, comision_reactivaciones,
           contratos_desbloqueados, tours_count, citas_count,
+          dias_trabajados, dias_laborables, garantizado,
           aporte_iess, total_ingresos, total_deducciones, neto_a_pagar
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
         ON CONFLICT (usuario_id, mes) DO UPDATE SET
-          sala_id                   = EXCLUDED.sala_id,
-          sueldo_base_config        = EXCLUDED.sueldo_base_config,
-          pct_comision_venta_config = EXCLUDED.pct_comision_venta_config,
-          pct_desbloqueo_config     = EXCLUDED.pct_desbloqueo_config,
-          sueldo_base               = EXCLUDED.sueldo_base,
-          comision_ventas           = EXCLUDED.comision_ventas,
-          comision_cobros           = EXCLUDED.comision_cobros,
-          bono_tours                = EXCLUDED.bono_tours,
-          bono_citas                = EXCLUDED.bono_citas,
-          bono_meta                 = EXCLUDED.bono_meta,
-          contratos_desbloqueados   = EXCLUDED.contratos_desbloqueados,
-          tours_count               = EXCLUDED.tours_count,
-          citas_count               = EXCLUDED.citas_count,
-          aporte_iess               = EXCLUDED.aporte_iess,
-          total_ingresos            = EXCLUDED.total_ingresos,
-          total_deducciones         = EXCLUDED.total_deducciones,
-          neto_a_pagar              = EXCLUDED.neto_a_pagar,
-          updated_at                = NOW()
+          sala_id                     = EXCLUDED.sala_id,
+          sueldo_base_config          = EXCLUDED.sueldo_base_config,
+          pct_comision_venta_config   = EXCLUDED.pct_comision_venta_config,
+          pct_desbloqueo_config       = EXCLUDED.pct_desbloqueo_config,
+          sueldo_base                 = EXCLUDED.sueldo_base,
+          comision_ventas             = EXCLUDED.comision_ventas,
+          comision_cobros             = EXCLUDED.comision_cobros,
+          bono_tours                  = EXCLUDED.bono_tours,
+          bono_citas                  = EXCLUDED.bono_citas,
+          bono_meta                   = EXCLUDED.bono_meta,
+          comision_venta_recurrente   = EXCLUDED.comision_venta_recurrente,
+          comision_abonos_cartera     = EXCLUDED.comision_abonos_cartera,
+          comision_reactivaciones     = EXCLUDED.comision_reactivaciones,
+          contratos_desbloqueados     = EXCLUDED.contratos_desbloqueados,
+          tours_count                 = EXCLUDED.tours_count,
+          citas_count                 = EXCLUDED.citas_count,
+          dias_trabajados             = EXCLUDED.dias_trabajados,
+          dias_laborables             = EXCLUDED.dias_laborables,
+          garantizado                 = EXCLUDED.garantizado,
+          aporte_iess                 = EXCLUDED.aporte_iess,
+          total_ingresos              = EXCLUDED.total_ingresos,
+          total_deducciones           = EXCLUDED.total_deducciones,
+          neto_a_pagar                = EXCLUDED.neto_a_pagar,
+          updated_at                  = NOW()
         WHERE nomina_mensual.estado = 'borrador'
       `, [
         r.usuario_id, r.sala_id, r.mes,
         r.sueldo_base_config, r.pct_comision_venta_config, r.pct_desbloqueo_config,
         r.sueldo_base, r.comision_ventas, r.comision_cobros, r.bono_tours, r.bono_citas, r.bono_meta,
+        r.comision_venta_recurrente, r.comision_abonos_cartera, r.comision_reactivaciones,
         r.contratos_desbloqueados, r.tours_count, r.citas_count,
+        r.dias_trabajados, r.dias_laborables, r.garantizado,
         r.aporte_iess, r.total_ingresos, r.total_deducciones, r.neto_a_pagar,
       ]);
     }
@@ -391,6 +483,82 @@ router.patch('/:id', requireAdminOrDirector, async (req, res) => {
     res.json(updated.rows[0]);
   } catch (err) {
     console.error('Error en PATCH /api/nomina/:id:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── ASISTENCIA ─────────────────────────────────────────────────────────────
+
+// GET /api/nomina/asistencia?mes=YYYY-MM&sala_id=X
+router.get('/asistencia', async (req, res) => {
+  const { mes, sala_id } = req.query;
+  if (!mes) return res.status(400).json({ error: 'mes requerido (YYYY-MM)' });
+  try {
+    const params = [mes];
+    let salaFilter = '';
+    if (sala_id) { params.push(sala_id); salaFilter = `AND a.sala_id = $${params.length}`; }
+
+    const result = await pool.query(`
+      SELECT a.*, u.nombre AS usuario_nombre, r.nombre AS rol
+      FROM asistencia a
+      JOIN usuarios u ON a.usuario_id = u.id
+      JOIN roles r ON u.rol_id = r.id
+      WHERE TO_CHAR(a.fecha, 'YYYY-MM') = $1 ${salaFilter}
+      ORDER BY a.fecha DESC, u.nombre
+    `, params);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/nomina/asistencia — registrar asistencia
+router.post('/asistencia', async (req, res) => {
+  const { usuario_id, fecha, hora_entrada, hora_salida, estado = 'presente', justificacion, sala_id } = req.body;
+  if (!usuario_id || !fecha) return res.status(400).json({ error: 'usuario_id y fecha requeridos' });
+
+  // Solo admin, director, hostess, supervisor_cc pueden registrar
+  const allowed = ['admin', 'director', 'hostess', 'supervisor_cc'];
+  if (!allowed.includes(req.user.rol)) {
+    return res.status(403).json({ error: 'Sin permiso para registrar asistencia' });
+  }
+
+  try {
+    const result = await pool.query(`
+      INSERT INTO asistencia (usuario_id, sala_id, fecha, hora_entrada, hora_salida, estado, justificacion, registrado_por)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (usuario_id, fecha) DO UPDATE SET
+        hora_entrada = EXCLUDED.hora_entrada,
+        hora_salida = EXCLUDED.hora_salida,
+        estado = EXCLUDED.estado,
+        justificacion = EXCLUDED.justificacion,
+        registrado_por = EXCLUDED.registrado_por
+      RETURNING *
+    `, [usuario_id, sala_id || req.user.sala_id, fecha, hora_entrada || null, hora_salida || null, estado, justificacion || null, req.user.id]);
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/nomina/asistencia/resumen?usuario_id=X&mes=YYYY-MM
+router.get('/asistencia/resumen', async (req, res) => {
+  const { usuario_id, mes } = req.query;
+  if (!usuario_id || !mes) return res.status(400).json({ error: 'usuario_id y mes requeridos' });
+  try {
+    const result = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE estado = 'presente')  AS dias_presente,
+        COUNT(*) FILTER (WHERE estado = 'ausente')   AS dias_ausente,
+        COUNT(*) FILTER (WHERE estado = 'tardanza')  AS dias_tardanza,
+        COUNT(*) FILTER (WHERE estado = 'permiso')   AS dias_permiso,
+        COUNT(*) FILTER (WHERE estado = 'vacacion')  AS dias_vacacion,
+        COUNT(*) FILTER (WHERE estado IN ('presente','tardanza')) AS dias_trabajados
+      FROM asistencia
+      WHERE usuario_id = $1 AND TO_CHAR(fecha, 'YYYY-MM') = $2
+    `, [usuario_id, mes]);
+    res.json(result.rows[0]);
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
