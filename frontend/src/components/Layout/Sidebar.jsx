@@ -33,6 +33,8 @@ const MENU_POR_ROL = {
     { label: 'Recepción', path: '/sala/recepcion', icon: '🏥' },
     { label: 'Leads', path: '/mercadeo/captura', icon: '📞' },
     { label: 'Supervisor CC', path: '/mercadeo/supervisor', icon: '🎯' },
+    { label: 'Calendario', path: '/mercadeo/calendario', icon: '📅' },
+    { label: 'Panel Consultor', path: '/consultor', icon: '👨‍⚕️' },
     { label: 'Cartera', path: '/cartera', icon: '💳' },
     { label: 'Ventas', path: '/ventas', icon: '💼' },
     { label: 'Reportes', path: '/reportes', icon: '📈' },
