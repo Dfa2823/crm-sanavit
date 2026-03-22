@@ -133,7 +133,6 @@ function MiniCards({ tabActivo, meta, data }) {
   } else if (tabActivo === 'asistencias') {
     const tours   = data.filter(r => r['Calificación Sala'] === 'TOUR').length
     const noTours = data.filter(r => r['Calificación Sala'] === 'NO_TOUR').length
-    const noShows = data.filter(r => r['Calificación Sala'] === 'NO_SHOW').length
     const conv    = data.length > 0 ? ((tours / data.length) * 100).toFixed(1) : 0
     cards = [
       { label: 'Total Asistencias', valor: data.length, color: 'bg-blue-50 text-blue-700' },

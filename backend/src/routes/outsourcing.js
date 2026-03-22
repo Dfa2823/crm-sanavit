@@ -77,14 +77,14 @@ router.get('/stats', async (req, res) => {
         oe.ciudad,
         COUNT(l.id) AS total_leads,
         COUNT(l.id) FILTER (WHERE l.estado IN ('confirmada','tentativa')) AS citas,
-        COUNT(l.id) FILTER (WHERE l.estado IN ('tour','no_tour','no_show','inasistencia')) AS asistencias,
+        COUNT(l.id) FILTER (WHERE l.estado IN ('tour','no_tour','inasistencia')) AS asistencias,
         COUNT(l.id) FILTER (WHERE l.estado = 'tour') AS tours,
         CASE WHEN COUNT(l.id) > 0
           THEN ROUND(COUNT(l.id) FILTER (WHERE l.estado IN ('confirmada','tentativa'))::numeric / COUNT(l.id) * 100, 1)
           ELSE 0 END AS efectividad_datos,
-        CASE WHEN COUNT(l.id) FILTER (WHERE l.estado IN ('tour','no_tour','no_show','inasistencia')) > 0
+        CASE WHEN COUNT(l.id) FILTER (WHERE l.estado IN ('tour','no_tour','inasistencia')) > 0
           THEN ROUND(COUNT(l.id) FILTER (WHERE l.estado = 'tour')::numeric /
-               COUNT(l.id) FILTER (WHERE l.estado IN ('tour','no_tour','no_show','inasistencia')) * 100, 1)
+               COUNT(l.id) FILTER (WHERE l.estado IN ('tour','no_tour','inasistencia')) * 100, 1)
           ELSE 0 END AS efectividad_tour
       FROM outsourcing_empresas oe
       LEFT JOIN leads l ON l.outsourcing_empresa_id = oe.id

@@ -174,8 +174,8 @@ router.post('/movimiento', auth, async (req, res) => {
 
   // Validaciones
   if (!producto_id) return res.status(400).json({ error: 'producto_id es requerido' });
-  if (!tipo || !['entrada', 'salida', 'ajuste'].includes(tipo)) {
-    return res.status(400).json({ error: 'tipo debe ser entrada, salida o ajuste' });
+  if (!tipo || tipo !== 'entrada') {
+    return res.status(400).json({ error: 'Solo se permiten movimientos de tipo entrada' });
   }
   const cantidadNum = parseInt(cantidad, 10);
   if (!cantidadNum || cantidadNum <= 0) {

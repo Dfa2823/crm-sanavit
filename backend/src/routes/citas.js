@@ -100,7 +100,7 @@ router.get('/hoy', auth, async (req, res) => {
       LEFT JOIN usuarios uc ON vs.consultor_id = uc.id
       WHERE DATE(l.fecha_cita) = $1
         AND ($2::integer IS NULL OR l.sala_id = $2)
-        AND l.estado IN ('confirmada', 'tentativa', 'tour', 'no_tour', 'no_show', 'inasistencia')
+        AND l.estado IN ('confirmada', 'tentativa', 'tour', 'no_tour', 'inasistencia')
       ORDER BY l.fecha_cita ASC
     `, [hoy, salaId]);
 
@@ -122,10 +122,10 @@ router.patch('/:lead_id/calificar', auth, async (req, res) => {
   const { calificacion, hora_llegada, consultor_id, acompanante, outsourcing_indicado } = req.body;
 
   if (!calificacion) {
-    return res.status(400).json({ error: 'La calificación es requerida (TOUR, NO_TOUR, NO_SHOW)' });
+    return res.status(400).json({ error: 'La calificación es requerida (TOUR o NO_TOUR)' });
   }
 
-  const estadoMap = { TOUR: 'tour', NO_TOUR: 'no_tour', NO_SHOW: 'no_show' };
+  const estadoMap = { TOUR: 'tour', NO_TOUR: 'no_tour' };
   const nuevoEstado = estadoMap[calificacion];
   if (!nuevoEstado) {
     return res.status(400).json({ error: 'Calificación inválida' });

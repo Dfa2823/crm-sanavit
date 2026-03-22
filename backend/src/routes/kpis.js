@@ -35,11 +35,11 @@ router.get('/', auth, async (req, res) => {
       SELECT
         COUNT(*) FILTER (WHERE l.tipificacion_id IS NOT NULL)                    AS total_leads,
         COUNT(*) FILTER (WHERE l.estado IN ('confirmada','tentativa'))            AS total_citas,
-        COUNT(*) FILTER (WHERE l.estado IN ('tour','no_tour','no_show','confirmada') AND l.fecha_cita <= NOW())
+        COUNT(*) FILTER (WHERE l.estado IN ('tour','no_tour','inasistencia','confirmada') AND l.fecha_cita <= NOW())
                                                                                   AS total_asistencias,
         COUNT(*) FILTER (WHERE l.estado = 'tour')                                 AS total_tours,
         COUNT(*) FILTER (WHERE l.estado = 'no_tour')                              AS total_no_tour,
-        COUNT(*) FILTER (WHERE l.estado = 'no_show')                              AS total_no_show
+        COUNT(*) FILTER (WHERE l.estado = 'inasistencia')                         AS total_inasistencia
       FROM leads l
       WHERE DATE(l.created_at) BETWEEN $1::date AND $2::date
         AND ($3::integer IS NULL OR l.sala_id = $3)
@@ -50,7 +50,7 @@ router.get('/', auth, async (req, res) => {
       SELECT
         COUNT(*) FILTER (WHERE vs.calificacion = 'TOUR')    AS tours,
         COUNT(*) FILTER (WHERE vs.calificacion = 'NO_TOUR') AS no_tours,
-        COUNT(*) FILTER (WHERE vs.calificacion = 'NO_SHOW') AS no_shows,
+        0 AS no_shows, -- NO_SHOW eliminado
         COUNT(*)                                             AS total_visitas
       FROM visitas_sala vs
       WHERE vs.fecha BETWEEN $1::date AND $2::date
@@ -85,7 +85,7 @@ router.get('/', auth, async (req, res) => {
         u.nombre AS tmk_nombre,
         COUNT(*)                                              AS total_leads,
         COUNT(*) FILTER (WHERE l.estado IN ('confirmada','tentativa')) AS citas_agendadas,
-        COUNT(*) FILTER (WHERE l.estado IN ('tour','no_tour','no_show')) AS asistencias,
+        COUNT(*) FILTER (WHERE l.estado IN ('tour','no_tour','inasistencia')) AS asistencias,
         COUNT(*) FILTER (WHERE l.estado = 'tour')             AS tours
       FROM leads l
       JOIN usuarios u ON l.tmk_id = u.id

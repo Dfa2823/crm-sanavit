@@ -76,7 +76,7 @@ export default function NuevaVentaPage() {
       setEmpresas(Array.isArray(emp) ? emp : [])
       setCatalogo(Array.isArray(prod) ? prod.filter(p => p.activo) : [])
       // Preseleccionar sala del usuario logueado
-      if (user?.sala_id) {
+      if (usuario?.sala_id) {
         setContrato(c => ({ ...c, sala_id: String(user.sala_id) }))
       }
     }).catch(console.error)
@@ -395,7 +395,7 @@ export default function NuevaVentaPage() {
               <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 value={contrato.sala_id}
                 onChange={e => setContrato(c => ({ ...c, sala_id: e.target.value, consultor_id: '' }))}
-                disabled={!!user?.sala_id && !['admin','director'].includes(user?.rol)}>
+                disabled={!!usuario?.sala_id && !['admin','director'].includes(usuario?.rol)}>
                 <option value="">Seleccionar sala...</option>
                 {salas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
               </select>

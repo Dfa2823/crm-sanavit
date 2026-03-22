@@ -142,14 +142,12 @@ router.get('/asistencias', async (req, res) => {
     // Resumen por calificación
     const tours    = visitasRes.rows.filter(r => r['Calificación Sala'] === 'TOUR');
     const noTours  = visitasRes.rows.filter(r => r['Calificación Sala'] === 'NO_TOUR');
-    const noShows  = visitasRes.rows.filter(r => r['Calificación Sala'] === 'NO_SHOW');
 
     res.json({
       meta: {
         total_asistencias: visitasRes.rows.length,
         total_tours:   tours.length,
         total_no_tour: noTours.length,
-        total_no_show: noShows.length,
         conversion_tour: visitasRes.rows.length > 0
           ? Number(((tours.length / visitasRes.rows.length) * 100).toFixed(1))
           : 0,
@@ -187,11 +185,11 @@ router.get('/tmk', async (req, res) => {
         s.nombre                                                          AS "Sala",
         COUNT(l.id)                                                       AS "Total Leads",
         COUNT(l.id) FILTER (WHERE l.estado IN ('confirmada','tentativa')) AS "Citas Agendadas",
-        COUNT(l.id) FILTER (WHERE l.estado IN ('tour','no_tour','no_show','inasistencia'))
+        COUNT(l.id) FILTER (WHERE l.estado IN ('tour','no_tour','inasistencia'))
                                                                           AS "Asistencias",
         COUNT(l.id) FILTER (WHERE l.estado = 'tour')                      AS "Tours",
         COUNT(l.id) FILTER (WHERE l.estado = 'no_tour')                   AS "No Tours",
-        COUNT(l.id) FILTER (WHERE l.estado = 'no_show')                   AS "No Shows",
+        COUNT(l.id) FILTER (WHERE l.estado = 'inasistencia')              AS "Inasistencias",
         COUNT(l.id) FILTER (WHERE l.estado = 'pendiente')                 AS "Pendientes",
         COUNT(l.id) FILTER (WHERE l.estado = 'no_interesado')             AS "No Interesados"
       FROM usuarios u

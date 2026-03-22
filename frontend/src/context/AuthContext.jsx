@@ -8,17 +8,33 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('crm_token')
+    const token    = localStorage.getItem('crm_token')
     const userData = localStorage.getItem('crm_usuario')
-    if (token && userData) {
-      try {
-        setUsuario(JSON.parse(userData))
-      } catch {
+
+    if (!token || !userData) {
+      setLoading(false)
+      return
+    }
+
+    // Restaurar sesión optimistamente y luego validar contra el servidor
+    try {
+      setUsuario(JSON.parse(userData))
+    } catch {
+      localStorage.removeItem('crm_token')
+      localStorage.removeItem('crm_usuario')
+      setLoading(false)
+      return
+    }
+
+    // Verificar que el token siga siendo válido (puede haber expirado en 8h)
+    apiAuth.me()
+      .then(u => setUsuario(u))            // Actualiza con datos frescos del servidor
+      .catch(() => {                        // Token inválido o expirado → limpiar sesión
         localStorage.removeItem('crm_token')
         localStorage.removeItem('crm_usuario')
-      }
-    }
-    setLoading(false)
+        setUsuario(null)
+      })
+      .finally(() => setLoading(false))
   }, [])
 
   async function login(username, password) {
