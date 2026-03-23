@@ -9,6 +9,7 @@ import 'react-big-calendar/lib/addons/dragAndDrop/styles.css'
 import './CalendarioVisual.css'
 import { apiLeads } from '../../api/leads'
 import client from '../../api/client'
+import { apiPersonas } from '../../api/personas'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../context/AuthContext'
 
@@ -47,70 +48,97 @@ const ESTADO = {
   no_tour:    { color: '#fff', bg: '#dc2626', label: 'No Tour'    },
 }
 
-// ─── Drawer detalle de cita ──────────────────────────────────────────────────
+// ─── Drawer detalle de cita (estilo LeadDetailDrawer) ────────────────────────
 
 function DrawerCita({ lead, onClose, onActualizar }) {
   const navigate  = useNavigate()
   const { addToast } = useToast()
   const { usuario } = useAuth()
+
+  // Persona data (fetched from API for full fields)
+  const [persona, setPersona]     = useState(null)
+  const [loadingPersona, setLoadingPersona] = useState(false)
+  const [editandoPersona, setEditandoPersona] = useState(false)
+  const [formPersona, setFormPersona] = useState({})
+  const [guardandoPersona, setGuardandoPersona] = useState(false)
+
+  // Reagendar
   const [editFecha, setEditFecha]  = useState(false)
   const [nuevaFecha, setNuevaFecha] = useState('')
   const [nuevaHora, setNuevaHora]  = useState('')
   const [guardando, setGuardando]  = useState(false)
-  const [editDatos, setEditDatos]  = useState(false)
-  const [formDatos, setFormDatos]  = useState({})
-  const [guardandoDatos, setGuardandoDatos] = useState(false)
 
   const esAdmin = ['admin', 'director', 'supervisor_cc', 'confirmador'].includes(usuario?.rol)
 
+  // Fetch persona details when drawer opens
   useEffect(() => {
-    if (lead?.fecha_cita) {
+    if (!lead) return
+    if (lead.persona_id) {
+      setLoadingPersona(true)
+      apiPersonas.obtener(lead.persona_id)
+        .then(data => {
+          setPersona(data)
+          setFormPersona({
+            nombres:        data.nombres        || '',
+            apellidos:      data.apellidos       || '',
+            telefono:       data.telefono        || '',
+            telefono2:      data.telefono2       || '',
+            ciudad:         data.ciudad          || '',
+            edad:           data.edad            || '',
+            email:          data.email           || '',
+            patologia:      data.patologia       || '',
+            tipo_documento: data.tipo_documento  || '',
+            num_documento:  data.num_documento   || '',
+          })
+        })
+        .catch(() => {
+          // Fallback: use lead data
+          setPersona(lead)
+          setFormPersona({
+            nombres: lead.nombres || '', apellidos: lead.apellidos || '',
+            telefono: lead.telefono || '', telefono2: '', ciudad: lead.ciudad || '',
+            edad: '', email: lead.email || '', patologia: lead.patologia || '',
+            tipo_documento: '', num_documento: '',
+          })
+        })
+        .finally(() => setLoadingPersona(false))
+    }
+    setEditandoPersona(false)
+    // Init reagendar fields
+    if (lead.fecha_cita) {
       const d = new Date(lead.fecha_cita)
       setNuevaFecha(d.toISOString().split('T')[0])
       setNuevaHora(d.toTimeString().slice(0, 5))
     }
-    if (lead) {
-      setFormDatos({
-        nombres: lead.nombres || '', apellidos: lead.apellidos || '',
-        telefono: lead.telefono || '', ciudad: lead.ciudad || '',
-        patologia: lead.patologia || '', edad: lead.edad || '',
-        email: lead.email || '', observacion: lead.observacion || '',
-      })
-      setEditDatos(false)
-    }
+    setEditFecha(false)
   }, [lead])
 
-  async function guardarDatos() {
-    setGuardandoDatos(true)
+  async function guardarDatosPersona() {
+    if (!lead?.persona_id) return
+    setGuardandoPersona(true)
     try {
-      if (lead.persona_id) {
-        const { observacion, ...personaData } = formDatos
-        await client.patch(`/api/personas/${lead.persona_id}`, personaData)
-      }
-      if (formDatos.observacion !== lead.observacion) {
-        await apiLeads.actualizar(lead.id, { observacion: formDatos.observacion })
-      }
-      addToast('Datos actualizados correctamente')
-      setEditDatos(false)
+      await client.patch(`/api/personas/${lead.persona_id}`, formPersona)
+      // Update local persona
+      setPersona(prev => ({ ...prev, ...formPersona }))
+      setEditandoPersona(false)
+      addToast('Datos del cliente actualizados')
       onActualizar()
-    } catch { addToast('Error al guardar datos', 'error') }
-    finally { setGuardandoDatos(false) }
+    } catch {
+      addToast('Error al guardar datos', 'error')
+    } finally {
+      setGuardandoPersona(false)
+    }
   }
-
-  if (!lead) return null
-
-  const est = ESTADO[lead.estado] || { color: '#fff', bg: '#94a3b8', label: lead.estado }
 
   async function guardarFecha() {
     if (!nuevaFecha) return
     setGuardando(true)
     try {
-      // Al reagendar, el estado vuelve a tentativa (no confirmada)
       await apiLeads.actualizar(lead.id, {
         fecha_cita: `${nuevaFecha}T${nuevaHora || '09:00'}:00`,
         estado: 'tentativa',
       })
-      addToast('Cita reagendada — requiere nueva confirmación')
+      addToast('Cita reagendada — requiere nueva confirmacion')
       setEditFecha(false)
       onActualizar()
     } catch { addToast('Error al reprogramar', 'error') }
@@ -127,161 +155,247 @@ function DrawerCita({ lead, onClose, onActualizar }) {
     finally { setGuardando(false) }
   }
 
+  function abrirWhatsApp() {
+    const tel = (persona?.telefono || lead.telefono || '').replace(/\D/g, '')
+    const num = tel.startsWith('0') ? '593' + tel.slice(1) : tel.startsWith('593') ? tel : '593' + tel
+    window.open(`https://wa.me/${num}`, '_blank')
+  }
+
+  if (!lead) return null
+
+  const est = ESTADO[lead.estado] || { color: '#fff', bg: '#94a3b8', label: lead.estado }
+
   return (
-    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
-      <div className="flex-1 bg-black/30" />
-      <div
-        className="w-full max-w-sm bg-white shadow-2xl flex flex-col h-full overflow-y-auto"
-        onClick={e => e.stopPropagation()}
-      >
+    <>
+      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full w-full max-w-xl bg-white shadow-2xl z-50 flex flex-col">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between">
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white sticky top-0">
           <div>
-            <h2 className="font-bold text-gray-800 text-base leading-tight">
-              {lead.nombres} {lead.apellidos}
+            <h2 className="font-bold text-gray-800 text-lg">
+              {persona?.nombres || lead.nombres} {persona?.apellidos || lead.apellidos}
             </h2>
-            <a href={`tel:${lead.telefono}`} className="text-sm text-teal-600 font-mono hover:underline mt-0.5 block">
-              {lead.telefono}
-            </a>
+            <p className="text-xs text-gray-400">
+              Lead #{lead.id} {(persona?.telefono || lead.telefono) ? ` — ${persona?.telefono || lead.telefono}` : ''}
+            </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl font-light ml-3">×</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
         </div>
 
-        <div className="px-5 py-4 space-y-4 flex-1">
-          {/* Estado */}
-          <div className="flex items-center gap-2">
-            <span
-              className="text-xs font-semibold px-3 py-1 rounded-full"
-              style={{ background: est.bg, color: est.color }}
-            >
-              {est.label}
-            </span>
-            {lead.tipificacion_nombre && (
-              <span className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">
-                {lead.tipificacion_nombre}
-              </span>
-            )}
-          </div>
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
 
-          {/* Fecha cita */}
-          <div>
-            <p className="text-xs text-gray-500 font-medium mb-1">Fecha y hora de cita</p>
-            {editFecha ? (
-              <div className="space-y-2">
-                <input type="date" value={nuevaFecha} onChange={e => setNuevaFecha(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
-                <input type="time" value={nuevaHora} onChange={e => setNuevaHora(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
-                <div className="flex gap-2">
-                  <button onClick={guardarFecha} disabled={guardando}
-                    className="flex-1 text-xs bg-teal-500 hover:bg-teal-600 text-white rounded-lg py-1.5 font-medium disabled:opacity-50">
-                    {guardando ? 'Guardando…' : 'Guardar'}
-                  </button>
-                  <button onClick={() => setEditFecha(false)}
-                    className="flex-1 text-xs border border-gray-200 rounded-lg py-1.5 hover:bg-gray-50">
-                    Cancelar
-                  </button>
+          {loadingPersona ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-6 h-6 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <>
+              {/* ─── Seccion: Datos del Cliente (editables) ─── */}
+              <div className="p-4 bg-blue-50 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-blue-800 text-sm">Datos del cliente</h3>
+                  {!editandoPersona ? (
+                    <button onClick={() => setEditandoPersona(true)} className="text-xs text-blue-600 font-medium hover:underline">
+                      Editar
+                    </button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditandoPersona(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancelar</button>
+                      <button onClick={guardarDatosPersona} disabled={guardandoPersona} className="text-xs text-white bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-lg font-medium">
+                        {guardandoPersona ? 'Guardando...' : 'Guardar'}
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-gray-800">
-                  {lead.fecha_cita
-                    ? new Date(lead.fecha_cita).toLocaleString('es-EC', {
-                        weekday: 'short', day: '2-digit', month: 'short',
-                        hour: '2-digit', minute: '2-digit',
-                      })
-                    : '—'}
-                </p>
-                {esAdmin && (
-                  <button onClick={() => setEditFecha(true)}
-                    className="text-xs text-teal-600 hover:underline font-medium ml-2">
-                    Cambiar
-                  </button>
+                {!editandoPersona ? (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                    <div><span className="text-gray-500">Nombre:</span> <span className="font-medium">{persona?.nombres || lead.nombres} {persona?.apellidos || lead.apellidos}</span></div>
+                    <div><span className="text-gray-500">Tel:</span> <span className="font-mono">{persona?.telefono || lead.telefono || '—'}</span></div>
+                    <div><span className="text-gray-500">Tel 2:</span> <span className="font-mono">{persona?.telefono2 || '—'}</span></div>
+                    <div><span className="text-gray-500">Ciudad:</span> {persona?.ciudad || lead.ciudad || '—'}</div>
+                    <div><span className="text-gray-500">Edad:</span> {persona?.edad || '—'}</div>
+                    <div><span className="text-gray-500">Email:</span> {persona?.email || lead.email || '—'}</div>
+                    <div className="col-span-2"><span className="text-gray-500">Patologia:</span> {persona?.patologia || lead.patologia || '—'}</div>
+                    <div><span className="text-gray-500">Tipo doc:</span> {persona?.tipo_documento || '—'}</div>
+                    <div><span className="text-gray-500">Num doc:</span> {persona?.num_documento || '—'}</div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 mt-1">
+                    <div>
+                      <label className="text-xs text-gray-500">Nombres</label>
+                      <input className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" value={formPersona.nombres}
+                        onChange={e => setFormPersona(f => ({ ...f, nombres: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Apellidos</label>
+                      <input className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" value={formPersona.apellidos}
+                        onChange={e => setFormPersona(f => ({ ...f, apellidos: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Telefono</label>
+                      <input className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" value={formPersona.telefono}
+                        onChange={e => setFormPersona(f => ({ ...f, telefono: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Telefono 2</label>
+                      <input className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" value={formPersona.telefono2}
+                        onChange={e => setFormPersona(f => ({ ...f, telefono2: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Ciudad</label>
+                      <input className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" value={formPersona.ciudad}
+                        onChange={e => setFormPersona(f => ({ ...f, ciudad: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Edad</label>
+                      <input type="number" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" value={formPersona.edad}
+                        onChange={e => setFormPersona(f => ({ ...f, edad: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Email</label>
+                      <input type="email" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" value={formPersona.email}
+                        onChange={e => setFormPersona(f => ({ ...f, email: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Patologia</label>
+                      <input className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" value={formPersona.patologia}
+                        onChange={e => setFormPersona(f => ({ ...f, patologia: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Tipo documento</label>
+                      <select className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" value={formPersona.tipo_documento}
+                        onChange={e => setFormPersona(f => ({ ...f, tipo_documento: e.target.value }))}>
+                        <option value="">— Seleccionar —</option>
+                        <option value="cedula">Cedula</option>
+                        <option value="pasaporte">Pasaporte</option>
+                        <option value="ruc">RUC</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Num documento</label>
+                      <input className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" value={formPersona.num_documento}
+                        onChange={e => setFormPersona(f => ({ ...f, num_documento: e.target.value }))} />
+                    </div>
+                  </div>
                 )}
               </div>
-            )}
-          </div>
 
-          {/* Datos del cliente — editables */}
-          <div className="border border-gray-100 rounded-xl p-3 space-y-2">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-xs font-semibold text-gray-500 uppercase">Datos del cliente</p>
-              {esAdmin && !editDatos && (
-                <button onClick={() => setEditDatos(true)}
-                  className="text-xs text-teal-600 hover:underline font-medium">✏️ Editar</button>
-              )}
-            </div>
-            {editDatos ? (
-              <div className="space-y-2">
-                {[
-                  { k: 'nombres', l: 'Nombres' }, { k: 'apellidos', l: 'Apellidos' },
-                  { k: 'telefono', l: 'Teléfono' }, { k: 'ciudad', l: 'Ciudad' },
-                  { k: 'edad', l: 'Edad' }, { k: 'email', l: 'Email' },
-                  { k: 'patologia', l: 'Patología' },
-                ].map(({ k, l }) => (
-                  <div key={k}>
-                    <label className="text-xs text-gray-500">{l}</label>
-                    <input value={formDatos[k] || ''} onChange={e => setFormDatos(p => ({ ...p, [k]: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+              {/* ─── Seccion: Datos de la Cita (solo lectura) ─── */}
+              <div className="p-4 bg-gray-50 rounded-xl space-y-2">
+                <h3 className="font-semibold text-gray-700 text-sm">Datos de la cita</h3>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+                  <div>
+                    <span className="text-gray-500">Fecha y hora:</span>
+                    <p className="font-medium text-gray-800">
+                      {lead.fecha_cita
+                        ? new Date(lead.fecha_cita).toLocaleString('es-EC', {
+                            weekday: 'short', day: '2-digit', month: 'short',
+                            hour: '2-digit', minute: '2-digit',
+                          })
+                        : '—'}
+                    </p>
                   </div>
-                ))}
-                <div>
-                  <label className="text-xs text-gray-500">Observación</label>
-                  <textarea value={formDatos.observacion || ''} rows={2}
-                    onChange={e => setFormDatos(p => ({ ...p, observacion: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={guardarDatos} disabled={guardandoDatos}
-                    className="flex-1 text-xs bg-teal-500 hover:bg-teal-600 text-white rounded-lg py-1.5 font-medium disabled:opacity-50">
-                    {guardandoDatos ? 'Guardando…' : 'Guardar datos'}
-                  </button>
-                  <button onClick={() => setEditDatos(false)}
-                    className="flex-1 text-xs border border-gray-200 rounded-lg py-1.5 hover:bg-gray-50">Cancelar</button>
+                  <div>
+                    <span className="text-gray-500">Estado:</span>
+                    <p>
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: est.bg, color: est.color }}>
+                        {est.label}
+                      </span>
+                    </p>
+                  </div>
+                  <div><span className="text-gray-500">Sala:</span> <span className="font-medium">{lead.sala_nombre || '—'}</span></div>
+                  <div><span className="text-gray-500">TMK:</span> <span className="font-medium">{lead.tmk_nombre || '—'}</span></div>
+                  <div><span className="text-gray-500">Fuente:</span> <span className="font-medium">{lead.fuente_nombre || '—'}</span></div>
+                  {lead.tipificacion_nombre && (
+                    <div><span className="text-gray-500">Tipificacion:</span> <span className="font-medium">{lead.tipificacion_nombre}</span></div>
+                  )}
+                  {lead.observacion && (
+                    <div className="col-span-2">
+                      <span className="text-gray-500">Observaciones TMK:</span>
+                      <p className="text-gray-700 mt-0.5">{lead.observacion}</p>
+                    </div>
+                  )}
                 </div>
               </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                <div><span className="text-xs text-gray-400">Nombre</span><p className="text-gray-700">{lead.nombres} {lead.apellidos}</p></div>
-                <div><span className="text-xs text-gray-400">Teléfono</span><p className="text-gray-700">{lead.telefono || '—'}</p></div>
-                <div><span className="text-xs text-gray-400">Ciudad</span><p className="text-gray-700">{lead.ciudad || '—'}</p></div>
-                <div><span className="text-xs text-gray-400">Edad</span><p className="text-gray-700">{lead.edad || '—'}</p></div>
-                <div className="col-span-2"><span className="text-xs text-gray-400">Patología</span><p className="text-gray-700">{lead.patologia || '—'}</p></div>
-                {lead.observacion && <div className="col-span-2"><span className="text-xs text-gray-400">Observación</span><p className="text-gray-600">{lead.observacion}</p></div>}
-              </div>
-            )}
-          </div>
 
-          {/* TMK y Sala (solo lectura) */}
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            {lead.tmk_nombre && <div><p className="text-xs text-gray-400">TMK</p><p className="text-gray-700">{lead.tmk_nombre}</p></div>}
-            {lead.sala_nombre && <div><p className="text-xs text-gray-400">Sala</p><p className="text-gray-700">{lead.sala_nombre}</p></div>}
-          </div>
+              {/* ─── Seccion: Reagendar fecha ─── */}
+              {esAdmin && editFecha && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                  <h3 className="font-semibold text-amber-800 text-sm">Reagendar cita</h3>
+                  <p className="text-xs text-amber-600">La cita volvera a estado "Tentativa" y requiere nueva confirmacion.</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-gray-500">Fecha</label>
+                      <input type="date" value={nuevaFecha} onChange={e => setNuevaFecha(e.target.value)}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Hora</label>
+                      <input type="time" value={nuevaHora} onChange={e => setNuevaHora(e.target.value)}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={guardarFecha} disabled={guardando}
+                      className="flex-1 text-xs bg-amber-500 hover:bg-amber-600 text-white rounded-lg py-1.5 font-medium disabled:opacity-50">
+                      {guardando ? 'Guardando...' : 'Reagendar'}
+                    </button>
+                    <button onClick={() => setEditFecha(false)}
+                      className="flex-1 text-xs border border-gray-200 rounded-lg py-1.5 hover:bg-gray-50">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
-        {/* Acciones */}
-        <div className="px-5 pb-5 border-t border-gray-100 pt-4 space-y-2">
-          {lead.persona_id && (
-            <button
-              onClick={() => navigate(`/sala/cliente/${lead.persona_id}`)}
-              className="w-full flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
-            >
-              👤 Ver hoja de vida del cliente
-            </button>
-          )}
+        {/* ─── Acciones rapidas ─── */}
+        <div className="px-6 pb-5 border-t border-gray-200 pt-4 space-y-2">
+          {/* Confirmar cita */}
           {esAdmin && lead.estado === 'tentativa' && (
             <button
               onClick={confirmar}
               disabled={guardando}
-              className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium py-2.5 rounded-xl transition-colors disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium py-2.5 rounded-xl transition-colors disabled:opacity-50"
             >
-              ✅ Confirmar cita
+              Confirmar cita
+            </button>
+          )}
+
+          {/* Reagendar */}
+          {esAdmin && !editFecha && (
+            <button
+              onClick={() => setEditFecha(true)}
+              className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
+            >
+              Reagendar
+            </button>
+          )}
+
+          {/* WhatsApp */}
+          <button
+            onClick={abrirWhatsApp}
+            className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
+          >
+            WhatsApp
+          </button>
+
+          {/* Ver hoja de vida */}
+          {lead.persona_id && (
+            <button
+              onClick={() => navigate(`/sala/cliente/${lead.persona_id}`)}
+              className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-700 hover:bg-gray-50 text-sm font-medium py-2.5 rounded-xl transition-colors"
+            >
+              Ver hoja de vida del cliente
             </button>
           )}
         </div>
       </div>
-    </div>
+    </>
   )
 }
 
