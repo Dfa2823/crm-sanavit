@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { useToast } from '../../context/ToastContext'
 import client from '../../api/client'
 
 const SEGURIDAD_SOCIAL  = ['Cotizante', 'Beneficiario', 'Subsidiado', 'Retirado']
@@ -44,8 +45,10 @@ export default function HojaDeVida() {
   const { id }    = useParams()
   const navigate  = useNavigate()
   const { usuario } = useAuth()
+  const { addToast } = useToast()
 
   const [historia,   setHistoria]   = useState(null)
+  const [despachando, setDespachando] = useState(null) // id del vp que se está despachando
   const [loading,    setLoading]    = useState(true)
   const [tab,        setTab]        = useState('datos')
   const [editando,   setEditando]   = useState(false)
@@ -132,8 +135,31 @@ export default function HojaDeVida() {
     )
   }
 
-  const { persona, leads, visitas, contratos, tickets } = historia
+  const { persona, leads, visitas, contratos, productos = [], tickets } = historia
   const puedeEditar = ['admin', 'director', 'hostess', 'consultor', 'tmk', 'confirmador', 'sac'].includes(usuario?.rol)
+  const puedeDespachar = ['admin', 'director', 'inventario', 'hostess'].includes(usuario?.rol)
+
+  // Agrupar productos por contrato_id
+  const productosPorContrato = {}
+  productos.forEach(p => {
+    if (!productosPorContrato[p.contrato_id]) productosPorContrato[p.contrato_id] = []
+    productosPorContrato[p.contrato_id].push(p)
+  })
+
+  async function handleDespachar(vpId) {
+    if (!confirm('Confirmar despacho de este producto?')) return
+    setDespachando(vpId)
+    try {
+      await client.patch(`/api/ventas/productos/${vpId}/despachar`)
+      addToast('Producto despachado correctamente')
+      cargar()
+    } catch (err) {
+      console.error(err)
+      addToast('Error al despachar producto')
+    } finally {
+      setDespachando(null)
+    }
+  }
 
   const TABS = [
     { key: 'datos',     label: '👤 Datos Personales' },
@@ -531,7 +557,69 @@ export default function HojaDeVida() {
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between mt-1">
+                    {/* Despacho de productos */}
+                    {(() => {
+                      const prods = productosPorContrato[c.id] || []
+                      if (prods.length === 0) return null
+                      const despachados = prods.filter(p => p.despacho_estado === 'despachado').length
+                      const total = prods.length
+                      const todoDespachado = despachados === total
+                      return (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                              Despacho de productos
+                            </h4>
+                            {todoDespachado ? (
+                              <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                                Despacho completo
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-500">
+                                {despachados} de {total} despachados
+                              </span>
+                            )}
+                          </div>
+                          <div className="space-y-1.5">
+                            {prods.map(p => {
+                              const estaDespachado = p.despacho_estado === 'despachado'
+                              return (
+                                <div key={p.id} className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
+                                  estaDespachado ? 'bg-green-50' : 'bg-yellow-50'
+                                }`}>
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <span className="flex-shrink-0">{estaDespachado ? '\u2705' : '\u23F3'}</span>
+                                    <div className="min-w-0">
+                                      <span className="font-medium text-gray-800 truncate block">
+                                        {p.producto_nombre}
+                                      </span>
+                                      {p.codigo && (
+                                        <span className="text-xs text-gray-400">{p.codigo}</span>
+                                      )}
+                                    </div>
+                                    <span className="text-xs text-gray-500 flex-shrink-0">x{p.cantidad}</span>
+                                  </div>
+                                  {!estaDespachado && puedeDespachar && (
+                                    <button
+                                      onClick={() => handleDespachar(p.id)}
+                                      disabled={despachando === p.id}
+                                      className="ml-2 px-3 py-1 text-xs font-medium rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-colors flex-shrink-0"
+                                    >
+                                      {despachando === p.id ? 'Despachando...' : 'Despachar'}
+                                    </button>
+                                  )}
+                                  {estaDespachado && (
+                                    <span className="ml-2 text-xs text-green-600 font-medium flex-shrink-0">Despachado</span>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    <div className="flex items-center justify-between mt-3">
                       <p className="text-xs text-gray-400">
                         {c.fecha_contrato
                           ? new Date(c.fecha_contrato).toLocaleDateString('es-EC')

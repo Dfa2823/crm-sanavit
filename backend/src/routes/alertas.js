@@ -180,4 +180,37 @@ router.get('/detalle', auth, async (req, res) => {
   }
 });
 
+/* ──────────────────────────────────────────────────────────
+   GET /api/alertas/tours-recientes
+   Retorna tours calificados en los últimos 30 minutos.
+   Para notificaciones "bombitas" a TMK y confirmadores.
+────────────────────────────────────────────────────────── */
+router.get('/tours-recientes', auth, async (req, res) => {
+  const { rol } = req.user;
+
+  // Solo roles que necesitan ver la notificación
+  if (!['tmk', 'confirmador', 'supervisor_cc', 'admin', 'director'].includes(rol)) {
+    return res.json([]);
+  }
+
+  try {
+    const result = await pool.query(`
+      SELECT vs.id, vs.created_at,
+        p.nombres, p.apellidos,
+        s.nombre AS sala
+      FROM visitas_sala vs
+      JOIN personas p ON vs.persona_id = p.id
+      JOIN salas s ON vs.sala_id = s.id
+      WHERE vs.calificacion = 'TOUR'
+        AND vs.created_at >= NOW() - INTERVAL '30 minutes'
+      ORDER BY vs.created_at DESC
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[alertas/tours-recientes]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import client from '../../api/client'
+import ToursNotification from './ToursNotification'
 
 const ROL_COLORS = {
   admin:          'bg-purple-100 text-purple-800',
@@ -161,8 +162,9 @@ export default function Topbar({ title, onToggleSidebar, onOpenSearch }) {
         )}
       </div>
 
-      {/* Usuario y logout */}
+      {/* Notificaciones + Usuario y logout */}
       <div className="flex items-center gap-3 min-w-fit">
+        <ToursNotification />
         <span className={`badge text-xs font-medium px-2 py-1 rounded-full ${ROL_COLORS[usuario?.rol] || 'bg-gray-100 text-gray-700'}`}>
           {usuario?.rol_label || usuario?.rol}
         </span>

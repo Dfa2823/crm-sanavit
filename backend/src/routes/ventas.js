@@ -412,7 +412,7 @@ router.patch('/:id/estado', auth, async (req, res) => {
 // PATCH /api/ventas/productos/:id/despachar — marcar línea de producto como despachada
 router.patch('/productos/:id/despachar', auth, async (req, res) => {
   const { rol } = req.user;
-  if (!['admin', 'director', 'inventario'].includes(rol)) {
+  if (!['admin', 'director', 'inventario', 'hostess'].includes(rol)) {
     return res.status(403).json({ error: 'Sin permiso para registrar despachos' });
   }
   try {

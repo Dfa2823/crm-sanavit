@@ -219,7 +219,22 @@ router.get('/:id/historia', auth, async (req, res) => {
       ORDER BY c.fecha_contrato DESC
     `, [id]);
 
-    // 5. Tickets SAC (si la tabla existe)
+    // 5. Productos por contrato (para despacho)
+    let productosData = [];
+    try {
+      const productosRes = await pool.query(`
+        SELECT vp.*, vp.contrato_id,
+          pr.nombre AS producto_nombre, pr.tipo AS producto_tipo, pr.codigo
+        FROM venta_productos vp
+        JOIN productos pr ON vp.producto_id = pr.id
+        JOIN contratos c ON vp.contrato_id = c.id
+        WHERE c.persona_id = $1
+        ORDER BY vp.contrato_id, vp.id
+      `, [id]);
+      productosData = productosRes.rows;
+    } catch (e) { /* tabla no existe aún */ }
+
+    // 6. Tickets SAC (si la tabla existe)
     let ticketsData = [];
     try {
       const ticketsRes = await pool.query(`
@@ -237,6 +252,7 @@ router.get('/:id/historia', auth, async (req, res) => {
       leads:     leadsRes.rows,
       visitas:   visitasRes.rows,
       contratos: contratosRes.rows,
+      productos: productosData,
       tickets:   ticketsData,
     });
   } catch (err) {

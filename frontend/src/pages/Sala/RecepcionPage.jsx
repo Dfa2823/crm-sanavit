@@ -162,7 +162,9 @@ export default function RecepcionPage() {
         consultor_id: formCalificar.consultor_id || null,
         acompanante: formCalificar.acompanante || null,
       })
-      addToast(`Cliente calificado como ${formCalificar.calificacion}`)
+      addToast(modalCalificar.calificacion
+        ? `Calificacion actualizada a ${formCalificar.calificacion}`
+        : `Cliente calificado como ${formCalificar.calificacion}`)
       setModalCalificar(null)
       cargar()
     } catch (err) {
@@ -320,7 +322,7 @@ export default function RecepcionPage() {
                     </td>
                     <td>
                       <div className="flex gap-2" onClick={e => e.stopPropagation()}>
-                        {!cita.calificacion && (
+                        {!cita.calificacion ? (
                           <button
                             onClick={() => {
                               setModalCalificar(cita)
@@ -334,6 +336,21 @@ export default function RecepcionPage() {
                             className="btn-primary btn-sm whitespace-nowrap"
                           >
                             Calificar
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setModalCalificar(cita)
+                              setFormCalificar({
+                                calificacion: cita.calificacion || '',
+                                hora_llegada: cita.hora_llegada || new Date().toTimeString().slice(0,5),
+                                consultor_id: cita.consultor_id || '',
+                                acompanante: cita.acompanante || '',
+                              })
+                            }}
+                            className="btn-sm whitespace-nowrap px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
+                          >
+                            Editar
                           </button>
                         )}
                         <button
@@ -356,9 +373,16 @@ export default function RecepcionPage() {
       {modalCalificar && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="font-bold text-gray-800 text-lg mb-1">Registrar llegada y calificar</h3>
+            <h3 className="font-bold text-gray-800 text-lg mb-1">
+              {modalCalificar.calificacion ? 'Editar calificacion' : 'Registrar llegada y calificar'}
+            </h3>
             <p className="text-sm text-gray-500 mb-5">
               {modalCalificar.nombres} {modalCalificar.apellidos}
+              {modalCalificar.calificacion && (
+                <span className="ml-2 text-xs text-amber-600 font-medium">
+                  (Actual: {modalCalificar.calificacion === 'TOUR' ? 'TOUR' : 'NO TOUR'})
+                </span>
+              )}
             </p>
 
             {/* Calificación — 3 botones grandes */}
@@ -427,7 +451,7 @@ export default function RecepcionPage() {
                 disabled={guardando || !formCalificar.calificacion}
                 className="btn-primary flex-1 justify-center"
               >
-                {guardando ? 'Guardando...' : 'Guardar calificación'}
+                {guardando ? 'Guardando...' : modalCalificar.calificacion ? 'Actualizar calificacion' : 'Guardar calificacion'}
               </button>
             </div>
           </div>

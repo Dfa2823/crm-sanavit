@@ -99,6 +99,7 @@ router.get('/hoy', auth, async (req, res) => {
         f.nombre AS fuente_nombre,
         u.nombre AS tmk_nombre,
         vs.id AS visita_id, vs.hora_llegada, vs.calificacion, vs.hora_cita_agendada,
+        vs.consultor_id, vs.acompanante,
         uc.nombre AS consultor_nombre
       FROM leads l
       JOIN personas p ON l.persona_id = p.id
