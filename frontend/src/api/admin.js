@@ -26,3 +26,7 @@ export const getRoles       = ()     => api.get('/api/admin/roles').then(r => r.
 export const getFormasPago    = ()         => api.get('/api/admin/formas-pago').then(r => r.data)
 export const createFormaPago  = (data)     => api.post('/api/admin/formas-pago', data).then(r => r.data)
 export const updateFormaPago  = (id, data) => api.patch(`/api/admin/formas-pago/${id}`, data).then(r => r.data)
+
+export const getEscalasTmk    = ()         => api.get('/api/admin/escalas-tmk').then(r => r.data)
+export const createEscalaTmk  = (data)     => api.post('/api/admin/escalas-tmk', data).then(r => r.data)
+export const updateEscalaTmk  = (id, data) => api.patch(`/api/admin/escalas-tmk/${id}`, data).then(r => r.data)

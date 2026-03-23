@@ -16,6 +16,36 @@ const router = express.Router();
   } catch (e) { /* ya existen */ }
 })();
 
+// Auto-migración: tabla refinanciaciones
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS refinanciaciones (
+        id SERIAL PRIMARY KEY,
+        contrato_id INT REFERENCES contratos(id),
+        motivo TEXT,
+        monto_abono NUMERIC(10,2) DEFAULT 0,
+        saldo_anterior NUMERIC(10,2) DEFAULT 0,
+        saldo_refinanciado NUMERIC(10,2) DEFAULT 0,
+        nuevas_cuotas INT DEFAULT 0,
+        cuotas_anteriores_json JSONB,
+        cuotas_nuevas_json JSONB,
+        usuario_id INT REFERENCES usuarios(id),
+        fecha TIMESTAMPTZ DEFAULT NOW(),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    // Agregar columnas nuevas si la tabla ya existía sin ellas
+    await pool.query(`
+      ALTER TABLE refinanciaciones ADD COLUMN IF NOT EXISTS monto_abono NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE refinanciaciones ADD COLUMN IF NOT EXISTS saldo_anterior NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE refinanciaciones ADD COLUMN IF NOT EXISTS saldo_refinanciado NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE refinanciaciones ADD COLUMN IF NOT EXISTS nuevas_cuotas INT DEFAULT 0;
+      ALTER TABLE refinanciaciones ADD COLUMN IF NOT EXISTS cuotas_nuevas_json JSONB;
+    `);
+  } catch (e) { /* ya existe */ }
+})();
+
 // Auto-migraciones: tablas de tipificaciones y gestiones de cartera
 (async () => {
   try {
@@ -69,7 +99,7 @@ router.get('/', async (req, res) => {
     let idx = 1;
     const whereClauses = [
       `c.estado = 'activo'`,
-      `cu.estado != 'pagado'`,
+      `cu.estado NOT IN ('pagado', 'refinanciado')`,
     ];
 
     // Restringir sala para roles no privilegiados
@@ -181,7 +211,7 @@ router.get('/resumen', async (req, res) => {
     let idx = 1;
     const whereClauses = [
       `c.estado = 'activo'`,
-      `cu.estado != 'pagado'`,
+      `cu.estado NOT IN ('pagado', 'refinanciado')`,
       `cu.fecha_vencimiento < CURRENT_DATE`,
     ];
 
@@ -395,9 +425,59 @@ router.patch('/cuotas/:id/gestion', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/cartera/refinanciacion/:contrato_id
+// Verificar si un contrato ya tiene refinanciación + obtener saldo pendiente
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/refinanciacion/:contrato_id', async (req, res) => {
+  const contratoId = parseInt(req.params.contrato_id, 10);
+  if (isNaN(contratoId)) {
+    return res.status(400).json({ error: 'ID de contrato inválido' });
+  }
+
+  try {
+    // Verificar refinanciación previa
+    const refCheck = await pool.query(
+      'SELECT id, created_at FROM refinanciaciones WHERE contrato_id = $1', [contratoId]
+    );
+    const yaRefinanciado = refCheck.rows.length > 0;
+
+    // Obtener cuotas pendientes
+    const cuotasRes = await pool.query(
+      `SELECT id, numero_cuota, monto_esperado, monto_pagado, fecha_vencimiento, estado, tasa_interes
+       FROM cuotas WHERE contrato_id = $1 AND estado IN ('pendiente', 'vencido', 'parcial')
+       ORDER BY numero_cuota`,
+      [contratoId]
+    );
+
+    const cuotasPendientes = cuotasRes.rows;
+    const saldoPendiente = cuotasPendientes.reduce(
+      (s, c) => s + (Number(c.monto_esperado) - Number(c.monto_pagado)), 0
+    );
+
+    // Obtener info del contrato
+    const contratoRes = await pool.query(
+      `SELECT c.id, c.numero_contrato, c.monto_total, p.nombres, p.apellidos
+       FROM contratos c JOIN personas p ON c.persona_id = p.id WHERE c.id = $1`,
+      [contratoId]
+    );
+
+    res.json({
+      ya_refinanciado: yaRefinanciado,
+      refinanciacion: yaRefinanciado ? refCheck.rows[0] : null,
+      contrato: contratoRes.rows[0] || null,
+      cuotas_pendientes: cuotasPendientes.length,
+      saldo_pendiente: parseFloat(saldoPendiente.toFixed(2)),
+    });
+  } catch (err) {
+    console.error('GET /api/cartera/refinanciacion error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/cartera/refinanciar/:contrato_id
 // Refinanciar un contrato (solo 1 vez, no cambia intereses)
-// Body: { n_cuotas_nuevas, fecha_primer_pago, motivo }
+// Body: { monto_abono, nuevas_cuotas, motivo }
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/refinanciar/:contrato_id', async (req, res) => {
   const { rol } = req.user;
@@ -405,30 +485,42 @@ router.post('/refinanciar/:contrato_id', async (req, res) => {
     return res.status(403).json({ error: 'Sin permiso para refinanciar' });
   }
 
-  const contratoId = req.params.contrato_id;
-  const { n_cuotas_nuevas, fecha_primer_pago, motivo } = req.body;
-
-  if (!n_cuotas_nuevas || !fecha_primer_pago) {
-    return res.status(400).json({ error: 'n_cuotas_nuevas y fecha_primer_pago son requeridos' });
+  const contratoId = parseInt(req.params.contrato_id, 10);
+  if (isNaN(contratoId)) {
+    return res.status(400).json({ error: 'ID de contrato inválido' });
   }
 
+  const { monto_abono, nuevas_cuotas, motivo } = req.body;
+
+  if (monto_abono === undefined || monto_abono === null || Number(monto_abono) < 0) {
+    return res.status(400).json({ error: 'monto_abono es requerido y debe ser >= 0' });
+  }
+  if (!nuevas_cuotas || Number(nuevas_cuotas) < 1) {
+    return res.status(400).json({ error: 'nuevas_cuotas es requerido y debe ser >= 1' });
+  }
+
+  const client = await pool.connect();
   try {
-    // Verificar que no tenga refinanciación previa
-    const refCheck = await pool.query(
+    await client.query('BEGIN');
+
+    // 1. Verificar que no tenga refinanciación previa
+    const refCheck = await client.query(
       'SELECT id FROM refinanciaciones WHERE contrato_id = $1', [contratoId]
     );
     if (refCheck.rows.length > 0) {
+      await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Este contrato ya fue refinanciado. Solo se permite una vez.' });
     }
 
-    // Obtener cuotas pendientes actuales
-    const cuotasRes = await pool.query(
+    // 2. Obtener cuotas pendientes actuales
+    const cuotasRes = await client.query(
       `SELECT id, numero_cuota, monto_esperado, monto_pagado, fecha_vencimiento, estado, tasa_interes
        FROM cuotas WHERE contrato_id = $1 AND estado IN ('pendiente', 'vencido', 'parcial')
        ORDER BY numero_cuota`,
       [contratoId]
     );
     if (cuotasRes.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'No hay cuotas pendientes para refinanciar' });
     }
 
@@ -437,60 +529,121 @@ router.post('/refinanciar/:contrato_id', async (req, res) => {
       (s, c) => s + (Number(c.monto_esperado) - Number(c.monto_pagado)), 0
     );
 
-    // Calcular nuevas cuotas
-    const montoCuota = parseFloat((saldoPendiente / n_cuotas_nuevas).toFixed(2));
-    const tasaInteres = Number(cuotasAnteriores[0].tasa_interes) || 0; // mantener misma tasa
+    const abono = Number(monto_abono);
+    if (abono >= saldoPendiente) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'El abono no puede ser mayor o igual al saldo pendiente' });
+    }
 
-    // Guardar refinanciación
-    await pool.query(`
-      INSERT INTO refinanciaciones (contrato_id, motivo, cuotas_anteriores_json, usuario_id)
-      VALUES ($1, $2, $3, $4)
-    `, [contratoId, motivo || null, JSON.stringify(cuotasAnteriores), req.user.id]);
+    const nCuotas = Number(nuevas_cuotas);
+    const tasaInteres = Number(cuotasAnteriores[0].tasa_interes) || 0;
+    const saldoRestante = parseFloat((saldoPendiente - abono).toFixed(2));
+    const montoCuotaNueva = parseFloat((saldoRestante / nCuotas).toFixed(2));
 
-    // Marcar cuotas viejas como refinanciadas
-    await pool.query(
+    // 3. Si hay abono > 0, registrar el abono distribuyéndolo en las primeras cuotas pendientes
+    if (abono > 0) {
+      let abonoRestante = abono;
+      for (const cuota of cuotasAnteriores) {
+        if (abonoRestante <= 0) break;
+        const saldoCuota = Number(cuota.monto_esperado) - Number(cuota.monto_pagado);
+        const pagoAplicado = Math.min(abonoRestante, saldoCuota);
+        const nuevoPagado = Number(cuota.monto_pagado) + pagoAplicado;
+        const nuevoEstado = nuevoPagado >= Number(cuota.monto_esperado) ? 'pagado' : 'parcial';
+
+        await client.query(
+          `UPDATE cuotas SET monto_pagado = $1, estado = $2, fecha_pago = CASE WHEN $2 = 'pagado' THEN NOW() ELSE fecha_pago END,
+           observacion = COALESCE(observacion, '') || ' [Abono refinanciación: $' || $3 || ']'
+           WHERE id = $4`,
+          [nuevoPagado, nuevoEstado, pagoAplicado.toFixed(2), cuota.id]
+        );
+        abonoRestante = parseFloat((abonoRestante - pagoAplicado).toFixed(2));
+      }
+    }
+
+    // 4. Marcar cuotas pendientes restantes como 'refinanciado'
+    await client.query(
       `UPDATE cuotas SET estado = 'refinanciado' WHERE contrato_id = $1 AND estado IN ('pendiente', 'vencido', 'parcial')`,
       [contratoId]
     );
 
-    // Crear nuevas cuotas
-    const ultimaCuota = await pool.query(
+    // 5. Crear nuevas cuotas con el saldo restante distribuido
+    const ultimaCuota = await client.query(
       'SELECT COALESCE(MAX(numero_cuota), 0) AS max_cuota FROM cuotas WHERE contrato_id = $1',
       [contratoId]
     );
-    let numBase = ultimaCuota.rows[0].max_cuota;
+    const numBase = ultimaCuota.rows[0].max_cuota;
 
-    for (let i = 0; i < n_cuotas_nuevas; i++) {
-      const [anio, mesStr, diaStr] = fecha_primer_pago.split('-').map(Number);
-      let mesCalc = mesStr + i;
-      let anioCalc = anio;
+    // Fecha primer pago: próximo mes desde hoy
+    const hoy = new Date();
+    let mesInicio = hoy.getMonth() + 2; // +1 porque getMonth es 0-based, +1 para próximo mes
+    let anioInicio = hoy.getFullYear();
+    if (mesInicio > 12) { mesInicio -= 12; anioInicio++; }
+    const diaInicio = Math.min(hoy.getDate(), 28); // usar día actual o 28 para meses cortos
+
+    const cuotasNuevasCreadas = [];
+    // Ajuste para que la última cuota absorba el redondeo
+    let acumulado = 0;
+    for (let i = 0; i < nCuotas; i++) {
+      let mesCalc = mesInicio + i;
+      let anioCalc = anioInicio;
       while (mesCalc > 12) { mesCalc -= 12; anioCalc++; }
       const diasEnMes = new Date(anioCalc, mesCalc, 0).getDate();
-      const diaFinal = Math.min(diaStr, diasEnMes);
+      const diaFinal = Math.min(diaInicio, diasEnMes);
       const fvenc = `${anioCalc}-${String(mesCalc).padStart(2, '0')}-${String(diaFinal).padStart(2, '0')}`;
-      const interes = i >= 3 ? parseFloat((montoCuota * tasaInteres / 100).toFixed(2)) : 0;
 
-      await pool.query(`
-        INSERT INTO cuotas (contrato_id, numero_cuota, monto_esperado, monto_interes, tasa_interes, fecha_vencimiento, estado)
-        VALUES ($1, $2, $3, $4, $5, $6, 'pendiente')
-      `, [contratoId, numBase + i + 1, montoCuota, interes, tasaInteres, fvenc]);
+      // Última cuota absorbe diferencia por redondeo
+      let montoEsta;
+      if (i === nCuotas - 1) {
+        montoEsta = parseFloat((saldoRestante - acumulado).toFixed(2));
+      } else {
+        montoEsta = montoCuotaNueva;
+        acumulado += montoCuotaNueva;
+      }
+
+      const interes = i >= 3 ? parseFloat((montoEsta * tasaInteres / 100).toFixed(2)) : 0;
+
+      const insertRes = await client.query(`
+        INSERT INTO cuotas (contrato_id, numero_cuota, monto_esperado, monto_pagado, monto_interes, tasa_interes, fecha_vencimiento, estado)
+        VALUES ($1, $2, $3, 0, $4, $5, $6, 'pendiente')
+        RETURNING id, numero_cuota, monto_esperado, fecha_vencimiento
+      `, [contratoId, numBase + i + 1, montoEsta, interes, tasaInteres, fvenc]);
+
+      cuotasNuevasCreadas.push(insertRes.rows[0]);
     }
 
-    // Actualizar contrato
-    await pool.query(
-      `UPDATE contratos SET n_cuotas = n_cuotas + $2, monto_cuota = $3, updated_at = NOW() WHERE id = $1`,
-      [contratoId, n_cuotas_nuevas, montoCuota]
-    );
+    // 6. Guardar en tabla refinanciaciones con snapshot
+    await client.query(`
+      INSERT INTO refinanciaciones (contrato_id, motivo, monto_abono, saldo_anterior, saldo_refinanciado, nuevas_cuotas, cuotas_anteriores_json, cuotas_nuevas_json, usuario_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `, [
+      contratoId,
+      motivo || null,
+      abono,
+      saldoPendiente,
+      saldoRestante,
+      nCuotas,
+      JSON.stringify(cuotasAnteriores),
+      JSON.stringify(cuotasNuevasCreadas),
+      req.user.id,
+    ]);
+
+    await client.query('COMMIT');
 
     res.json({
       ok: true,
-      saldo_refinanciado: saldoPendiente,
-      nuevas_cuotas: n_cuotas_nuevas,
-      monto_cuota: montoCuota,
+      saldo_anterior: parseFloat(saldoPendiente.toFixed(2)),
+      monto_abono: abono,
+      saldo_refinanciado: saldoRestante,
+      nuevas_cuotas: nCuotas,
+      monto_cuota: montoCuotaNueva,
+      cuotas_creadas: cuotasNuevasCreadas,
     });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Refinanciación error:', err);
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { getCartera, getCarteraResumen, getTipificaciones, registrarGestion, getHistorialContrato } from '../../api/cartera'
+import { getCartera, getCarteraResumen, getTipificaciones, registrarGestion, getHistorialContrato, getInfoRefinanciacion, refinanciarContrato } from '../../api/cartera'
 import { getSalas, getFormasPago } from '../../api/admin'
 import { createRecibo } from '../../api/recibos'
 
@@ -458,6 +458,234 @@ function PanelCobro({ cuota, formasPago, onClose, onSaved }) {
   )
 }
 
+// ─────────────────── Modal de Refinanciación ────────────────────────────────
+function PanelRefinanciacion({ cuota, onClose, onSaved }) {
+  const [loading, setLoading]         = useState(true)
+  const [info, setInfo]               = useState(null)
+  const [montoAbono, setMontoAbono]   = useState('')
+  const [nCuotas, setNCuotas]         = useState('6')
+  const [motivo, setMotivo]           = useState('')
+  const [preview, setPreview]         = useState(null)
+  const [saving, setSaving]           = useState(false)
+  const [error, setError]             = useState('')
+  const [success, setSuccess]         = useState(null)
+
+  useEffect(() => {
+    setLoading(true)
+    getInfoRefinanciacion(cuota.contrato_id)
+      .then(data => setInfo(data))
+      .catch(err => setError(err.response?.data?.error || err.message))
+      .finally(() => setLoading(false))
+  }, [cuota.contrato_id])
+
+  // Calcular preview de nuevas cuotas
+  const calcularPreview = () => {
+    if (!info) return
+    const abono = Number(montoAbono) || 0
+    const numCuotas = Number(nCuotas) || 1
+    const saldo = info.saldo_pendiente
+
+    if (abono < 0) { setError('El abono no puede ser negativo'); return }
+    if (abono >= saldo) { setError('El abono debe ser menor al saldo pendiente'); return }
+    if (numCuotas < 1 || numCuotas > 36) { setError('Las cuotas deben ser entre 1 y 36'); return }
+
+    setError('')
+    const saldoRestante = parseFloat((saldo - abono).toFixed(2))
+    const montoPorCuota = parseFloat((saldoRestante / numCuotas).toFixed(2))
+
+    const hoy = new Date()
+    let mes = hoy.getMonth() + 2
+    let anio = hoy.getFullYear()
+    if (mes > 12) { mes -= 12; anio++ }
+    const dia = Math.min(hoy.getDate(), 28)
+
+    const cuotasPreview = []
+    let acum = 0
+    for (let i = 0; i < numCuotas; i++) {
+      let m = mes + i
+      let a = anio
+      while (m > 12) { m -= 12; a++ }
+      const diasMes = new Date(a, m, 0).getDate()
+      const d = Math.min(dia, diasMes)
+      const fecha = `${a}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+
+      let monto
+      if (i === numCuotas - 1) {
+        monto = parseFloat((saldoRestante - acum).toFixed(2))
+      } else {
+        monto = montoPorCuota
+        acum += montoPorCuota
+      }
+
+      cuotasPreview.push({ numero: i + 1, monto, fecha })
+    }
+
+    setPreview({ saldo_anterior: saldo, abono, saldo_restante: saldoRestante, cuotas: cuotasPreview })
+  }
+
+  const confirmar = async () => {
+    if (!preview) { setError('Primero calcula el preview'); return }
+    if (!motivo.trim()) { setError('El motivo es obligatorio'); return }
+    setSaving(true)
+    setError('')
+    try {
+      const result = await refinanciarContrato(cuota.contrato_id, {
+        monto_abono: Number(montoAbono) || 0,
+        nuevas_cuotas: Number(nCuotas),
+        motivo: motivo.trim(),
+      })
+      setSuccess(result)
+      onSaved()
+    } catch (err) {
+      setError(err.response?.data?.error || err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 flex items-center justify-center py-12">
+          <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </div>
+    )
+  }
+
+  if (info?.ya_refinanciado) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-gray-800 text-base">Refinanciacion</h3>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+            Este contrato ya fue refinanciado anteriormente. Solo se permite una refinanciacion por contrato.
+          </div>
+          <div className="flex justify-end">
+            <button onClick={onClose} className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">Cerrar</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-gray-800 text-base">Refinanciar contrato</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+        </div>
+
+        {/* Info del contrato */}
+        <div className="text-sm text-gray-600 space-y-1 bg-purple-50 rounded-lg p-3">
+          <p><span className="font-semibold">Cliente:</span> {info?.contrato?.nombres} {info?.contrato?.apellidos}</p>
+          <p><span className="font-semibold">Contrato:</span> {info?.contrato?.numero_contrato}</p>
+          <p><span className="font-semibold">Monto total:</span> {fmt(info?.contrato?.monto_total)}</p>
+          <p><span className="font-semibold">Cuotas pendientes:</span> {info?.cuotas_pendientes}</p>
+          <p><span className="font-semibold text-purple-700">Saldo pendiente:</span> <span className="font-bold text-purple-700">{fmt(info?.saldo_pendiente)}</span></p>
+        </div>
+
+        {success ? (
+          <div className="space-y-3">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-800 space-y-1">
+              <p className="font-bold">Refinanciacion exitosa</p>
+              <p>Saldo anterior: {fmt(success.saldo_anterior)}</p>
+              <p>Abono aplicado: {fmt(success.monto_abono)}</p>
+              <p>Saldo refinanciado: {fmt(success.saldo_refinanciado)}</p>
+              <p>Nuevas cuotas: {success.nuevas_cuotas} x {fmt(success.monto_cuota)}</p>
+            </div>
+            <div className="flex justify-end">
+              <button onClick={onClose} className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700">Cerrar</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Formulario */}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Monto que abona el cliente ahora *</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <input type="number" min="0" step="0.01"
+                    value={montoAbono} onChange={e => { setMontoAbono(e.target.value); setPreview(null) }}
+                    placeholder="Ej: 150.00"
+                    className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Cantidad de cuotas nuevas *</label>
+                <input type="number" min="1" max="36"
+                  value={nCuotas} onChange={e => { setNCuotas(e.target.value); setPreview(null) }}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Motivo de la refinanciacion *</label>
+                <textarea rows={2} value={motivo} onChange={e => setMotivo(e.target.value)}
+                  placeholder="Ej: Tarjeta rechazada, cliente solicita reestructurar cuotas..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none" />
+              </div>
+
+              <button onClick={calcularPreview}
+                className="w-full bg-purple-100 text-purple-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-purple-200 transition-colors">
+                Calcular nuevas cuotas
+              </button>
+            </div>
+
+            {/* Preview */}
+            {preview && (
+              <div className="border border-purple-200 rounded-lg overflow-hidden">
+                <div className="bg-purple-50 px-4 py-2 text-xs font-semibold text-purple-700 flex items-center justify-between">
+                  <span>Preview de nuevas cuotas</span>
+                  <span>Saldo: {fmt(preview.saldo_anterior)} - Abono {fmt(preview.abono)} = {fmt(preview.saldo_restante)}</span>
+                </div>
+                <div className="max-h-48 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                      <tr>
+                        <th className="text-left px-3 py-1.5 text-xs font-semibold text-gray-600">#</th>
+                        <th className="text-right px-3 py-1.5 text-xs font-semibold text-gray-600">Monto</th>
+                        <th className="text-center px-3 py-1.5 text-xs font-semibold text-gray-600">Vencimiento</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.cuotas.map((c, i) => (
+                        <tr key={i} className={`border-b border-gray-50 ${i % 2 ? 'bg-gray-50/40' : ''}`}>
+                          <td className="px-3 py-1.5 text-xs text-gray-600">{c.numero}</td>
+                          <td className="px-3 py-1.5 text-xs text-right font-semibold">{fmt(c.monto)}</td>
+                          <td className="px-3 py-1.5 text-xs text-center text-gray-500">{fmtFecha(c.fecha)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {error && <p className="text-red-600 text-xs bg-red-50 rounded-md px-2 py-1">{error}</p>}
+
+            <div className="flex gap-3 justify-end pt-1">
+              <button onClick={onClose}
+                className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button onClick={confirmar} disabled={saving || !preview}
+                className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                {saving ? 'Procesando...' : 'Confirmar refinanciacion'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─────────────────── Página principal ────────────────────────────────────────
 export default function CarteraPage() {
   const { usuario } = useAuth()
@@ -481,6 +709,7 @@ export default function CarteraPage() {
   const [panelCuota,    setPanelCuota]    = useState(null)
   const [panelCobro,    setPanelCobro]    = useState(null)
   const [panelHistorial, setPanelHistorial] = useState(null)
+  const [panelRefinanciacion, setPanelRefinanciacion] = useState(null)
   const [formasPago,    setFormasPago]    = useState([])
 
   const cargar = useCallback(async () => {
@@ -838,6 +1067,15 @@ export default function CarteraPage() {
                               >
                                 Historial
                               </button>
+                              {['admin', 'director', 'asesor_cartera'].includes(usuario?.rol) && (
+                                <button
+                                  onClick={() => setPanelRefinanciacion(c)}
+                                  className="bg-purple-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-purple-700 text-xs font-medium"
+                                  title="Refinanciar contrato"
+                                >
+                                  Refinanciar
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -876,6 +1114,15 @@ export default function CarteraPage() {
         <PanelHistorial
           contrato={panelHistorial}
           onClose={() => setPanelHistorial(null)}
+        />
+      )}
+
+      {/* Modal de refinanciación */}
+      {panelRefinanciacion && (
+        <PanelRefinanciacion
+          cuota={panelRefinanciacion}
+          onClose={() => setPanelRefinanciacion(null)}
+          onSaved={cargar}
         />
       )}
     </div>

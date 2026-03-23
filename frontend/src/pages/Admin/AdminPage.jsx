@@ -6,6 +6,7 @@ import {
   getFuentes, createFuente, updateFuente,
   getRoles,
   getFormasPago, createFormaPago, updateFormaPago,
+  getEscalasTmk, createEscalaTmk, updateEscalaTmk,
 } from '../../api/admin'
 import { getProductos, createProducto, updateProducto } from '../../api/productos'
 
@@ -16,6 +17,7 @@ const TABS = [
   { key: 'fuentes',        label: 'Fuentes',               icon: '📡' },
   { key: 'formas_pago',    label: 'Formas de Pago',        icon: '💳' },
   { key: 'productos',      label: 'Productos',             icon: '📦' },
+  { key: 'escalas_tmk',   label: 'Escalas TMK',           icon: '📞' },
 ]
 
 const TIPOS_FORMA_PAGO = [
@@ -1613,6 +1615,291 @@ function TabProductos() {
   )
 }
 
+// ──────────────────────── TAB ESCALAS TMK ───────────────────────────────────
+function TabEscalasTmk() {
+  const [escalas, setEscalas] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [modalNueva, setModalNueva] = useState(false)
+  const [editando, setEditando] = useState(null) // id de escala en edicion inline
+  const [guardando, setGuardando] = useState(false)
+  const [mensajeExito, setMensajeExito] = useState('')
+
+  const [formNueva, setFormNueva] = useState({ tours_min: '', tours_max: '', bono_por_tour: '', bono_semanal: '' })
+  const [formEditar, setFormEditar] = useState({ tours_min: '', tours_max: '', bono_por_tour: '', bono_semanal: '' })
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await getEscalasTmk()
+      setEscalas(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setError('Error al cargar escalas: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  async function handleCrear(e) {
+    e.preventDefault()
+    setGuardando(true)
+    setError('')
+    try {
+      await createEscalaTmk({
+        tours_min: parseInt(formNueva.tours_min),
+        tours_max: parseInt(formNueva.tours_max),
+        bono_por_tour: parseFloat(formNueva.bono_por_tour),
+        bono_semanal: parseFloat(formNueva.bono_semanal || 0),
+      })
+      setModalNueva(false)
+      setFormNueva({ tours_min: '', tours_max: '', bono_por_tour: '', bono_semanal: '' })
+      setMensajeExito('Escala creada correctamente')
+      cargar()
+    } catch (err) {
+      setError('Error al crear escala: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  function iniciarEdicion(esc) {
+    setEditando(esc.id)
+    setFormEditar({
+      tours_min: esc.tours_min,
+      tours_max: esc.tours_max,
+      bono_por_tour: esc.bono_por_tour,
+      bono_semanal: esc.bono_semanal,
+    })
+  }
+
+  async function handleGuardarEdicion(id) {
+    setGuardando(true)
+    setError('')
+    try {
+      await updateEscalaTmk(id, {
+        tours_min: parseInt(formEditar.tours_min),
+        tours_max: parseInt(formEditar.tours_max),
+        bono_por_tour: parseFloat(formEditar.bono_por_tour),
+        bono_semanal: parseFloat(formEditar.bono_semanal || 0),
+      })
+      setEditando(null)
+      setMensajeExito('Escala actualizada correctamente')
+      cargar()
+    } catch (err) {
+      setError('Error al actualizar: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  async function handleToggleActivo(esc) {
+    try {
+      await updateEscalaTmk(esc.id, { activo: !esc.activo })
+      cargar()
+    } catch (err) {
+      setError('Error al cambiar estado: ' + (err.response?.data?.error || err.message))
+    }
+  }
+
+  const inp = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500'
+  const inpSmall = 'border border-gray-300 rounded px-2 py-1 text-sm w-20 text-right focus:outline-none focus:ring-2 focus:ring-teal-500'
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-sm text-gray-500">
+            Escalas de comisiones semanales por tours para Telemarquistas. Se aplican automaticamente al calcular nomina.
+          </p>
+        </div>
+        <button
+          onClick={() => setModalNueva(true)}
+          className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap"
+        >
+          + Nueva escala
+        </button>
+      </div>
+
+      {mensajeExito && (
+        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm flex items-center justify-between">
+          {mensajeExito}
+          <button onClick={() => setMensajeExito('')} className="ml-2 text-green-400 hover:text-green-600">x</button>
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          {error}
+          <button onClick={() => setError('')} className="ml-2 text-red-400 hover:text-red-600">x</button>
+        </div>
+      )}
+
+      {loading ? <Spinner /> : (
+        <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Tours Min</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Tours Max</th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600">Bono/Tour ($)</th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600">Bono Semanal ($)</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Estado</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {escalas.map((esc, i) => (
+                <tr key={esc.id} className={`border-b border-gray-50 hover:bg-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}>
+                  {editando === esc.id ? (
+                    <>
+                      <td className="px-4 py-2">
+                        <input type="number" min="0" className={inpSmall}
+                          value={formEditar.tours_min}
+                          onChange={e => setFormEditar(f => ({ ...f, tours_min: e.target.value }))}
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input type="number" min="0" className={inpSmall}
+                          value={formEditar.tours_max}
+                          onChange={e => setFormEditar(f => ({ ...f, tours_max: e.target.value }))}
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <input type="number" min="0" step="0.01" className={inpSmall}
+                          value={formEditar.bono_por_tour}
+                          onChange={e => setFormEditar(f => ({ ...f, bono_por_tour: e.target.value }))}
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <input type="number" min="0" step="0.01" className={inpSmall}
+                          value={formEditar.bono_semanal}
+                          onChange={e => setFormEditar(f => ({ ...f, bono_semanal: e.target.value }))}
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${esc.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                          {esc.activo ? 'Activa' : 'Inactiva'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-right flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleGuardarEdicion(esc.id)}
+                          disabled={guardando}
+                          className="border border-teal-500 text-teal-700 px-3 py-1.5 rounded-lg text-xs hover:bg-teal-50 disabled:opacity-50"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          onClick={() => setEditando(null)}
+                          className="border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-50"
+                        >
+                          Cancelar
+                        </button>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-4 py-3 font-medium text-gray-800">{esc.tours_min}</td>
+                      <td className="px-4 py-3 text-gray-800">{esc.tours_max >= 999 ? '7+' : esc.tours_max}</td>
+                      <td className="px-4 py-3 text-right font-medium text-gray-800">${Number(esc.bono_por_tour).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right font-medium text-gray-800">${Number(esc.bono_semanal).toFixed(2)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${esc.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                          {esc.activo ? 'Activa' : 'Inactiva'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => iniciarEdicion(esc)}
+                          className="border border-gray-300 text-gray-700 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-50"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => handleToggleActivo(esc)}
+                          className={`px-3 py-1.5 rounded-lg text-xs border ${
+                            esc.activo
+                              ? 'border-red-200 text-red-600 hover:bg-red-50'
+                              : 'border-green-200 text-green-700 hover:bg-green-50'
+                          }`}
+                        >
+                          {esc.activo ? 'Desactivar' : 'Activar'}
+                        </button>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+              {escalas.length === 0 && (
+                <tr>
+                  <td colSpan="6" className="px-4 py-12 text-center text-gray-400">
+                    No hay escalas configuradas
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Modal: Nueva escala */}
+      {modalNueva && (
+        <Modal title="Nueva escala TMK" onClose={() => setModalNueva(false)}>
+          <form onSubmit={handleCrear} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tours min *</label>
+                <input type="number" min="0" required className={inp}
+                  value={formNueva.tours_min}
+                  onChange={e => setFormNueva(f => ({ ...f, tours_min: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tours max *</label>
+                <input type="number" min="0" required className={inp}
+                  placeholder="999 = sin limite"
+                  value={formNueva.tours_max}
+                  onChange={e => setFormNueva(f => ({ ...f, tours_max: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bono por tour ($) *</label>
+                <input type="number" min="0" step="0.01" required className={inp}
+                  value={formNueva.bono_por_tour}
+                  onChange={e => setFormNueva(f => ({ ...f, bono_por_tour: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bono semanal ($)</label>
+                <input type="number" min="0" step="0.01" className={inp}
+                  placeholder="0.00"
+                  value={formNueva.bono_semanal}
+                  onChange={e => setFormNueva(f => ({ ...f, bono_semanal: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setModalNueva(false)}
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button type="submit" disabled={guardando}
+                className="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg disabled:opacity-50">
+                {guardando ? 'Creando...' : 'Crear escala'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
 // ─────────────────────────── Página principal ───────────────────────────────
 export default function AdminPage() {
   const [tabActivo, setTabActivo] = useState('usuarios')
@@ -1689,6 +1976,9 @@ export default function AdminPage() {
               )}
               {tabActivo === 'productos' && (
                 <TabProductos />
+              )}
+              {tabActivo === 'escalas_tmk' && (
+                <TabEscalasTmk />
               )}
             </>
           )}

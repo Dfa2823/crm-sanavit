@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getNomina, calcularNomina, updateNomina, getReporteNomina } from '../../api/nomina'
+import { getNomina, calcularNomina, updateNomina, getReporteNomina, getAsistenciaDia, registrarAsistenciaBulk, getResumenMensual } from '../../api/nomina'
 import { getSalas } from '../../api/admin'
 import { useAuth } from '../../context/AuthContext'
 
@@ -192,8 +192,8 @@ function DrawerNomina({ registro, onClose, onUpdate, esAdmin }) {
             <div className="space-y-2">
               {[
                 ['Sueldo base', null, registro.sueldo_base],
-                [`Comisión ventas (${registro.pct_comision_venta_config || 0}%)`, `${registro.contratos_desbloqueados || 0} contratos`, registro.comision_ventas],
-                ['Comisión cobros', null, registro.comision_cobros],
+                [`Comision ventas (${registro.pct_comision_venta_config || 0}%)`, `${registro.contratos_desbloqueados || 0} contratos`, registro.comision_ventas],
+                ['Comision cobros', null, registro.comision_cobros],
                 [`Bono tours`, `${registro.tours_count || 0} tours`, registro.bono_tours],
                 [`Bono citas`, `${registro.citas_count || 0} citas`, registro.bono_citas],
                 ['Bono meta', null, registro.bono_meta],
@@ -208,6 +208,44 @@ function DrawerNomina({ registro, onClose, onUpdate, esAdmin }) {
                   </div>
                 ) : null
               ))}
+              {/* Desglose semanal TMK */}
+              {registro.rol === 'tmk' && Array.isArray(registro.desglose_semanal_tmk) && registro.desglose_semanal_tmk.length > 0 && (
+                <div className="mt-3 mb-1">
+                  <p className="text-xs font-semibold text-teal-600 uppercase tracking-wide mb-2">Desglose semanal TMK</p>
+                  <div className="bg-teal-50/50 rounded-lg border border-teal-100 overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-teal-100/60">
+                          <th className="text-left px-3 py-1.5 font-semibold text-teal-700">Semana</th>
+                          <th className="text-center px-2 py-1.5 font-semibold text-teal-700">Tours</th>
+                          <th className="text-right px-2 py-1.5 font-semibold text-teal-700">$/Tour</th>
+                          <th className="text-right px-2 py-1.5 font-semibold text-teal-700">Bono Tours</th>
+                          <th className="text-right px-2 py-1.5 font-semibold text-teal-700">Bono Sem.</th>
+                          <th className="text-right px-3 py-1.5 font-semibold text-teal-700">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {registro.desglose_semanal_tmk.map((s, i) => {
+                          const inicioDate = new Date(s.semana_inicio + 'T00:00:00')
+                          const finDate = new Date(inicioDate)
+                          finDate.setDate(finDate.getDate() + 6)
+                          const fmtDate = (d) => `${d.getDate()}/${d.getMonth() + 1}`
+                          return (
+                            <tr key={i} className={i % 2 === 0 ? '' : 'bg-teal-50/40'}>
+                              <td className="px-3 py-1.5 text-gray-700">{fmtDate(inicioDate)} - {fmtDate(finDate)}</td>
+                              <td className="px-2 py-1.5 text-center font-medium text-gray-800">{s.tours}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-600">${Number(s.bono_por_tour).toFixed(2)}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-700">${fmt(s.bono_tours_sem)}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-700">${fmt(s.bono_semanal)}</td>
+                              <td className="px-3 py-1.5 text-right font-medium text-teal-700">${fmt(s.total_semana)}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
               {/* Otros ingresos editable */}
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-700">Otros ingresos</span>
@@ -331,14 +369,415 @@ function DrawerNomina({ registro, onClose, onUpdate, esAdmin }) {
   )
 }
 
+// ── Estado de asistencia: colores y labels ───────────────────────────────────
+const ASISTENCIA_ESTADOS = [
+  { value: 'presente',  label: 'Presente',  color: 'bg-green-100 text-green-700' },
+  { value: 'ausente',   label: 'Ausente',   color: 'bg-red-100 text-red-700' },
+  { value: 'tardanza',  label: 'Tardanza',  color: 'bg-yellow-100 text-yellow-700' },
+  { value: 'permiso',   label: 'Permiso',   color: 'bg-blue-100 text-blue-700' },
+  { value: 'vacacion',  label: 'Vacaci\u00f3n', color: 'bg-purple-100 text-purple-700' },
+]
+
+// ── Tab de Asistencia ────────────────────────────────────────────────────────
+function AsistenciaTab({ salas }) {
+  const { usuario } = useAuth()
+  const puedeRegistrar = ['admin', 'director', 'hostess', 'supervisor_cc'].includes(usuario?.rol)
+  const esAdmin = ['admin', 'director'].includes(usuario?.rol)
+
+  const hoy = new Date().toISOString().slice(0, 10)
+  const mesActual = hoy.slice(0, 7)
+
+  const [vista, setVista]         = useState('diaria') // 'diaria' | 'resumen'
+  const [fecha, setFecha]         = useState(hoy)
+  const [mesResumen, setMesResumen] = useState(mesActual)
+  const [salaId, setSalaId]       = useState(usuario?.sala_id || '')
+  const [usuarios, setUsuarios]   = useState([])
+  const [asistenciaForm, setAsistenciaForm] = useState({}) // { [usuario_id]: { estado, justificacion } }
+  const [loading, setLoading]     = useState(false)
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError]         = useState('')
+  const [success, setSuccess]     = useState('')
+  const [resumen, setResumen]     = useState(null)
+
+  // Cargar asistencia del día
+  const cargarDia = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    setSuccess('')
+    try {
+      const params = { fecha }
+      if (salaId) params.sala_id = salaId
+      const data = await getAsistenciaDia(params)
+      setUsuarios(Array.isArray(data) ? data : [])
+      // Inicializar form con lo que ya existe
+      const form = {}
+      for (const u of data) {
+        form[u.usuario_id] = {
+          estado: u.estado || 'presente',
+          justificacion: u.justificacion || '',
+        }
+      }
+      setAsistenciaForm(form)
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al cargar asistencia')
+    } finally {
+      setLoading(false)
+    }
+  }, [fecha, salaId])
+
+  // Cargar resumen mensual
+  const cargarResumen = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const params = { mes: mesResumen }
+      if (salaId) params.sala_id = salaId
+      const data = await getResumenMensual(params)
+      setResumen(data)
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al cargar resumen')
+    } finally {
+      setLoading(false)
+    }
+  }, [mesResumen, salaId])
+
+  useEffect(() => {
+    if (vista === 'diaria') cargarDia()
+    else cargarResumen()
+  }, [vista, cargarDia, cargarResumen])
+
+  function handleEstadoChange(usuarioId, campo, valor) {
+    setAsistenciaForm(prev => ({
+      ...prev,
+      [usuarioId]: { ...prev[usuarioId], [campo]: valor },
+    }))
+  }
+
+  // Marcar todos presente
+  function marcarTodos(estado) {
+    setAsistenciaForm(prev => {
+      const nuevo = { ...prev }
+      for (const uid of Object.keys(nuevo)) {
+        nuevo[uid] = { ...nuevo[uid], estado }
+      }
+      return nuevo
+    })
+  }
+
+  async function guardarAsistencia() {
+    setGuardando(true)
+    setError('')
+    setSuccess('')
+    try {
+      const registros = Object.entries(asistenciaForm).map(([uid, data]) => ({
+        usuario_id: parseInt(uid, 10),
+        estado: data.estado,
+        justificacion: data.justificacion || null,
+        sala_id: salaId ? parseInt(salaId, 10) : null,
+      }))
+      await registrarAsistenciaBulk({ fecha, registros })
+      setSuccess('Asistencia guardada correctamente')
+      await cargarDia()
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al guardar asistencia')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  // Contar presentes/ausentes del form actual
+  const conteo = Object.values(asistenciaForm)
+  const presentes = conteo.filter(c => c.estado === 'presente' || c.estado === 'tardanza').length
+  const ausentes  = conteo.filter(c => c.estado === 'ausente').length
+
+  return (
+    <div className="space-y-5">
+      {/* Sub-tabs: Diaria / Resumen mensual */}
+      <div className="flex items-center gap-4 border-b border-gray-200">
+        <button
+          onClick={() => setVista('diaria')}
+          className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${vista === 'diaria' ? 'border-teal-600 text-teal-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          Registro diario
+        </button>
+        <button
+          onClick={() => setVista('resumen')}
+          className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${vista === 'resumen' ? 'border-teal-600 text-teal-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          Resumen mensual
+        </button>
+      </div>
+
+      {/* Filtros */}
+      <div className="flex flex-wrap items-end gap-3">
+        {vista === 'diaria' ? (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Fecha</label>
+            <input
+              type="date"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={fecha}
+              onChange={e => setFecha(e.target.value)}
+            />
+          </div>
+        ) : (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Mes</label>
+            <input
+              type="month"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={mesResumen}
+              onChange={e => setMesResumen(e.target.value)}
+            />
+          </div>
+        )}
+        {(esAdmin || salas.length > 0) && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Sala</label>
+            <select
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={salaId}
+              onChange={e => setSalaId(e.target.value)}
+            >
+              <option value="">Todas las salas</option>
+              {salas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>
+      )}
+      {success && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">{success}</div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center h-48">
+          <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : vista === 'diaria' ? (
+        /* ── Vista diaria ───────────────────────────────────────────── */
+        <>
+          {/* Cards resumen rápido */}
+          {usuarios.length > 0 && (
+            <div className="grid grid-cols-3 gap-4">
+              <div className="border rounded-xl p-3 bg-slate-50 border-slate-200">
+                <p className="text-xs text-gray-500">Personal</p>
+                <p className="text-xl font-bold text-gray-800">{usuarios.length}</p>
+              </div>
+              <div className="border rounded-xl p-3 bg-green-50 border-green-200">
+                <p className="text-xs text-gray-500">Presentes</p>
+                <p className="text-xl font-bold text-green-700">{presentes}</p>
+              </div>
+              <div className="border rounded-xl p-3 bg-red-50 border-red-200">
+                <p className="text-xs text-gray-500">Ausentes</p>
+                <p className="text-xl font-bold text-red-700">{ausentes}</p>
+              </div>
+            </div>
+          )}
+
+          {usuarios.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <p className="text-4xl mb-3">📋</p>
+              <p className="font-medium">No se encontraron usuarios activos para esta sala</p>
+            </div>
+          ) : (
+            <>
+              {/* Acciones rápidas */}
+              {puedeRegistrar && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => marcarTodos('presente')}
+                    className="text-xs border border-green-300 text-green-700 hover:bg-green-50 px-3 py-1.5 rounded-lg"
+                  >
+                    Marcar todos presente
+                  </button>
+                  <button
+                    onClick={() => marcarTodos('ausente')}
+                    className="text-xs border border-red-300 text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg"
+                  >
+                    Marcar todos ausente
+                  </button>
+                </div>
+              )}
+
+              {/* Tabla de asistencia diaria */}
+              <div className="overflow-x-auto rounded-xl border border-gray-100">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Empleado</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Rol</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Sala</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Estado</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Observaci\u00f3n</th>
+                      {!puedeRegistrar && <th className="text-left px-4 py-3 font-semibold text-gray-600">Registrado por</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usuarios.map((u, i) => {
+                      const form = asistenciaForm[u.usuario_id] || { estado: 'presente', justificacion: '' }
+                      const yaRegistrado = !!u.asistencia_id
+                      return (
+                        <tr key={u.usuario_id} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}>
+                          <td className="px-4 py-3 font-medium text-gray-800">{u.usuario_nombre}</td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">{u.rol_label || u.rol}</td>
+                          <td className="px-4 py-3 text-gray-500">{u.sala_nombre || '\u2014'}</td>
+                          <td className="px-4 py-3">
+                            {puedeRegistrar ? (
+                              <select
+                                value={form.estado}
+                                onChange={e => handleEstadoChange(u.usuario_id, 'estado', e.target.value)}
+                                className={`border rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+                                  ASISTENCIA_ESTADOS.find(e => e.value === form.estado)?.color || ''
+                                }`}
+                              >
+                                {ASISTENCIA_ESTADOS.map(e => (
+                                  <option key={e.value} value={e.value}>{e.label}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                ASISTENCIA_ESTADOS.find(e => e.value === form.estado)?.color || 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {ASISTENCIA_ESTADOS.find(e => e.value === form.estado)?.label || form.estado}
+                              </span>
+                            )}
+                            {yaRegistrado && (
+                              <span className="ml-2 text-xs text-gray-400" title="Ya registrado">
+                                &#10003;
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {puedeRegistrar ? (
+                              <input
+                                type="text"
+                                placeholder="Obs..."
+                                value={form.justificacion}
+                                onChange={e => handleEstadoChange(u.usuario_id, 'justificacion', e.target.value)}
+                                className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-full max-w-[200px] focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              />
+                            ) : (
+                              <span className="text-xs text-gray-500">{u.justificacion || '\u2014'}</span>
+                            )}
+                          </td>
+                          {!puedeRegistrar && (
+                            <td className="px-4 py-3 text-xs text-gray-400">{u.registrado_por_nombre || '\u2014'}</td>
+                          )}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Botón guardar */}
+              {puedeRegistrar && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={guardarAsistencia}
+                    disabled={guardando}
+                    className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-6 py-2.5 rounded-lg text-sm font-medium"
+                  >
+                    {guardando ? 'Guardando...' : 'Guardar Asistencia del D\u00eda'}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </>
+      ) : (
+        /* ── Vista resumen mensual ──────────────────────────────────── */
+        resumen && (
+          <>
+            {/* Info días laborables */}
+            <div className="flex items-center gap-4">
+              <div className="border rounded-xl p-3 bg-slate-50 border-slate-200">
+                <p className="text-xs text-gray-500">D\u00edas laborables del mes</p>
+                <p className="text-xl font-bold text-gray-800">{resumen.dias_laborables}</p>
+              </div>
+              <div className="border rounded-xl p-3 bg-slate-50 border-slate-200">
+                <p className="text-xs text-gray-500">Empleados activos</p>
+                <p className="text-xl font-bold text-gray-800">{resumen.usuarios?.length || 0}</p>
+              </div>
+            </div>
+
+            {resumen.usuarios?.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <p className="font-medium">No hay datos de asistencia para este mes</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-gray-100">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Empleado</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Rol</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Sala</th>
+                      <th className="text-center px-4 py-3 font-semibold text-green-600">Presentes</th>
+                      <th className="text-center px-4 py-3 font-semibold text-yellow-600">Tardanzas</th>
+                      <th className="text-center px-4 py-3 font-semibold text-red-600">Ausentes</th>
+                      <th className="text-center px-4 py-3 font-semibold text-blue-600">Permisos</th>
+                      <th className="text-center px-4 py-3 font-semibold text-purple-600">Vacaci\u00f3n</th>
+                      <th className="text-center px-4 py-3 font-semibold text-teal-700">D\u00edas trabajados</th>
+                      <th className="text-center px-4 py-3 font-semibold text-gray-600">% Asistencia</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resumen.usuarios.map((u, i) => {
+                      const dt = parseInt(u.dias_trabajados) || 0
+                      const pct = resumen.dias_laborables > 0
+                        ? Math.round((dt / resumen.dias_laborables) * 100)
+                        : 0
+                      return (
+                        <tr key={u.usuario_id} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}>
+                          <td className="px-4 py-3 font-medium text-gray-800">{u.usuario_nombre}</td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">{u.rol_label}</td>
+                          <td className="px-4 py-3 text-gray-500">{u.sala_nombre || '\u2014'}</td>
+                          <td className="px-4 py-3 text-center text-green-700 font-medium">{u.dias_presente}</td>
+                          <td className="px-4 py-3 text-center text-yellow-600">{u.dias_tardanza}</td>
+                          <td className="px-4 py-3 text-center text-red-600">{u.dias_ausente}</td>
+                          <td className="px-4 py-3 text-center text-blue-600">{u.dias_permiso}</td>
+                          <td className="px-4 py-3 text-center text-purple-600">{u.dias_vacacion}</td>
+                          <td className="px-4 py-3 text-center font-bold text-teal-700">{dt}</td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <div className="w-16 bg-gray-200 rounded-full h-2">
+                                <div
+                                  className={`h-2 rounded-full ${pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                  style={{ width: `${Math.min(pct, 100)}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-medium text-gray-600">{pct}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )
+      )}
+    </div>
+  )
+}
+
 // ── Página principal ─────────────────────────────────────────────────────────
 export default function NominaPage() {
   const { usuario } = useAuth()
   const esAdmin = ['admin', 'director'].includes(usuario?.rol)
+  const puedeVerAsistencia = ['admin', 'director', 'hostess', 'supervisor_cc'].includes(usuario?.rol)
 
   const hoy = new Date()
   const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`
 
+  const [tabActivo, setTabActivo] = useState('nomina')
   const [mes,         setMes]         = useState(mesActual)
   const [salaId,      setSalaId]      = useState('')
   const [salas,       setSalas]       = useState([])
@@ -484,145 +923,169 @@ export default function NominaPage() {
 
   return (
     <div className="space-y-6">
-      {/* Cabecera */}
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Mes</label>
-          <input
-            type="month"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-            value={mes}
-            onChange={e => setMes(e.target.value)}
-          />
-        </div>
-        {esAdmin && salas.length > 0 && (
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Sala</label>
-            <select
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-              value={salaId}
-              onChange={e => setSalaId(e.target.value)}
-            >
-              <option value="">Todas las salas</option>
-              {salas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-            </select>
-          </div>
-        )}
-        {esAdmin && (
+      {/* Tabs principales */}
+      <div className="flex items-center gap-1 border-b border-gray-200">
+        <button
+          onClick={() => setTabActivo('nomina')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tabActivo === 'nomina' ? 'border-teal-600 text-teal-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          Nomina
+        </button>
+        {puedeVerAsistencia && (
           <button
-            onClick={handleCalcular}
-            disabled={calculando}
-            className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
+            onClick={() => setTabActivo('asistencia')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tabActivo === 'asistencia' ? 'border-teal-600 text-teal-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
           >
-            {calculando ? 'Calculando...' : '⚙ Calcular mes'}
+            Asistencia
           </button>
-        )}
-        {registros.length > 0 && esAdmin && (
-          <>
-            <button
-              onClick={exportarCSV}
-              className="border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm"
-            >
-              Exportar Excel CSV
-            </button>
-            <button
-              onClick={exportarPDFPlanilla}
-              className="border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm"
-            >
-              PDF Planilla completa
-            </button>
-          </>
         )}
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-          {error}
-        </div>
-      )}
-
-      {/* Cards resumen */}
-      {esAdmin && registros.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: 'Empleados',    value: totalEmpleados, prefix: '',  color: 'bg-slate-50  border-slate-200'  },
-            { label: 'Nómina bruta', value: nominaBruta,    prefix: '$', color: 'bg-blue-50   border-blue-200'   },
-            { label: 'IESS total',   value: totalIESS,      prefix: '$', color: 'bg-orange-50 border-orange-200' },
-            { label: 'Neto total',   value: netoTotal,      prefix: '$', color: 'bg-teal-50   border-teal-200'   },
-          ].map(c => (
-            <div key={c.label} className={`border rounded-xl p-4 ${c.color}`}>
-              <p className="text-xs text-gray-500 mb-1">{c.label}</p>
-              <p className="text-xl font-bold text-gray-800">
-                {c.prefix}{c.prefix ? fmt(c.value) : c.value}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Tabla */}
-      {loading ? (
-        <div className="flex items-center justify-center h-48">
-          <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : registros.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <p className="text-4xl mb-3">💵</p>
-          <p className="font-medium">No hay registros de nómina para {mes}</p>
-          {esAdmin && <p className="text-sm mt-1">Haz clic en "Calcular mes" para generar la nómina</p>}
-        </div>
+      {tabActivo === 'asistencia' && puedeVerAsistencia ? (
+        <AsistenciaTab salas={salas} />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600">Empleado</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600">Rol</th>
-                {esAdmin && <th className="text-left px-4 py-3 font-semibold text-gray-600">Sala</th>}
-                <th className="text-right px-4 py-3 font-semibold text-gray-600">Sueldo</th>
-                <th className="text-right px-4 py-3 font-semibold text-gray-600">Comisiones</th>
-                <th className="text-right px-4 py-3 font-semibold text-gray-600">Bonos</th>
-                <th className="text-right px-4 py-3 font-semibold text-gray-600">IESS</th>
-                <th className="text-right px-4 py-3 font-semibold text-gray-600">Neto</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600">Estado</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {registros.map((r, i) => (
-                <tr key={r.id} className={`border-b border-gray-50 hover:bg-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}>
-                  <td className="px-4 py-3 font-medium text-gray-800">{r.usuario_nombre}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{r.rol_label || r.rol}</td>
-                  {esAdmin && <td className="px-4 py-3 text-gray-500">{r.sala_nombre || '—'}</td>}
-                  <td className="px-4 py-3 text-right text-gray-700">${fmt(r.sueldo_base)}</td>
-                  <td className="px-4 py-3 text-right text-gray-700">${fmt(Number(r.comision_ventas) + Number(r.comision_cobros))}</td>
-                  <td className="px-4 py-3 text-right text-gray-700">${fmt(Number(r.bono_tours) + Number(r.bono_citas) + Number(r.bono_meta))}</td>
-                  <td className="px-4 py-3 text-right text-red-500">-${fmt(r.aporte_iess)}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-teal-700">${fmt(r.neto_a_pagar)}</td>
-                  <td className="px-4 py-3"><Badge estado={r.estado} /></td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => setDetalle(r)}
-                      className="text-xs border border-teal-200 text-teal-700 hover:bg-teal-50 px-3 py-1.5 rounded-lg"
-                    >
-                      Ver detalle
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+        <>
+          {/* Cabecera nomina */}
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Mes</label>
+              <input
+                type="month"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={mes}
+                onChange={e => setMes(e.target.value)}
+              />
+            </div>
+            {esAdmin && salas.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Sala</label>
+                <select
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  value={salaId}
+                  onChange={e => setSalaId(e.target.value)}
+                >
+                  <option value="">Todas las salas</option>
+                  {salas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                </select>
+              </div>
+            )}
+            {esAdmin && (
+              <button
+                onClick={handleCalcular}
+                disabled={calculando}
+                className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                {calculando ? 'Calculando...' : 'Calcular mes'}
+              </button>
+            )}
+            {registros.length > 0 && esAdmin && (
+              <>
+                <button
+                  onClick={exportarCSV}
+                  className="border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm"
+                >
+                  Exportar Excel CSV
+                </button>
+                <button
+                  onClick={exportarPDFPlanilla}
+                  className="border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm"
+                >
+                  PDF Planilla completa
+                </button>
+              </>
+            )}
+          </div>
 
-      {/* Drawer detalle */}
-      {detalle && (
-        <DrawerNomina
-          registro={detalle}
-          onClose={() => setDetalle(null)}
-          onUpdate={handleUpdateRegistro}
-          esAdmin={esAdmin}
-        />
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Cards resumen */}
+          {esAdmin && registros.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: 'Empleados',    value: totalEmpleados, prefix: '',  color: 'bg-slate-50  border-slate-200'  },
+                { label: 'Nomina bruta', value: nominaBruta,    prefix: '$', color: 'bg-blue-50   border-blue-200'   },
+                { label: 'IESS total',   value: totalIESS,      prefix: '$', color: 'bg-orange-50 border-orange-200' },
+                { label: 'Neto total',   value: netoTotal,      prefix: '$', color: 'bg-teal-50   border-teal-200'   },
+              ].map(c => (
+                <div key={c.label} className={`border rounded-xl p-4 ${c.color}`}>
+                  <p className="text-xs text-gray-500 mb-1">{c.label}</p>
+                  <p className="text-xl font-bold text-gray-800">
+                    {c.prefix}{c.prefix ? fmt(c.value) : c.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Tabla */}
+          {loading ? (
+            <div className="flex items-center justify-center h-48">
+              <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : registros.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <p className="text-4xl mb-3">$</p>
+              <p className="font-medium">No hay registros de nomina para {mes}</p>
+              {esAdmin && <p className="text-sm mt-1">Haz clic en "Calcular mes" para generar la nomina</p>}
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-gray-100">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Empleado</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Rol</th>
+                    {esAdmin && <th className="text-left px-4 py-3 font-semibold text-gray-600">Sala</th>}
+                    <th className="text-right px-4 py-3 font-semibold text-gray-600">Sueldo</th>
+                    <th className="text-right px-4 py-3 font-semibold text-gray-600">Comisiones</th>
+                    <th className="text-right px-4 py-3 font-semibold text-gray-600">Bonos</th>
+                    <th className="text-right px-4 py-3 font-semibold text-gray-600">IESS</th>
+                    <th className="text-right px-4 py-3 font-semibold text-gray-600">Neto</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Estado</th>
+                    <th className="px-4 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {registros.map((r, i) => (
+                    <tr key={r.id} className={`border-b border-gray-50 hover:bg-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}>
+                      <td className="px-4 py-3 font-medium text-gray-800">{r.usuario_nombre}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{r.rol_label || r.rol}</td>
+                      {esAdmin && <td className="px-4 py-3 text-gray-500">{r.sala_nombre || '\u2014'}</td>}
+                      <td className="px-4 py-3 text-right text-gray-700">${fmt(r.sueldo_base)}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">${fmt(Number(r.comision_ventas) + Number(r.comision_cobros))}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">${fmt(Number(r.bono_tours) + Number(r.bono_citas) + Number(r.bono_meta))}</td>
+                      <td className="px-4 py-3 text-right text-red-500">-${fmt(r.aporte_iess)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-teal-700">${fmt(r.neto_a_pagar)}</td>
+                      <td className="px-4 py-3"><Badge estado={r.estado} /></td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => setDetalle(r)}
+                          className="text-xs border border-teal-200 text-teal-700 hover:bg-teal-50 px-3 py-1.5 rounded-lg"
+                        >
+                          Ver detalle
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Drawer detalle */}
+          {detalle && (
+            <DrawerNomina
+              registro={detalle}
+              onClose={() => setDetalle(null)}
+              onUpdate={handleUpdateRegistro}
+              esAdmin={esAdmin}
+            />
+          )}
+        </>
       )}
     </div>
   )

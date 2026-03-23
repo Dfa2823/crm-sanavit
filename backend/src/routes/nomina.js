@@ -52,7 +52,37 @@ pool.query(`
       ALTER TABLE nomina_mensual ADD COLUMN IF NOT EXISTS dias_trabajados INTEGER DEFAULT 0;
       ALTER TABLE nomina_mensual ADD COLUMN IF NOT EXISTS dias_laborables INTEGER DEFAULT 0;
       ALTER TABLE nomina_mensual ADD COLUMN IF NOT EXISTS garantizado NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE nomina_mensual ADD COLUMN IF NOT EXISTS comision_arrastre_tmk NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE nomina_mensual ADD COLUMN IF NOT EXISTS desglose_semanal_tmk JSONB DEFAULT NULL;
     `);
+
+    // Tabla de escalas de comisión TMK por tours semanales
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS escalas_tmk (
+        id SERIAL PRIMARY KEY,
+        tours_min INTEGER NOT NULL,
+        tours_max INTEGER NOT NULL,
+        bono_por_tour NUMERIC(10,2) NOT NULL,
+        bono_semanal NUMERIC(10,2) DEFAULT 0,
+        activo BOOLEAN DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // Seed data si la tabla está vacía
+    const countRes = await pool.query('SELECT COUNT(*)::integer AS total FROM escalas_tmk');
+    if (parseInt(countRes.rows[0].total) === 0) {
+      await pool.query(`
+        INSERT INTO escalas_tmk (tours_min, tours_max, bono_por_tour, bono_semanal) VALUES
+          (1, 2, 5.00, 0.00),
+          (3, 4, 8.00, 15.00),
+          (5, 6, 10.00, 30.00),
+          (7, 999, 12.00, 50.00)
+      `);
+      console.log('Seed: escalas_tmk insertadas');
+    }
+
     // Tabla de asistencia
     await pool.query(`
       CREATE TABLE IF NOT EXISTS asistencia (
@@ -140,17 +170,25 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
   try {
     // 1. Obtener todos los usuarios activos del período
     const usuariosRes = await pool.query(`
-      SELECT id, nombre, sala_id,
-        COALESCE(sueldo_base, 0)::numeric        AS sueldo_base,
-        COALESCE(pct_comision_venta, 10)::numeric AS pct_comision_venta,
-        COALESCE(pct_comision_cobro, 0)::numeric  AS pct_comision_cobro,
-        COALESCE(bono_por_tour, 0)::numeric       AS bono_por_tour,
-        COALESCE(bono_por_cita, 0)::numeric       AS bono_por_cita,
-        COALESCE(pct_desbloqueo, 30)::numeric     AS pct_desbloqueo
-      FROM usuarios
-      WHERE activo = true
-        AND ($1::integer IS NULL OR sala_id = $1)
+      SELECT u.id, u.nombre, u.sala_id,
+        COALESCE(u.sueldo_base, 0)::numeric        AS sueldo_base,
+        COALESCE(u.pct_comision_venta, 10)::numeric AS pct_comision_venta,
+        COALESCE(u.pct_comision_cobro, 0)::numeric  AS pct_comision_cobro,
+        COALESCE(u.bono_por_tour, 0)::numeric       AS bono_por_tour,
+        COALESCE(u.bono_por_cita, 0)::numeric       AS bono_por_cita,
+        COALESCE(u.pct_desbloqueo, 30)::numeric     AS pct_desbloqueo,
+        ro.nombre AS rol_nombre
+      FROM usuarios u
+      JOIN roles ro ON u.rol_id = ro.id
+      WHERE u.activo = true
+        AND ($1::integer IS NULL OR u.sala_id = $1)
     `, [salaParam]);
+
+    // Cargar escalas TMK activas (ordenadas por tours_min)
+    const escalasRes = await pool.query(
+      'SELECT * FROM escalas_tmk WHERE activo = true ORDER BY tours_min ASC'
+    );
+    const escalasTmk = escalasRes.rows;
 
     const resultados = [];
 
@@ -263,7 +301,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
         if (dow !== 0 && dow !== 6) dias_laborables++;
       }
 
-      // 2g. Comisión por abonos a cartera de meses anteriores
+      // 2g. Comisión por abonos a cartera de meses anteriores (consultor)
       const abonosRes = await pool.query(`
         SELECT COALESCE(SUM(r.valor), 0) * $3 / 100 AS comision_abonos
         FROM recibos r
@@ -274,6 +312,23 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           AND r.estado = 'activo'
           AND c.estado NOT IN ('cancelado')
       `, [u.id, mes, u.pct_comision_venta]);
+
+      // 2g-bis. Arrastre de cartera para TMK: recibos pagados en el período
+      // sobre contratos de meses anteriores cuyo lead original pertenecía a este TMK.
+      // Traza: recibos → contratos → visita_sala → leads → tmk_id
+      // Solo se paga si el usuario tiene pct_comision_cobro > 0 y está activo.
+      const arrastreTmkRes = await pool.query(`
+        SELECT COALESCE(SUM(r.valor), 0) * $3 / 100 AS comision_arrastre_tmk
+        FROM recibos r
+        JOIN contratos c ON r.contrato_id = c.id
+        LEFT JOIN visitas_sala vs ON c.visita_sala_id = vs.id
+        LEFT JOIN leads l ON vs.lead_id = l.id
+        WHERE l.tmk_id = $1
+          AND TO_CHAR(r.fecha_pago, 'YYYY-MM') = $2
+          AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') != $2
+          AND r.estado = 'activo'
+          AND c.estado NOT IN ('cancelado')
+      `, [u.id, mes, u.pct_comision_cobro]);
 
       // 2h. Comisión por ventas reactivadas en el período
       const reactivRes = await pool.query(`
@@ -297,10 +352,84 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
       const comision_reactivaciones   = parseFloat(reactivRes.rows[0]?.comision_react) || 0;
       const comision_ventas      = comision_venta_recurrente + comision_abonos_cartera + comision_reactivaciones;
       const contratos_desbloq    = parseInt(cvRes.rows[0].contratos_desbloqueados) || 0;
-      const comision_cobros      = parseFloat(ccRes.rows[0].comision_cobros) || 0;
+      // Cobros de cartera: asesor_cartera + arrastre TMK (pagos de clientes viejos en este corte)
+      const comision_cobros_asesor = parseFloat(ccRes.rows[0].comision_cobros) || 0;
+      const comision_arrastre_tmk  = parseFloat(arrastreTmkRes.rows[0]?.comision_arrastre_tmk) || 0;
+      const comision_cobros        = parseFloat((comision_cobros_asesor + comision_arrastre_tmk).toFixed(2));
       const tours_count          = parseInt(tourRes.rows[0].tours_count) || 0;
       const citas_count          = parseInt(citaRes.rows[0].citas_count) || 0;
-      const bono_tours           = parseFloat((tours_count * parseFloat(u.bono_por_tour)).toFixed(2));
+
+      // ─── Cálculo de bono_tours: escalas semanales para TMK ─────────────
+      let bono_tours = 0;
+      let desglose_semanal_tmk = null;
+
+      if (u.rol_nombre === 'tmk' && escalasTmk.length > 0) {
+        const [anioM, mesM] = mes.split('-').map(Number);
+        const diasMes = new Date(anioM, mesM, 0).getDate();
+
+        // Agrupar días del mes en semanas (lunes a domingo)
+        const semanas = {};
+        for (let d = 1; d <= diasMes; d++) {
+          const fecha = new Date(anioM, mesM - 1, d);
+          const dow = fecha.getDay();
+          const diffToMon = dow === 0 ? -6 : 1 - dow;
+          const lunes = new Date(fecha);
+          lunes.setDate(fecha.getDate() + diffToMon);
+          const semKey = lunes.toISOString().slice(0, 10);
+          if (!semanas[semKey]) {
+            semanas[semKey] = { inicio: semKey, tours: 0 };
+          }
+        }
+
+        // Contar tours TMK por semana
+        const toursSemRes = await pool.query(`
+          SELECT vs.fecha::date AS fecha_tour
+          FROM leads l
+          JOIN visitas_sala vs ON vs.lead_id = l.id
+          WHERE l.tmk_id = $1
+            AND TO_CHAR(vs.fecha, 'YYYY-MM') = $2
+            AND vs.calificacion = 'TOUR'
+        `, [u.id, mes]);
+
+        for (const row of toursSemRes.rows) {
+          const ft = new Date(row.fecha_tour);
+          const dow = ft.getDay();
+          const diffToMon = dow === 0 ? -6 : 1 - dow;
+          const lunes = new Date(ft);
+          lunes.setDate(ft.getDate() + diffToMon);
+          const semKey = lunes.toISOString().slice(0, 10);
+          if (semanas[semKey]) {
+            semanas[semKey].tours++;
+          } else {
+            semanas[semKey] = { inicio: semKey, tours: 1 };
+          }
+        }
+
+        // Aplicar escalas y calcular desglose
+        const desglose = [];
+        for (const [semKey, sem] of Object.entries(semanas).sort()) {
+          if (sem.tours === 0) continue;
+          let escala = escalasTmk.find(e => sem.tours >= e.tours_min && sem.tours <= e.tours_max);
+          if (!escala) escala = escalasTmk[escalasTmk.length - 1];
+          const bonoToursSem = escala ? parseFloat((sem.tours * parseFloat(escala.bono_por_tour)).toFixed(2)) : 0;
+          const bonoSemanal = escala ? parseFloat(escala.bono_semanal) : 0;
+          const totalSem = parseFloat((bonoToursSem + bonoSemanal).toFixed(2));
+          bono_tours += totalSem;
+          desglose.push({
+            semana_inicio: semKey,
+            tours: sem.tours,
+            bono_por_tour: escala ? parseFloat(escala.bono_por_tour) : 0,
+            bono_tours_sem: bonoToursSem,
+            bono_semanal: bonoSemanal,
+            total_semana: totalSem,
+          });
+        }
+        bono_tours = parseFloat(bono_tours.toFixed(2));
+        desglose_semanal_tmk = desglose.length > 0 ? desglose : null;
+      } else {
+        bono_tours = parseFloat((tours_count * parseFloat(u.bono_por_tour)).toFixed(2));
+      }
+
       const bono_citas           = parseFloat((citas_count * parseFloat(u.bono_por_cita)).toFixed(2));
       const aporte_iess          = parseFloat((garantizado * 0.0945).toFixed(2)); // IESS solo sobre sueldo base/garantizado
       const total_ingresos       = parseFloat((garantizado + comision_ventas + comision_cobros + bono_tours + bono_citas + bono_meta).toFixed(2));
@@ -314,11 +443,13 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
         pct_desbloqueo_config: parseFloat(u.pct_desbloqueo),
         sueldo_base: garantizado, comision_ventas, comision_cobros,
         comision_venta_recurrente, comision_abonos_cartera, comision_reactivaciones,
+        comision_arrastre_tmk,
         bono_tours, bono_citas, bono_meta,
         contratos_desbloqueados: contratos_desbloq,
         tours_count, citas_count,
         dias_trabajados, dias_laborables, garantizado,
         aporte_iess, total_ingresos, total_deducciones, neto_a_pagar,
+        desglose_semanal_tmk,
       });
     }
 
@@ -330,10 +461,12 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           sueldo_base_config, pct_comision_venta_config, pct_desbloqueo_config,
           sueldo_base, comision_ventas, comision_cobros, bono_tours, bono_citas, bono_meta,
           comision_venta_recurrente, comision_abonos_cartera, comision_reactivaciones,
+          comision_arrastre_tmk,
           contratos_desbloqueados, tours_count, citas_count,
           dias_trabajados, dias_laborables, garantizado,
-          aporte_iess, total_ingresos, total_deducciones, neto_a_pagar
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+          aporte_iess, total_ingresos, total_deducciones, neto_a_pagar,
+          desglose_semanal_tmk
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
         ON CONFLICT (usuario_id, mes) DO UPDATE SET
           sala_id                     = EXCLUDED.sala_id,
           sueldo_base_config          = EXCLUDED.sueldo_base_config,
@@ -348,6 +481,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           comision_venta_recurrente   = EXCLUDED.comision_venta_recurrente,
           comision_abonos_cartera     = EXCLUDED.comision_abonos_cartera,
           comision_reactivaciones     = EXCLUDED.comision_reactivaciones,
+          comision_arrastre_tmk       = EXCLUDED.comision_arrastre_tmk,
           contratos_desbloqueados     = EXCLUDED.contratos_desbloqueados,
           tours_count                 = EXCLUDED.tours_count,
           citas_count                 = EXCLUDED.citas_count,
@@ -358,6 +492,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           total_ingresos              = EXCLUDED.total_ingresos,
           total_deducciones           = EXCLUDED.total_deducciones,
           neto_a_pagar                = EXCLUDED.neto_a_pagar,
+          desglose_semanal_tmk        = EXCLUDED.desglose_semanal_tmk,
           updated_at                  = NOW()
         WHERE nomina_mensual.estado = 'borrador'
       `, [
@@ -365,9 +500,11 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
         r.sueldo_base_config, r.pct_comision_venta_config, r.pct_desbloqueo_config,
         r.sueldo_base, r.comision_ventas, r.comision_cobros, r.bono_tours, r.bono_citas, r.bono_meta,
         r.comision_venta_recurrente, r.comision_abonos_cartera, r.comision_reactivaciones,
+        r.comision_arrastre_tmk,
         r.contratos_desbloqueados, r.tours_count, r.citas_count,
         r.dias_trabajados, r.dias_laborables, r.garantizado,
         r.aporte_iess, r.total_ingresos, r.total_deducciones, r.neto_a_pagar,
+        r.desglose_semanal_tmk ? JSON.stringify(r.desglose_semanal_tmk) : null,
       ]);
     }
 
@@ -559,6 +696,137 @@ router.get('/asistencia/resumen', async (req, res) => {
     `, [usuario_id, mes]);
     res.json(result.rows[0]);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/nomina/asistencia/bulk — registrar asistencia masiva del día
+router.post('/asistencia/bulk', async (req, res) => {
+  const { fecha, registros } = req.body;
+  // registros: [{ usuario_id, estado, justificacion, sala_id }]
+  if (!fecha || !Array.isArray(registros) || registros.length === 0) {
+    return res.status(400).json({ error: 'fecha y registros[] requeridos' });
+  }
+
+  const allowed = ['admin', 'director', 'hostess', 'supervisor_cc'];
+  if (!allowed.includes(req.user.rol)) {
+    return res.status(403).json({ error: 'Sin permiso para registrar asistencia' });
+  }
+
+  try {
+    const results = [];
+    for (const r of registros) {
+      const result = await pool.query(`
+        INSERT INTO asistencia (usuario_id, sala_id, fecha, estado, justificacion, registrado_por)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (usuario_id, fecha) DO UPDATE SET
+          estado = EXCLUDED.estado,
+          justificacion = EXCLUDED.justificacion,
+          registrado_por = EXCLUDED.registrado_por,
+          sala_id = EXCLUDED.sala_id
+        RETURNING *
+      `, [
+        r.usuario_id,
+        r.sala_id || req.user.sala_id,
+        fecha,
+        r.estado || 'presente',
+        r.justificacion || null,
+        req.user.id,
+      ]);
+      results.push(result.rows[0]);
+    }
+    res.status(201).json(results);
+  } catch (err) {
+    console.error('Error en POST /api/nomina/asistencia/bulk:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/nomina/asistencia/resumen-mensual?mes=YYYY-MM&sala_id=X
+// Resumen mensual de todos los usuarios (para la vista de admin/hostess)
+router.get('/asistencia/resumen-mensual', async (req, res) => {
+  const { mes, sala_id } = req.query;
+  if (!mes) return res.status(400).json({ error: 'mes requerido (YYYY-MM)' });
+
+  try {
+    const params = [mes];
+    let salaFilter = '';
+    if (sala_id) { params.push(sala_id); salaFilter = `AND u.sala_id = $${params.length}`; }
+
+    // Calcular días laborables del mes (L-V)
+    const [anio, mesNum] = mes.split('-').map(Number);
+    const diasEnMes = new Date(anio, mesNum, 0).getDate();
+    let dias_laborables = 0;
+    for (let d = 1; d <= diasEnMes; d++) {
+      const dow = new Date(anio, mesNum - 1, d).getDay();
+      if (dow !== 0 && dow !== 6) dias_laborables++;
+    }
+
+    const result = await pool.query(`
+      SELECT
+        u.id AS usuario_id,
+        u.nombre AS usuario_nombre,
+        ro.label AS rol_label,
+        s.nombre AS sala_nombre,
+        COUNT(a.id) FILTER (WHERE a.estado = 'presente')  AS dias_presente,
+        COUNT(a.id) FILTER (WHERE a.estado = 'ausente')   AS dias_ausente,
+        COUNT(a.id) FILTER (WHERE a.estado = 'tardanza')  AS dias_tardanza,
+        COUNT(a.id) FILTER (WHERE a.estado = 'permiso')   AS dias_permiso,
+        COUNT(a.id) FILTER (WHERE a.estado = 'vacacion')  AS dias_vacacion,
+        COUNT(a.id) FILTER (WHERE a.estado IN ('presente','tardanza')) AS dias_trabajados,
+        COUNT(a.id) AS total_registros
+      FROM usuarios u
+      JOIN roles ro ON u.rol_id = ro.id
+      LEFT JOIN salas s ON u.sala_id = s.id
+      LEFT JOIN asistencia a ON a.usuario_id = u.id AND TO_CHAR(a.fecha, 'YYYY-MM') = $1
+      WHERE u.activo = true ${salaFilter}
+      GROUP BY u.id, u.nombre, ro.label, s.nombre
+      ORDER BY u.nombre
+    `, params);
+
+    res.json({ dias_laborables, usuarios: result.rows });
+  } catch (err) {
+    console.error('Error en GET /api/nomina/asistencia/resumen-mensual:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/nomina/asistencia/dia?fecha=YYYY-MM-DD&sala_id=X
+// Asistencia de un día específico con lista de usuarios activos
+router.get('/asistencia/dia', async (req, res) => {
+  const { fecha, sala_id } = req.query;
+  if (!fecha) return res.status(400).json({ error: 'fecha requerida (YYYY-MM-DD)' });
+
+  try {
+    const params = [fecha];
+    let salaFilter = '';
+    if (sala_id) { params.push(sala_id); salaFilter = `AND u.sala_id = $${params.length}`; }
+
+    const result = await pool.query(`
+      SELECT
+        u.id AS usuario_id,
+        u.nombre AS usuario_nombre,
+        ro.label AS rol_label,
+        ro.nombre AS rol,
+        s.nombre AS sala_nombre,
+        u.sala_id,
+        a.id AS asistencia_id,
+        a.estado,
+        a.justificacion,
+        a.registrado_por,
+        reg.nombre AS registrado_por_nombre
+      FROM usuarios u
+      JOIN roles ro ON u.rol_id = ro.id
+      LEFT JOIN salas s ON u.sala_id = s.id
+      LEFT JOIN asistencia a ON a.usuario_id = u.id AND a.fecha = $1
+      LEFT JOIN usuarios reg ON a.registrado_por = reg.id
+      WHERE u.activo = true ${salaFilter}
+      ORDER BY u.nombre
+    `, params);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error en GET /api/nomina/asistencia/dia:', err);
     res.status(500).json({ error: err.message });
   }
 });

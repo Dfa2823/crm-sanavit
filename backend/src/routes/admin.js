@@ -729,4 +729,80 @@ router.patch('/formas-pago/:id', requireAdmin, async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// ESCALAS TMK
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/admin/escalas-tmk — listar todas las escalas
+router.get('/escalas-tmk', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM escalas_tmk ORDER BY tours_min ASC'
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener escalas TMK' });
+  }
+});
+
+// POST /api/admin/escalas-tmk — crear nueva escala
+router.post('/escalas-tmk', requireAdmin, async (req, res) => {
+  const { tours_min, tours_max, bono_por_tour, bono_semanal } = req.body;
+
+  if (tours_min === undefined || tours_max === undefined || bono_por_tour === undefined) {
+    return res.status(400).json({ error: 'tours_min, tours_max y bono_por_tour son requeridos' });
+  }
+
+  try {
+    const result = await pool.query(`
+      INSERT INTO escalas_tmk (tours_min, tours_max, bono_por_tour, bono_semanal)
+      VALUES ($1, $2, $3, $4)
+      RETURNING *
+    `, [tours_min, tours_max, bono_por_tour, bono_semanal || 0]);
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al crear escala TMK' });
+  }
+});
+
+// PATCH /api/admin/escalas-tmk/:id — actualizar escala
+router.patch('/escalas-tmk/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { tours_min, tours_max, bono_por_tour, bono_semanal, activo } = req.body;
+
+  try {
+    const sets = [];
+    const params = [id];
+    let idx = 2;
+
+    if (tours_min !== undefined)    { sets.push(`tours_min = $${idx++}`);    params.push(tours_min); }
+    if (tours_max !== undefined)    { sets.push(`tours_max = $${idx++}`);    params.push(tours_max); }
+    if (bono_por_tour !== undefined) { sets.push(`bono_por_tour = $${idx++}`); params.push(bono_por_tour); }
+    if (bono_semanal !== undefined)  { sets.push(`bono_semanal = $${idx++}`);  params.push(bono_semanal); }
+    if (activo !== undefined)        { sets.push(`activo = $${idx++}`);        params.push(activo); }
+
+    if (sets.length === 0) {
+      return res.status(400).json({ error: 'Nada que actualizar' });
+    }
+
+    sets.push('updated_at = NOW()');
+
+    const result = await pool.query(
+      `UPDATE escalas_tmk SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
+      params
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Escala no encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar escala TMK' });
+  }
+});
+
 module.exports = router;
