@@ -14,5 +14,13 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          ui: ['react-big-calendar', 'recharts', 'react-signature-canvas'],
+        },
+      },
+    },
   },
 })

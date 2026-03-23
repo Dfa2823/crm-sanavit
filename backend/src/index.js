@@ -1,9 +1,28 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// ── Seguridad HTTP headers ────────────────────────────────
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// ── Compresión gzip ───────────────────────────────────────
+app.use(compression());
+
+// ── Rate limiter global: 200 req/min por IP ───────────────
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes. Intenta de nuevo en un minuto.' },
+});
+app.use(globalLimiter);
 
 // ── Middlewares globales ───────────────────────────────────
 app.use(cors({
@@ -24,6 +43,18 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+
+// ── Request logger ────────────────────────────────────────
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    if (res.statusCode >= 400) {
+      console.error(`[${res.statusCode}] ${req.method} ${req.path} ${ms}ms ${req.user?.username || 'anon'}`);
+    }
+  });
+  next();
+});
 
 // Servir archivos estáticos (documentos subidos)
 const path = require('path');
@@ -82,10 +113,14 @@ app.use((req, res) => {
   res.status(404).json({ error: `Ruta ${req.method} ${req.path} no encontrada` });
 });
 
-// ── Error global ───────────────────────────────────────────
+// ── Error handler centralizado ─────────────────────────────
 app.use((err, req, res, next) => {
-  console.error('Error no manejado:', err);
-  res.status(500).json({ error: 'Error interno del servidor' });
+  console.error(`[ERROR] ${req.method} ${req.path}:`, err.message);
+  res.status(err.status || 500).json({
+    error: process.env.NODE_ENV === 'production'
+      ? 'Error interno del servidor'
+      : err.message,
+  });
 });
 
 // ── Arrancar servidor ──────────────────────────────────────
