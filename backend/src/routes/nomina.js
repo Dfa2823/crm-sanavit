@@ -573,6 +573,20 @@ router.get('/reporte/:mes', requireAdminOrDirector, async (req, res) => {
   }
 });
 
+// ─── GET /api/nomina/:id ────────────────────────────────────────────────────
+router.get('/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT n.*, u.nombre, r.nombre as rol
+       FROM nomina_mensual n
+       JOIN usuarios u ON n.usuario_id = u.id
+       JOIN roles r ON u.rol_id = r.id
+       WHERE n.id = $1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'No encontrado' });
+    res.json(rows[0]);
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
 // ─── PATCH /api/nomina/:id ───────────────────────────────────────────────────
 // Ajustes manuales + cambio de estado
 router.patch('/:id', requireAdminOrDirector, async (req, res) => {

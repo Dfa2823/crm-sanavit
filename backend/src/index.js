@@ -7,11 +7,20 @@ const PORT = process.env.PORT || 3001;
 
 // ── Middlewares globales ───────────────────────────────────
 app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL || 'http://localhost:5173',
-    'http://localhost:5173',
-    'http://localhost:4173',
-  ],
+  origin: function(origin, callback) {
+    // Permitir requests sin origin (mobile, curl, postman)
+    if (!origin) return callback(null, true);
+    const allowed = [
+      process.env.FRONTEND_URL,
+      'http://localhost:5173',
+      'http://localhost:4173',
+    ].filter(Boolean);
+    // Permitir cualquier *.railway.app y *.up.railway.app
+    if (allowed.includes(origin) || /\.railway\.app$/.test(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error('CORS no permitido'));
+  },
   credentials: true,
 }));
 app.use(express.json());
