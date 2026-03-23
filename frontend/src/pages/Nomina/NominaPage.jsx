@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getNomina, calcularNomina, updateNomina, getReporteNomina, getReporteValidacion, notificarNomina, getAsistenciaDia, registrarAsistenciaBulk, getResumenMensual } from '../../api/nomina'
+import { getNomina, calcularNomina, updateNomina, getReporteNomina, getReporteValidacion, notificarNomina, getAsistenciaDia, registrarAsistenciaBulk, getResumenMensual, suspenderComisionNomina, reactivarComisionNomina } from '../../api/nomina'
 import { getSalas } from '../../api/admin'
 import { useAuth } from '../../context/AuthContext'
 
@@ -23,6 +23,27 @@ const FLUJO = {
   borrador: 'revision',
   revision: 'aprobada',
   aprobada: 'pagada',
+}
+
+const TIPO_LIQ_COLORS = {
+  garantizado: 'bg-blue-100 text-blue-700',
+  comisiones:  'bg-teal-100 text-teal-700',
+  completa:    'bg-gray-100 text-gray-600',
+}
+
+const TIPO_LIQ_LABELS = {
+  garantizado: 'Garantizado',
+  comisiones:  'Comisiones',
+  completa:    'Completa',
+}
+
+function BadgeTipo({ tipo }) {
+  if (!tipo || tipo === 'completa') return null
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ml-1.5 ${TIPO_LIQ_COLORS[tipo] || 'bg-gray-100 text-gray-600'}`}>
+      {TIPO_LIQ_LABELS[tipo] || tipo}
+    </span>
+  )
 }
 
 function Badge({ estado }) {
@@ -375,27 +396,54 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [expandido, setExpandido] = useState({})
+  const [suspendiendo, setSuspendiendo] = useState(null) // contrato_id que se está suspendiendo
 
-  useEffect(() => {
-    async function cargar() {
-      setLoading(true)
-      setError('')
-      try {
-        const params = {}
-        if (salaId) params.sala_id = salaId
-        const result = await getReporteValidacion(mes, params)
-        setData(Array.isArray(result) ? result : [])
-      } catch (err) {
-        setError(err.response?.data?.error || 'Error al cargar reporte de validación')
-      } finally {
-        setLoading(false)
-      }
+  const cargarReporte = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const params = {}
+      if (salaId) params.sala_id = salaId
+      const result = await getReporteValidacion(mes, params)
+      setData(Array.isArray(result) ? result : [])
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al cargar reporte de validación')
+    } finally {
+      setLoading(false)
     }
-    cargar()
   }, [mes, salaId])
+
+  useEffect(() => { cargarReporte() }, [cargarReporte])
 
   function toggleExpandido(nominaId) {
     setExpandido(prev => ({ ...prev, [nominaId]: !prev[nominaId] }))
+  }
+
+  async function handleSuspender(usuarioId, contratoId) {
+    const motivo = prompt('Motivo de la suspension:')
+    if (motivo === null) return // canceló
+    setSuspendiendo(contratoId)
+    try {
+      await suspenderComisionNomina({ usuario_id: usuarioId, contrato_id: contratoId, motivo, mes })
+      await cargarReporte()
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al suspender comision')
+    } finally {
+      setSuspendiendo(null)
+    }
+  }
+
+  async function handleReactivar(usuarioId, contratoId) {
+    if (!confirm('Reactivar esta comision?')) return
+    setSuspendiendo(contratoId)
+    try {
+      await reactivarComisionNomina({ usuario_id: usuarioId, contrato_id: contratoId, mes })
+      await cargarReporte()
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al reactivar comision')
+    } finally {
+      setSuspendiendo(null)
+    }
   }
 
   function exportarExcel() {
@@ -703,26 +751,50 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
                                     <th className="text-right px-3 py-2 font-semibold text-gray-600">Base (sin int.)</th>
                                     <th className="text-right px-3 py-2 font-semibold text-gray-600">Comision</th>
                                     <th className="text-left px-3 py-2 font-semibold text-gray-600">Estado</th>
+                                    <th className="text-center px-3 py-2 font-semibold text-gray-600">Acciones</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {contratos.map(c => (
-                                    <tr key={c.id} className="border-t border-gray-50">
+                                    <tr key={c.id} className={`border-t border-gray-50 ${c.suspendida ? 'bg-red-50/40' : ''}`}>
                                       <td className="px-3 py-2 font-medium">{c.numero_contrato || `C-${c.id}`}</td>
                                       <td className="px-3 py-2 text-gray-600">{c.cliente}</td>
                                       <td className="px-3 py-2 text-right">${fmt(c.monto_total)}</td>
                                       <td className="px-3 py-2 text-right">${fmt(c.monto_pagado)}</td>
                                       <td className="px-3 py-2 text-right">{c.pct_pagado}%</td>
                                       <td className="px-3 py-2 text-right">${fmt(c.monto_base)}</td>
-                                      <td className="px-3 py-2 text-right font-medium text-teal-700">${fmt(c.comision_calculada)}</td>
+                                      <td className="px-3 py-2 text-right font-medium text-teal-700">{c.suspendida ? <span className="text-red-400 line-through">${fmt(c.monto_base > 0 ? c.monto_base * (emp.pct_comision_venta || 10) / 100 : 0)}</span> : `$${fmt(c.comision_calculada)}`}</td>
                                       <td className="px-3 py-2">
                                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                          c.suspendida ? 'bg-red-100 text-red-700' :
                                           c.estado === 'desbloqueada' ? 'bg-green-100 text-green-700' :
                                           c.estado === 'suspendida' ? 'bg-yellow-100 text-yellow-700' :
                                           'bg-red-100 text-red-700'
                                         }`}>
-                                          {c.estado}
+                                          {c.suspendida ? 'Suspendida' : c.estado}
                                         </span>
+                                        {c.suspendida && c.motivo_suspension && (
+                                          <span className="block text-[9px] text-red-500 mt-0.5" title={c.motivo_suspension}>{c.motivo_suspension}</span>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2 text-center">
+                                        {c.suspendida ? (
+                                          <button
+                                            onClick={() => handleReactivar(emp.usuario_id, c.id)}
+                                            disabled={suspendiendo === c.id}
+                                            className="text-[10px] border border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-50 px-2 py-0.5 rounded-lg font-medium"
+                                          >
+                                            {suspendiendo === c.id ? '...' : 'Reactivar'}
+                                          </button>
+                                        ) : (
+                                          <button
+                                            onClick={() => handleSuspender(emp.usuario_id, c.id)}
+                                            disabled={suspendiendo === c.id}
+                                            className="text-[10px] border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50 px-2 py-0.5 rounded-lg font-medium"
+                                          >
+                                            {suspendiendo === c.id ? '...' : 'Suspender'}
+                                          </button>
+                                        )}
                                       </td>
                                     </tr>
                                   ))}
@@ -1355,6 +1427,7 @@ export default function NominaPage() {
   const [tabActivo, setTabActivo] = useState('nomina')
   const [mes,         setMes]         = useState(mesActual)
   const [salaId,      setSalaId]      = useState('')
+  const [tipoLiquidacion, setTipoLiquidacion] = useState('completa')
   const [salas,       setSalas]       = useState([])
   const [registros,   setRegistros]   = useState([])
   const [loading,     setLoading]     = useState(false)
@@ -1374,6 +1447,7 @@ export default function NominaPage() {
     try {
       const params = { mes }
       if (salaId) params.sala_id = salaId
+      if (tipoLiquidacion) params.tipo_liquidacion = tipoLiquidacion
       const data = await getNomina(params)
       setRegistros(Array.isArray(data) ? data : [])
     } catch (err) {
@@ -1381,7 +1455,7 @@ export default function NominaPage() {
     } finally {
       setLoading(false)
     }
-  }, [mes, salaId])
+  }, [mes, salaId, tipoLiquidacion])
 
   useEffect(() => { cargar() }, [cargar])
 
@@ -1389,7 +1463,7 @@ export default function NominaPage() {
     setCalculando(true)
     setError('')
     try {
-      const body = { mes }
+      const body = { mes, tipo_liquidacion: tipoLiquidacion }
       if (salaId) body.sala_id = Number(salaId)
       await calcularNomina(body)
       await cargar()
@@ -1547,6 +1621,20 @@ export default function NominaPage() {
               </div>
             )}
             {esAdmin && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Tipo liquidacion</label>
+                <select
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  value={tipoLiquidacion}
+                  onChange={e => setTipoLiquidacion(e.target.value)}
+                >
+                  <option value="completa">Liquidacion completa (todo junto)</option>
+                  <option value="garantizado">Garantizado — 1er viernes (quincena mes anterior)</option>
+                  <option value="comisiones">Quincena + Comisiones — 3er viernes</option>
+                </select>
+              </div>
+            )}
+            {esAdmin && (
               <>
                 <button
                   onClick={handleCalcular}
@@ -1647,7 +1735,7 @@ export default function NominaPage() {
                       <td className="px-4 py-3 text-right text-gray-700">${fmt(Number(r.bono_tours) + Number(r.bono_citas) + Number(r.bono_meta))}</td>
                       <td className="px-4 py-3 text-right text-red-500">-${fmt(r.aporte_iess)}</td>
                       <td className="px-4 py-3 text-right font-semibold text-teal-700">${fmt(r.neto_a_pagar)}</td>
-                      <td className="px-4 py-3"><Badge estado={r.estado} /></td>
+                      <td className="px-4 py-3"><Badge estado={r.estado} /><BadgeTipo tipo={r.tipo_liquidacion} /></td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button

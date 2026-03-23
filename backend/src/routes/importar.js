@@ -277,7 +277,7 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
         stats.importados++;
       } catch (rowErr) {
         stats.errores++;
-        if (stats.detalles_errores.length < 5) {
+        if (stats.detalles_errores.length < 100) {
           stats.detalles_errores.push(`Fila ${i + 2}: ${rowErr.message}`);
         }
       }

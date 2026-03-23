@@ -100,6 +100,17 @@ pool.query(`
         UNIQUE(usuario_id, fecha)
       )
     `);
+    // ─── Auto-migración: tipo_liquidacion para nómina quincenal ─────────
+    await pool.query(`
+      ALTER TABLE nomina_mensual ADD COLUMN IF NOT EXISTS tipo_liquidacion VARCHAR(20) DEFAULT 'completa';
+    `);
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE nomina_mensual DROP CONSTRAINT IF EXISTS nomina_mensual_usuario_id_mes_key;
+        ALTER TABLE nomina_mensual ADD CONSTRAINT nomina_mensual_usuario_mes_tipo_key UNIQUE(usuario_id, mes, tipo_liquidacion);
+      EXCEPTION WHEN OTHERS THEN NULL;
+      END $$;
+    `);
   } catch (e) { /* ya existen */ }
 })();
 
@@ -111,10 +122,10 @@ function requireAdminOrDirector(req, res, next) {
 }
 
 // ─── GET /api/nomina ─────────────────────────────────────────────────────────
-// ?mes=YYYY-MM&sala_id=X&estado=borrador
+// ?mes=YYYY-MM&sala_id=X&estado=borrador&tipo_liquidacion=completa
 // Admin/director: ve todo. Otros roles: solo su propio registro
 router.get('/', async (req, res) => {
-  const { mes, sala_id, estado } = req.query;
+  const { mes, sala_id, estado, tipo_liquidacion } = req.query;
   const mesFiltro = mes || new Date().toISOString().slice(0, 7);
   const { rol, id: userId } = req.user;
 
@@ -123,8 +134,9 @@ router.get('/', async (req, res) => {
     const conds = [];
     let idx = 2;
 
-    if (sala_id) { conds.push(`n.sala_id = $${idx++}`); params.push(sala_id); }
-    if (estado)  { conds.push(`n.estado = $${idx++}`);  params.push(estado); }
+    if (sala_id)          { conds.push(`n.sala_id = $${idx++}`);          params.push(sala_id); }
+    if (estado)           { conds.push(`n.estado = $${idx++}`);           params.push(estado); }
+    if (tipo_liquidacion) { conds.push(`n.tipo_liquidacion = $${idx++}`); params.push(tipo_liquidacion); }
 
     if (!['admin', 'director'].includes(rol)) {
       conds.push(`n.usuario_id = $${idx++}`);
@@ -157,9 +169,13 @@ router.get('/', async (req, res) => {
 });
 
 // ─── POST /api/nomina/calcular ───────────────────────────────────────────────
-// Body: { mes: 'YYYY-MM', sala_id?: number }
+// Body: { mes: 'YYYY-MM', sala_id?: number, tipo_liquidacion?: 'garantizado'|'comisiones'|'completa' }
 router.post('/calcular', requireAdminOrDirector, async (req, res) => {
-  const { mes, sala_id } = req.body;
+  const { mes, sala_id, tipo_liquidacion: tipoLiq = 'completa' } = req.body;
+
+  if (!['garantizado', 'comisiones', 'completa'].includes(tipoLiq)) {
+    return res.status(400).json({ error: 'tipo_liquidacion debe ser: garantizado, comisiones o completa' });
+  }
 
   if (!mes || !/^\d{4}-\d{2}$/.test(mes)) {
     return res.status(400).json({ error: 'El campo mes es requerido con formato YYYY-MM' });
@@ -452,25 +468,62 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
       }
 
       const bono_citas           = parseFloat((citas_count * parseFloat(u.bono_por_cita)).toFixed(2));
-      const aporte_iess          = parseFloat((garantizado * 0.0945).toFixed(2)); // IESS solo sobre sueldo base/garantizado
-      const total_ingresos       = parseFloat((garantizado + comision_ventas + comision_cobros + bono_tours + bono_citas + bono_meta).toFixed(2));
+
+      // ─── Filtrar según tipo de liquidación ─────────────────────────
+      let calc_garantizado, calc_comision_ventas, calc_comision_cobros, calc_bono_tours, calc_bono_citas, calc_bono_meta, calc_aporte_iess;
+
+      if (tipoLiq === 'garantizado') {
+        // 1er viernes: primera quincena del garantizado (mitad del sueldo base proporcional)
+        // IESS se aplica completo aquí (sobre el sueldo base total, no sobre la mitad)
+        calc_garantizado = parseFloat((garantizado / 2).toFixed(2));
+        calc_comision_ventas = 0;
+        calc_comision_cobros = 0;
+        calc_bono_tours = 0;
+        calc_bono_citas = 0;
+        calc_bono_meta = 0;
+        calc_aporte_iess = parseFloat((garantizado * 0.0945).toFixed(2));
+      } else if (tipoLiq === 'comisiones') {
+        // 3er viernes: segunda quincena del garantizado + comisiones + bonos + arrastre
+        calc_garantizado = parseFloat((garantizado / 2).toFixed(2));
+        calc_comision_ventas = comision_ventas;
+        calc_comision_cobros = comision_cobros;
+        calc_bono_tours = bono_tours;
+        calc_bono_citas = bono_citas;
+        calc_bono_meta = bono_meta;
+        calc_aporte_iess = 0; // IESS ya se descontó en la primera quincena
+      } else {
+        // completa: todo junto
+        calc_garantizado = garantizado;
+        calc_comision_ventas = comision_ventas;
+        calc_comision_cobros = comision_cobros;
+        calc_bono_tours = bono_tours;
+        calc_bono_citas = bono_citas;
+        calc_bono_meta = bono_meta;
+        calc_aporte_iess = parseFloat((garantizado * 0.0945).toFixed(2));
+      }
+
+      const aporte_iess          = calc_aporte_iess;
+      const total_ingresos       = parseFloat((calc_garantizado + calc_comision_ventas + calc_comision_cobros + calc_bono_tours + calc_bono_citas + calc_bono_meta).toFixed(2));
       const total_deducciones    = aporte_iess;
       const neto_a_pagar         = parseFloat((total_ingresos - total_deducciones).toFixed(2));
 
       resultados.push({
         usuario_id: u.id, sala_id: u.sala_id, mes,
+        tipo_liquidacion: tipoLiq,
         sueldo_base_config: sueldo_base_cfg,
         pct_comision_venta_config: parseFloat(u.pct_comision_venta),
         pct_desbloqueo_config: parseFloat(u.pct_desbloqueo),
-        sueldo_base: garantizado, comision_ventas, comision_cobros,
-        comision_venta_recurrente, comision_abonos_cartera, comision_reactivaciones,
-        comision_arrastre_tmk,
-        bono_tours, bono_citas, bono_meta,
+        sueldo_base: calc_garantizado, comision_ventas: calc_comision_ventas, comision_cobros: calc_comision_cobros,
+        comision_venta_recurrente: tipoLiq === 'garantizado' ? 0 : comision_venta_recurrente,
+        comision_abonos_cartera: tipoLiq === 'garantizado' ? 0 : comision_abonos_cartera,
+        comision_reactivaciones: tipoLiq === 'garantizado' ? 0 : comision_reactivaciones,
+        comision_arrastre_tmk: tipoLiq === 'garantizado' ? 0 : comision_arrastre_tmk,
+        bono_tours: calc_bono_tours, bono_citas: calc_bono_citas, bono_meta: calc_bono_meta,
         contratos_desbloqueados: contratos_desbloq,
         tours_count, citas_count,
         dias_trabajados, dias_laborables, garantizado,
         aporte_iess, total_ingresos, total_deducciones, neto_a_pagar,
-        desglose_semanal_tmk,
+        desglose_semanal_tmk: tipoLiq === 'garantizado' ? null : desglose_semanal_tmk,
       });
     }
 
@@ -478,7 +531,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
     for (const r of resultados) {
       await pool.query(`
         INSERT INTO nomina_mensual (
-          usuario_id, sala_id, mes,
+          usuario_id, sala_id, mes, tipo_liquidacion,
           sueldo_base_config, pct_comision_venta_config, pct_desbloqueo_config,
           sueldo_base, comision_ventas, comision_cobros, bono_tours, bono_citas, bono_meta,
           comision_venta_recurrente, comision_abonos_cartera, comision_reactivaciones,
@@ -487,8 +540,8 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           dias_trabajados, dias_laborables, garantizado,
           aporte_iess, total_ingresos, total_deducciones, neto_a_pagar,
           desglose_semanal_tmk
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
-        ON CONFLICT (usuario_id, mes) DO UPDATE SET
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+        ON CONFLICT (usuario_id, mes, tipo_liquidacion) DO UPDATE SET
           sala_id                     = EXCLUDED.sala_id,
           sueldo_base_config          = EXCLUDED.sueldo_base_config,
           pct_comision_venta_config   = EXCLUDED.pct_comision_venta_config,
@@ -517,7 +570,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           updated_at                  = NOW()
         WHERE nomina_mensual.estado = 'borrador'
       `, [
-        r.usuario_id, r.sala_id, r.mes,
+        r.usuario_id, r.sala_id, r.mes, r.tipo_liquidacion,
         r.sueldo_base_config, r.pct_comision_venta_config, r.pct_desbloqueo_config,
         r.sueldo_base, r.comision_ventas, r.comision_cobros, r.bono_tours, r.bono_citas, r.bono_meta,
         r.comision_venta_recurrente, r.comision_abonos_cartera, r.comision_reactivaciones,
@@ -538,8 +591,9 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
       JOIN roles ro ON u.rol_id = ro.id
       LEFT JOIN salas s ON n.sala_id = s.id
       WHERE n.mes = $1 AND ($2::integer IS NULL OR n.sala_id = $2)
+        AND n.tipo_liquidacion = $3
       ORDER BY u.nombre
-    `, [mes, salaParam]);
+    `, [mes, salaParam, tipoLiq]);
 
     res.json(lista.rows);
   } catch (err) {
@@ -911,7 +965,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
     for (const nom of nominaRes.rows) {
       const uid = nom.usuario_id;
 
-      // 2. Obtener contratos del mes con detalle de pagos
+      // 2. Obtener contratos del mes con detalle de pagos + estado de suspensión
       const contratosRes = await pool.query(`
         SELECT
           c.id, c.numero_contrato, c.monto_total, c.estado AS contrato_estado,
@@ -925,17 +979,21 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
             ELSE 0
           END AS pct_pagado,
           CASE
+            WHEN cs.id IS NOT NULL THEN 'suspendida'
             WHEN c.monto_total > 0 AND COALESCE(pagado.total, 0) / c.monto_total * 100 >= $3
             THEN 'desbloqueada'
             WHEN c.estado = 'suspendido' THEN 'suspendida'
             ELSE 'bloqueada'
           END AS estado_comision,
           CASE
+            WHEN cs.id IS NOT NULL THEN 0
             WHEN c.monto_total > 0 AND COALESCE(pagado.total, 0) / c.monto_total * 100 >= $3
             THEN ROUND(COALESCE(pagado.total_base, 0) * $4 / 100, 2)
             ELSE 0
           END AS comision_calculada,
-          COALESCE(pagado.total_base, 0)::numeric AS monto_base
+          COALESCE(pagado.total_base, 0)::numeric AS monto_base,
+          cs.id AS suspension_id,
+          cs.motivo AS motivo_suspension
         FROM contratos c
         LEFT JOIN (
           SELECT l.id, l.nombre FROM leads l
@@ -950,6 +1008,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
           FROM recibos r WHERE r.estado = 'activo'
           GROUP BY r.contrato_id
         ) pagado ON pagado.contrato_id = c.id
+        LEFT JOIN comisiones_suspendidas cs ON cs.contrato_id = c.id AND cs.usuario_id = $1 AND cs.activo = true
         WHERE c.consultor_id = $1
           AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $2
           AND c.estado NOT IN ('cancelado')
@@ -1029,6 +1088,8 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
           monto_base: Number(c.monto_base),
           comision_calculada: Number(c.comision_calculada),
           estado: c.estado_comision,
+          suspendida: !!c.suspension_id,
+          motivo_suspension: c.motivo_suspension || null,
         })),
         comision_venta_recurrente: Number(nom.comision_venta_recurrente || 0),
 
@@ -1126,6 +1187,86 @@ router.post('/notificar/:nomina_id', requireAdminOrDirector, async (req, res) =>
     });
   } catch (err) {
     console.error('Error en POST /api/nomina/notificar/:nomina_id:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/nomina/suspender-comision ─────────────────────────────────────
+// Suspender comisión de un contrato para un usuario en un mes dado
+router.post('/suspender-comision', requireAdminOrDirector, async (req, res) => {
+  const { usuario_id, contrato_id, motivo, mes } = req.body;
+
+  if (!usuario_id || !contrato_id || !mes) {
+    return res.status(400).json({ error: 'usuario_id, contrato_id y mes son requeridos' });
+  }
+
+  try {
+    // Insertar en comisiones_suspendidas
+    await pool.query(`
+      INSERT INTO comisiones_suspendidas (usuario_id, contrato_id, motivo, suspendido_por, activo)
+      VALUES ($1, $2, $3, $4, true)
+      ON CONFLICT (usuario_id, contrato_id) WHERE activo = true
+      DO UPDATE SET motivo = EXCLUDED.motivo, suspendido_por = EXCLUDED.suspendido_por, updated_at = NOW()
+    `, [usuario_id, contrato_id, motivo || 'Sin motivo', req.user.id]).catch(async () => {
+      // Si no existe la constraint parcial, intentar insert normal
+      await pool.query(`
+        INSERT INTO comisiones_suspendidas (usuario_id, contrato_id, motivo, suspendido_por, activo)
+        VALUES ($1, $2, $3, $4, true)
+      `, [usuario_id, contrato_id, motivo || 'Sin motivo', req.user.id]);
+    });
+
+    // Recalcular nómina del usuario: actualizar comisiones_suspendidas JSONB en nomina_mensual
+    const suspRes = await pool.query(`
+      SELECT cs.contrato_id, cs.motivo, c.numero_contrato
+      FROM comisiones_suspendidas cs
+      LEFT JOIN contratos c ON cs.contrato_id = c.id
+      WHERE cs.usuario_id = $1 AND cs.activo = true
+    `, [usuario_id]);
+
+    await pool.query(`
+      UPDATE nomina_mensual SET comisiones_suspendidas = $1, updated_at = NOW()
+      WHERE usuario_id = $2 AND mes = $3 AND estado = 'borrador'
+    `, [JSON.stringify(suspRes.rows), usuario_id, mes]);
+
+    res.json({ success: true, message: 'Comision suspendida correctamente', suspendidas: suspRes.rows });
+  } catch (err) {
+    console.error('Error en POST /api/nomina/suspender-comision:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/nomina/reactivar-comision ─────────────────────────────────────
+// Reactivar una comisión previamente suspendida
+router.post('/reactivar-comision', requireAdminOrDirector, async (req, res) => {
+  const { usuario_id, contrato_id, mes } = req.body;
+
+  if (!usuario_id || !contrato_id || !mes) {
+    return res.status(400).json({ error: 'usuario_id, contrato_id y mes son requeridos' });
+  }
+
+  try {
+    // Desactivar la suspensión
+    await pool.query(`
+      UPDATE comisiones_suspendidas SET activo = false, updated_at = NOW()
+      WHERE usuario_id = $1 AND contrato_id = $2 AND activo = true
+    `, [usuario_id, contrato_id]);
+
+    // Actualizar JSONB en nomina_mensual
+    const suspRes = await pool.query(`
+      SELECT cs.contrato_id, cs.motivo, c.numero_contrato
+      FROM comisiones_suspendidas cs
+      LEFT JOIN contratos c ON cs.contrato_id = c.id
+      WHERE cs.usuario_id = $1 AND cs.activo = true
+    `, [usuario_id]);
+
+    await pool.query(`
+      UPDATE nomina_mensual SET comisiones_suspendidas = $1, updated_at = NOW()
+      WHERE usuario_id = $2 AND mes = $3 AND estado = 'borrador'
+    `, [JSON.stringify(suspRes.rows), usuario_id, mes]);
+
+    res.json({ success: true, message: 'Comision reactivada correctamente', suspendidas: suspRes.rows });
+  } catch (err) {
+    console.error('Error en POST /api/nomina/reactivar-comision:', err);
     res.status(500).json({ error: err.message });
   }
 });

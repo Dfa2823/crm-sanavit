@@ -12,6 +12,10 @@ export const getReporteValidacion = (mes, params = {}) => api.get(`/api/nomina/r
 // ─── Notificación (placeholder) ─────────────────────────────────────────────
 export const notificarNomina = (nominaId) => api.post(`/api/nomina/notificar/${nominaId}`).then(r => r.data)
 
+// ─── Suspender / Reactivar comisión ─────────────────────────────────────────
+export const suspenderComisionNomina  = (data) => api.post('/api/nomina/suspender-comision', data).then(r => r.data)
+export const reactivarComisionNomina  = (data) => api.post('/api/nomina/reactivar-comision', data).then(r => r.data)
+
 // ─── Asistencia ──────────────────────────────────────────────────────────────
 export const getAsistencia          = (params = {}) => api.get('/api/nomina/asistencia', { params }).then(r => r.data)
 export const getAsistenciaDia       = (params = {}) => api.get('/api/nomina/asistencia/dia', { params }).then(r => r.data)
