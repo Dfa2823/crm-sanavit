@@ -574,7 +574,8 @@ router.get('/reporte/:mes', requireAdminOrDirector, async (req, res) => {
 });
 
 // ─── GET /api/nomina/:id ────────────────────────────────────────────────────
-router.get('/:id', async (req, res) => {
+// NOTA: Esta ruta debe estar DESPUÉS de /asistencia, /reporte-validacion, etc.
+router.get('/:id(\\d+)', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT n.*, u.nombre, r.nombre as rol
@@ -589,7 +590,7 @@ router.get('/:id', async (req, res) => {
 
 // ─── PATCH /api/nomina/:id ───────────────────────────────────────────────────
 // Ajustes manuales + cambio de estado
-router.patch('/:id', requireAdminOrDirector, async (req, res) => {
+router.patch('/:id(\\d+)', requireAdminOrDirector, async (req, res) => {
   const { id } = req.params;
   const { estado, otros_ingresos, anticipo, otras_deducciones, observaciones } = req.body;
 
