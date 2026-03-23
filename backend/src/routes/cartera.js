@@ -16,6 +16,43 @@ const router = express.Router();
   } catch (e) { /* ya existen */ }
 })();
 
+// Auto-migraciones: tablas de tipificaciones y gestiones de cartera
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tipificaciones_cartera (
+        id SERIAL PRIMARY KEY,
+        nombre VARCHAR(100) UNIQUE NOT NULL,
+        requiere_fecha BOOLEAN DEFAULT false,
+        activo BOOLEAN DEFAULT true
+      );
+      INSERT INTO tipificaciones_cartera (nombre, requiere_fecha) VALUES
+        ('Pagó', false),
+        ('Promesa de pago', true),
+        ('No contesta', false),
+        ('Buzón', false),
+        ('Volver a llamar', true),
+        ('Número equivocado', false),
+        ('Cliente enojado', false),
+        ('Acuerdo de pago', true),
+        ('Refinanciación solicitada', false)
+      ON CONFLICT (nombre) DO NOTHING;
+
+      CREATE TABLE IF NOT EXISTS gestiones_cartera (
+        id SERIAL PRIMARY KEY,
+        cuota_id INT REFERENCES cuotas(id),
+        contrato_id INT REFERENCES contratos(id),
+        persona_id INT REFERENCES personas(id),
+        usuario_id INT REFERENCES usuarios(id),
+        tipificacion_cartera_id INT,
+        observacion TEXT,
+        fecha_rellamar TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+  } catch (e) { console.error('Auto-migrate tipificaciones/gestiones:', e.message); }
+})();
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/cartera
 // Query params:
@@ -94,14 +131,30 @@ router.get('/', async (req, res) => {
         p.email,
         u.nombre                                                       AS consultor_nombre,
         s.id                                                           AS sala_id,
-        s.nombre                                                       AS sala_nombre
+        s.nombre                                                       AS sala_nombre,
+        ug.ultima_tipificacion,
+        ug.ultima_fecha_gestion,
+        ug.fecha_rellamar,
+        ug.ultima_observacion_gestion
       FROM cuotas cu
       JOIN contratos c  ON cu.contrato_id = c.id
       JOIN personas  p  ON c.persona_id   = p.id
       LEFT JOIN usuarios u ON c.consultor_id = u.id
       LEFT JOIN salas    s ON c.sala_id       = s.id
+      LEFT JOIN LATERAL (
+        SELECT tc.nombre AS ultima_tipificacion,
+               g.created_at AS ultima_fecha_gestion,
+               g.fecha_rellamar,
+               g.observacion AS ultima_observacion_gestion
+        FROM gestiones_cartera g
+        LEFT JOIN tipificaciones_cartera tc ON g.tipificacion_cartera_id = tc.id
+        WHERE g.cuota_id = cu.id
+        ORDER BY g.created_at DESC
+        LIMIT 1
+      ) ug ON true
       ${whereStr}
       ORDER BY
+        CASE WHEN ug.fecha_rellamar IS NOT NULL AND ug.fecha_rellamar::date <= CURRENT_DATE THEN 0 ELSE 1 END,
         CASE WHEN cu.tipificacion_cartera = 'volver_a_llamar' THEN 0 ELSE 1 END,
         cu.fecha_vencimiento ASC
       LIMIT 500`,
@@ -183,7 +236,114 @@ router.get('/resumen', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PATCH /api/cartera/cuotas/:id/gestion
+// GET /api/cartera/tipificaciones
+// Lista tipificaciones_cartera activas
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/tipificaciones', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, nombre, requiere_fecha FROM tipificaciones_cartera WHERE activo = true ORDER BY nombre`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('GET /api/cartera/tipificaciones error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/cartera/cuotas/:id/gestion
+// Registrar gestión en tabla gestiones_cartera
+// Body: { tipificacion_cartera_id, observacion, fecha_rellamar }
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/cuotas/:id/gestion', async (req, res) => {
+  const { rol } = req.user;
+  if (!['asesor_cartera', 'admin', 'director'].includes(rol)) {
+    return res.status(403).json({ error: 'Sin permiso para registrar gestión de cartera' });
+  }
+
+  const cuotaId = parseInt(req.params.id, 10);
+  if (isNaN(cuotaId)) {
+    return res.status(400).json({ error: 'ID de cuota inválido' });
+  }
+
+  const { tipificacion_cartera_id, observacion, fecha_rellamar } = req.body;
+  if (!tipificacion_cartera_id) {
+    return res.status(400).json({ error: 'tipificacion_cartera_id es requerido' });
+  }
+
+  try {
+    // Obtener datos de la cuota para el contrato y persona
+    const cuotaRes = await pool.query(
+      `SELECT cu.contrato_id, c.persona_id FROM cuotas cu JOIN contratos c ON cu.contrato_id = c.id WHERE cu.id = $1`,
+      [cuotaId]
+    );
+    if (cuotaRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Cuota no encontrada' });
+    }
+    const { contrato_id, persona_id } = cuotaRes.rows[0];
+
+    // Insertar gestión
+    const insertRes = await pool.query(
+      `INSERT INTO gestiones_cartera (cuota_id, contrato_id, persona_id, usuario_id, tipificacion_cartera_id, observacion, fecha_rellamar)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [cuotaId, contrato_id, persona_id, req.user.id, tipificacion_cartera_id, observacion || null, fecha_rellamar || null]
+    );
+
+    // Obtener nombre de la tipificación
+    const tipRes = await pool.query(
+      `SELECT nombre FROM tipificaciones_cartera WHERE id = $1`, [tipificacion_cartera_id]
+    );
+    const tipNombre = tipRes.rows[0]?.nombre || '';
+
+    // Actualizar también la cuota con la última tipificación (compatibilidad)
+    await pool.query(
+      `UPDATE cuotas SET tipificacion_cartera = $1, observacion = $2, fecha_gestion = NOW(), gestionado_por = $3 WHERE id = $4`,
+      [tipNombre, observacion || null, req.user.id, cuotaId]
+    );
+
+    res.json({ ...insertRes.rows[0], tipificacion_nombre: tipNombre });
+  } catch (err) {
+    console.error('POST /api/cartera/cuotas/:id/gestion error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/cartera/historial/:contrato_id
+// Historial de gestiones de un contrato
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/historial/:contrato_id', async (req, res) => {
+  const contratoId = parseInt(req.params.contrato_id, 10);
+  if (isNaN(contratoId)) {
+    return res.status(400).json({ error: 'ID de contrato inválido' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT g.id, g.cuota_id, g.observacion, g.fecha_rellamar, g.created_at,
+              tc.nombre AS tipificacion_nombre,
+              u.nombre AS usuario_nombre,
+              cu.numero_cuota
+       FROM gestiones_cartera g
+       LEFT JOIN tipificaciones_cartera tc ON g.tipificacion_cartera_id = tc.id
+       LEFT JOIN usuarios u ON g.usuario_id = u.id
+       LEFT JOIN cuotas cu ON g.cuota_id = cu.id
+       WHERE g.contrato_id = $1
+       ORDER BY g.created_at DESC
+       LIMIT 100`,
+      [contratoId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('GET /api/cartera/historial error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/cartera/cuotas/:id/gestion  (legacy — mantener compatibilidad)
 // Body: { observacion: string }
 // Solo roles: asesor_cartera | admin | director
 // ─────────────────────────────────────────────────────────────────────────────

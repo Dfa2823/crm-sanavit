@@ -21,4 +21,11 @@ export const apiLeads = {
 
   actualizar: (id, data) =>
     client.patch(`/api/leads/${id}`, data).then(r => r.data),
+
+  // Historial de observaciones
+  guardarObservacion: (id, data) =>
+    client.post(`/api/leads/${id}/observacion`, data).then(r => r.data),
+
+  historial: (id) =>
+    client.get(`/api/leads/${id}/historial`).then(r => r.data),
 }

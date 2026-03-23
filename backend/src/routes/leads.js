@@ -4,6 +4,28 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
+// ── Auto-migrate: tabla lead_observaciones ────────────────
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS lead_observaciones (
+        id SERIAL PRIMARY KEY,
+        lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+        usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+        tipificacion_id INTEGER REFERENCES tipificaciones(id),
+        observacion TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_lead_obs_lead ON lead_observaciones(lead_id)
+    `);
+    console.log('  ✓ lead_observaciones table ready');
+  } catch (err) {
+    console.error('Error auto-migrate lead_observaciones:', err.message);
+  }
+})();
+
 // ── Helpers ────────────────────────────────────────────────
 function buildLeadSelect() {
   return `
@@ -238,9 +260,13 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// PATCH /api/leads/:id — actualizar estado, confirmar, etc.
+// PATCH /api/leads/:id — actualizar estado, confirmar, campos editables
 router.patch('/:id', auth, async (req, res) => {
-  const { estado, fecha_cita, fecha_rellamar, confirmador_id, observacion, tmk_id, tipificacion_id } = req.body;
+  const {
+    estado, fecha_cita, fecha_rellamar, confirmador_id,
+    observacion, tmk_id, tipificacion_id,
+    patologia, sala_id,
+  } = req.body;
 
   const allowed = ['admin','director','supervisor_cc','confirmador','tmk','hostess','outsourcing'];
   if (!allowed.includes(req.user.rol)) {
@@ -259,6 +285,8 @@ router.patch('/:id', auth, async (req, res) => {
     if (observacion !== undefined)      { updates.push(`observacion = $${idx++}`);      params.push(observacion); }
     if (tmk_id !== undefined)           { updates.push(`tmk_id = $${idx++}`);           params.push(tmk_id); }
     if (tipificacion_id !== undefined)  { updates.push(`tipificacion_id = $${idx++}`);  params.push(tipificacion_id); }
+    if (patologia !== undefined)        { updates.push(`patologia = $${idx++}`);        params.push(patologia); }
+    if (sala_id !== undefined)          { updates.push(`sala_id = $${idx++}`);          params.push(sala_id); }
 
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No hay campos para actualizar' });
@@ -271,6 +299,14 @@ router.patch('/:id', auth, async (req, res) => {
       UPDATE leads SET ${updates.join(', ')} WHERE id = $${idx}
     `, params);
 
+    // Auto-guardar en historial si viene observación con tipificación
+    if (observacion && tipificacion_id) {
+      await pool.query(`
+        INSERT INTO lead_observaciones (lead_id, usuario_id, tipificacion_id, observacion)
+        VALUES ($1, $2, $3, $4)
+      `, [req.params.id, req.user.id, tipificacion_id, observacion]);
+    }
+
     const updated = await pool.query(`
       ${buildLeadSelect()} WHERE l.id = $1
     `, [req.params.id]);
@@ -279,6 +315,56 @@ router.patch('/:id', auth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al actualizar lead' });
+  }
+});
+
+// POST /api/leads/:id/observacion — Guardar observación con tipificación
+router.post('/:id/observacion', auth, async (req, res) => {
+  const { observacion, tipificacion_id } = req.body;
+  if (!observacion) {
+    return res.status(400).json({ error: 'observacion es requerida' });
+  }
+
+  try {
+    const result = await pool.query(`
+      INSERT INTO lead_observaciones (lead_id, usuario_id, tipificacion_id, observacion)
+      VALUES ($1, $2, $3, $4)
+      RETURNING *
+    `, [req.params.id, req.user.id, tipificacion_id || null, observacion]);
+
+    // También actualizar la observación principal del lead
+    await pool.query(`
+      UPDATE leads SET observacion = $1, updated_at = NOW() WHERE id = $2
+    `, [observacion, req.params.id]);
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al guardar observación' });
+  }
+});
+
+// GET /api/leads/:id/historial — Listar observaciones históricas
+router.get('/:id/historial', auth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        lo.id, lo.lead_id, lo.usuario_id, lo.tipificacion_id,
+        lo.observacion, lo.created_at,
+        u.nombre AS usuario_nombre,
+        t.nombre AS tipificacion_nombre
+      FROM lead_observaciones lo
+      LEFT JOIN usuarios u ON lo.usuario_id = u.id
+      LEFT JOIN tipificaciones t ON lo.tipificacion_id = t.id
+      WHERE lo.lead_id = $1
+      ORDER BY lo.created_at DESC
+      LIMIT 50
+    `, [req.params.id]);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener historial' });
   }
 });
 

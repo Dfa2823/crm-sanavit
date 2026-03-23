@@ -16,6 +16,93 @@ const router = express.Router();
     await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS pct_desbloqueo NUMERIC(5,2) DEFAULT 30.00');
     // Columna para asignar asesor de cartera a un contrato
     await pool.query('ALTER TABLE contratos ADD COLUMN IF NOT EXISTS asesor_cartera_id INTEGER REFERENCES usuarios(id)');
+
+    // ── PARTE 1: Roles nuevos ────────────────────────────────────
+    await pool.query(`
+      INSERT INTO roles (nombre, label) VALUES
+        ('jefe_sala', 'Jefe de Sala'),
+        ('sac', 'Servicio al Cliente'),
+        ('cartera', 'Asesor de Cartera'),
+        ('medico', 'Médico'),
+        ('asistente', 'Asistente Operativa'),
+        ('oficios_varios', 'Oficios Varios'),
+        ('business_manager', 'Business Manager'),
+        ('director_operativo', 'Director Operativo')
+      ON CONFLICT (nombre) DO NOTHING
+    `);
+
+    // ── PARTE 3: Carga de usuarios reales ────────────────────────
+    const HASH = bcrypt.hashSync('123456', 10);
+
+    // Helper: obtener rol_id por nombre
+    const getRolId = async (nombre) => {
+      const r = await pool.query('SELECT id FROM roles WHERE nombre = $1', [nombre]);
+      return r.rows[0]?.id || null;
+    };
+
+    const rolTmk          = await getRolId('tmk');
+    const rolConsultor     = await getRolId('consultor');
+    const rolOutsourcing   = await getRolId('outsourcing');
+    const rolConfirmador   = await getRolId('confirmador');
+    const rolHostess       = await getRolId('hostess');
+    const rolSupervisor    = await getRolId('supervisor_cc');
+    const rolMedico        = await getRolId('medico');
+    const rolOficiosVarios = await getRolId('oficios_varios');
+    const rolJefeSala      = await getRolId('jefe_sala');
+    const rolBusinessMgr   = await getRolId('business_manager');
+
+    const usuariosReales = [
+      // TMK (sala 1)
+      { nombre: 'Victoria Sanchez',    username: 'victoria.sanchez',    rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Angie Quishpe',       username: 'angie.quishpe',       rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Angelica Cabezas',    username: 'angelica.cabezas',    rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Ximena Vera',         username: 'ximena.vera',         rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Joselyn Veloz',       username: 'joselyn.veloz',       rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Adriana Mosquera',    username: 'adriana.mosquera',    rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Alejandra Baquerizo', username: 'alejandra.baquerizo', rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Heidy Ramirez',       username: 'heidy.ramirez',       rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Pamela Torres',       username: 'pamela.torres',       rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Danny Loor',          username: 'danny.loor',          rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Keyla Romero',        username: 'keyla.romero',        rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Josue Vasconez',      username: 'josue.vasconez',      rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Alejandro Montufar', username: 'alejandro.montufar', rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Jose Acosta',         username: 'jose.acosta',         rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Pablo Estrella',      username: 'pablo.estrella',      rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Dayana Delgado',      username: 'dayana.delgado',      rol_id: rolTmk,          sala_id: 1 },
+      // CONSULTOR (sala 1)
+      { nombre: 'Carlos Villacis',     username: 'carlos.villacis',     rol_id: rolConsultor,    sala_id: 1 },
+      { nombre: 'Wilmer Paredes',      username: 'wilmer.paredes',      rol_id: rolConsultor,    sala_id: 1 },
+      { nombre: 'Samia Mosquera',      username: 'samia.mosquera',      rol_id: rolConsultor,    sala_id: 1 },
+      { nombre: 'Darwin Chafla',       username: 'darwin.chafla',       rol_id: rolConsultor,    sala_id: 1 },
+      { nombre: 'Patricia Bravo',      username: 'patricia.bravo',      rol_id: rolConsultor,    sala_id: 1 },
+      // OUTSOURCING
+      { nombre: 'Sergio Arias',        username: 'sergio.arias',        rol_id: rolOutsourcing,  sala_id: 1 },
+      { nombre: 'Santiago Barona',     username: 'santiago.barona',     rol_id: rolOutsourcing,  sala_id: 1 },
+      // CONFIRMADOR
+      { nombre: 'Talia Pucuna',        username: 'talia.pucuna',        rol_id: rolConfirmador,  sala_id: 1 },
+      // HOSTESS
+      { nombre: 'Elizabeth Perez',     username: 'elizabeth.perez',     rol_id: rolHostess,      sala_id: 1 },
+      // SUPERVISOR
+      { nombre: 'Joffrey Gutierrez',  username: 'joffrey.gutierrez',  rol_id: rolSupervisor,   sala_id: 1 },
+      // MEDICO
+      { nombre: 'Maricela Zapata',     username: 'maricela.zapata',     rol_id: rolMedico,       sala_id: 1 },
+      // OFICIOS VARIOS
+      { nombre: 'Jose Tipan',          username: 'jose.tipan',          rol_id: rolOficiosVarios, sala_id: 1 },
+      // JEFE SALA
+      { nombre: 'Juan Gutierrez',      username: 'juan.gutierrez',      rol_id: rolJefeSala,     sala_id: 1 },
+      // BUSINESS MANAGER / ASISTENTE
+      { nombre: 'Lizethe Valdes',      username: 'lizethe.valdes',      rol_id: rolBusinessMgr,  sala_id: 1 },
+    ];
+
+    for (const u of usuariosReales) {
+      if (!u.rol_id) continue; // skip if role not found
+      await pool.query(`
+        INSERT INTO usuarios (nombre, username, password_hash, rol_id, sala_id, activo)
+        VALUES ($1, $2, $3, $4, $5, true)
+        ON CONFLICT (username) DO NOTHING
+      `, [u.nombre, u.username, HASH, u.rol_id, u.sala_id]);
+    }
+    console.log('Migration: roles nuevos + usuarios reales OK');
   } catch (e) {
     console.error('Migration usuarios:', e.message);
   }
@@ -210,13 +297,14 @@ router.delete('/usuarios/:id', requireAdmin, async (req, res) => {
 
     if (userRes.rows[0].rol === 'tmk') {
       const leadsRes = await pool.query(
-        `SELECT COUNT(*)::integer AS pendientes FROM leads WHERE tmk_id = $1 AND estado IN ('pendiente', 'tentativa')`,
+        `SELECT COUNT(*)::integer AS pendientes FROM leads WHERE tmk_id = $1 AND estado IN ('pendiente', 'tentativa', 'confirmada')`,
         [req.params.id]
       );
       const pendientes = leadsRes.rows[0].pendientes;
       if (pendientes > 0) {
         return res.status(409).json({
           error: 'requiere_reasignacion',
+          requiere_reasignacion: true,
           leads_pendientes: pendientes,
           message: `Este TMK tiene ${pendientes} leads pendientes. Reasígnelos antes de inactivar.`,
         });
@@ -241,7 +329,7 @@ router.post('/usuarios/:id/reasignar', requireAdmin, async (req, res) => {
     const tmkId = req.params.id;
     // Obtener leads pendientes del TMK
     const leadsRes = await pool.query(
-      `SELECT id, sala_id FROM leads WHERE tmk_id = $1 AND estado IN ('pendiente', 'tentativa')`,
+      `SELECT id, sala_id FROM leads WHERE tmk_id = $1 AND estado IN ('pendiente', 'tentativa', 'confirmada')`,
       [tmkId]
     );
     if (leadsRes.rows.length === 0) {
@@ -272,6 +360,63 @@ router.post('/usuarios/:id/reasignar', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/usuarios/:id/reasignar-e-inactivar — reasignar leads + inactivar usuario en un solo paso
+router.post('/usuarios/:id/reasignar-e-inactivar', requireAdmin, async (req, res) => {
+  try {
+    const tmkId = Number(req.params.id);
+
+    if (tmkId === req.user.id) {
+      return res.status(400).json({ error: 'No puedes desactivar tu propia cuenta' });
+    }
+
+    // Obtener leads pendientes del TMK
+    const leadsRes = await pool.query(
+      `SELECT id FROM leads WHERE tmk_id = $1 AND estado IN ('pendiente', 'tentativa', 'confirmada')`,
+      [tmkId]
+    );
+
+    // Obtener TMKs activos de la misma sala
+    const tmkSala = (await pool.query('SELECT sala_id FROM usuarios WHERE id = $1', [tmkId])).rows[0]?.sala_id;
+    const tmksRes = await pool.query(
+      `SELECT id, nombre FROM usuarios u JOIN roles r ON u.rol_id = r.id
+       WHERE r.nombre = 'tmk' AND u.activo = true AND u.id != $1
+         AND ($2::integer IS NULL OR u.sala_id = $2)`,
+      [tmkId, tmkSala]
+    );
+
+    let reasignados = 0;
+    const tmkIds = tmksRes.rows.map(t => t.id);
+
+    if (leadsRes.rows.length > 0) {
+      if (tmkIds.length === 0) {
+        return res.status(400).json({ error: 'No hay otros TMKs activos en la misma sala para reasignar los leads' });
+      }
+
+      // Distribuir leads aleatoriamente entre TMKs activos
+      let idx = 0;
+      for (const lead of leadsRes.rows) {
+        const randomIdx = Math.floor(Math.random() * tmkIds.length);
+        const nuevoTmk = tmkIds[randomIdx];
+        await pool.query('UPDATE leads SET tmk_id = $1, updated_at = NOW() WHERE id = $2', [nuevoTmk, lead.id]);
+        idx++;
+      }
+      reasignados = leadsRes.rows.length;
+    }
+
+    // Inactivar el usuario
+    await pool.query('UPDATE usuarios SET activo = false WHERE id = $1', [tmkId]);
+
+    res.json({
+      message: 'Usuario inactivado correctamente',
+      reasignados,
+      tmks_destino: tmkIds.length,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al reasignar e inactivar: ' + err.message });
   }
 });
 

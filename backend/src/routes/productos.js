@@ -79,7 +79,7 @@ router.patch('/:id', auth, async (req, res) => {
   const { rol } = req.user;
   if (!['admin', 'director'].includes(rol)) return res.status(403).json({ error: 'Sin permiso' });
 
-  const fields = ['nombre','tipo','marca','precio_venta','tiene_iva','descripcion','activo'];
+  const fields = ['nombre','tipo','marca','precio_venta','tiene_iva','descripcion','activo','laboratorio','lote','fecha_vencimiento','precio_sin_iva','precio_con_iva','iva_porcentaje','imagen_url'];
   const updates = [];
   const values = [];
   let idx = 1;

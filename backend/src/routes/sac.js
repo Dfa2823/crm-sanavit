@@ -32,8 +32,20 @@ const router = express.Router();
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_pqr_estado  ON pqr_tickets(estado)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_pqr_sala    ON pqr_tickets(sala_id)`);
     console.log('✅ SAC: tabla pqr_tickets lista');
+
+    // Tabla de activaciones de control de calidad
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS sac_activaciones (
+        id SERIAL PRIMARY KEY,
+        contrato_id INT UNIQUE REFERENCES contratos(id),
+        usuario_id INT REFERENCES usuarios(id),
+        observacion TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    console.log('✅ SAC: tabla sac_activaciones lista');
   } catch (err) {
-    console.error('SAC: error al crear tabla pqr_tickets:', err.message);
+    console.error('SAC: error al crear tablas SAC:', err.message);
   }
 })();
 
@@ -366,10 +378,10 @@ router.patch('/tickets/:id', auth, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────
-// GET /api/sac/control-calidad
-// Contratos de 5+ días sin ticket de control_calidad
+// GET /api/sac/calidad
+// Contratos de últimos 15 días que NO están en sac_activaciones
 // ─────────────────────────────────────────────────────────
-router.get('/control-calidad', auth, async (req, res) => {
+router.get('/calidad', auth, async (req, res) => {
   const { sala_id } = req.query;
   try {
     const params = [];
@@ -383,19 +395,18 @@ router.get('/control-calidad', auth, async (req, res) => {
       SELECT c.id, c.numero_contrato, c.fecha_contrato, c.monto_total, c.estado,
              p.nombres, p.apellidos, p.telefono,
              s.nombre AS sala_nombre, u.nombre AS consultor_nombre,
-             CURRENT_DATE - c.fecha_contrato AS dias_desde_venta
+             CURRENT_DATE - c.fecha_contrato::date AS dias_desde_venta
       FROM contratos c
       JOIN personas p ON c.persona_id = p.id
       LEFT JOIN salas s ON c.sala_id = s.id
       LEFT JOIN usuarios u ON c.consultor_id = u.id
-      WHERE c.estado = 'activo'
-        AND c.fecha_contrato <= CURRENT_DATE - INTERVAL '5 days'
+      WHERE c.fecha_contrato >= CURRENT_DATE - INTERVAL '15 days'
         AND NOT EXISTS (
-          SELECT 1 FROM pqr_tickets t
-          WHERE t.contrato_id = c.id AND t.tipo = 'control_calidad'
+          SELECT 1 FROM sac_activaciones sa
+          WHERE sa.contrato_id = c.id
         )
         ${salaFilter}
-      ORDER BY c.fecha_contrato ASC
+      ORDER BY c.fecha_contrato DESC
       LIMIT 100
     `, params);
 
@@ -406,33 +417,82 @@ router.get('/control-calidad', auth, async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────
-// POST /api/sac/activar/:contrato_id
-// Crea ticket control_calidad resuelto (activa la venta)
-// ─────────────────────────────────────────────────────────
-router.post('/activar/:contrato_id', auth, async (req, res) => {
-  const contratoId = req.params.contrato_id;
-  const { id: userId, sala_id: userSalaId } = req.user;
+// Ruta legacy por compatibilidad
+router.get('/control-calidad', auth, async (req, res) => {
+  const { sala_id } = req.query;
   try {
-    // Generar número de ticket
-    const seqRes = await pool.query(
-      `SELECT COALESCE(MAX(CAST(SUBSTRING(numero_ticket FROM 5) AS INTEGER)), 0) + 1 AS next_num FROM pqr_tickets`
-    );
-    const nextNum = seqRes.rows[0].next_num;
-    const numTicket = `SAC-${String(nextNum).padStart(4, '0')}`;
+    const params = [];
+    let salaFilter = '';
+    if (sala_id) {
+      params.push(sala_id);
+      salaFilter = `AND c.sala_id = $${params.length}`;
+    }
+    const result = await pool.query(`
+      SELECT c.id, c.numero_contrato, c.fecha_contrato, c.monto_total, c.estado,
+             p.nombres, p.apellidos, p.telefono,
+             s.nombre AS sala_nombre, u.nombre AS consultor_nombre,
+             CURRENT_DATE - c.fecha_contrato::date AS dias_desde_venta
+      FROM contratos c
+      JOIN personas p ON c.persona_id = p.id
+      LEFT JOIN salas s ON c.sala_id = s.id
+      LEFT JOIN usuarios u ON c.consultor_id = u.id
+      WHERE c.fecha_contrato >= CURRENT_DATE - INTERVAL '15 days'
+        AND NOT EXISTS (
+          SELECT 1 FROM sac_activaciones sa WHERE sa.contrato_id = c.id
+        )
+        ${salaFilter}
+      ORDER BY c.fecha_contrato DESC
+      LIMIT 100
+    `, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    // Obtener datos del contrato
-    const cRes = await pool.query('SELECT persona_id, sala_id FROM contratos WHERE id = $1', [contratoId]);
+// ─────────────────────────────────────────────────────────
+// POST /api/sac/calidad/:contrato_id/activar
+// INSERT en sac_activaciones con observación
+// ─────────────────────────────────────────────────────────
+router.post('/calidad/:contrato_id/activar', auth, async (req, res) => {
+  const contratoId = req.params.contrato_id;
+  const { id: userId } = req.user;
+  const { observacion } = req.body;
+  try {
+    // Verificar que el contrato existe
+    const cRes = await pool.query('SELECT id FROM contratos WHERE id = $1', [contratoId]);
     if (cRes.rows.length === 0) return res.status(404).json({ error: 'Contrato no encontrado' });
-    const { persona_id, sala_id } = cRes.rows[0];
 
     await pool.query(`
-      INSERT INTO pqr_tickets (numero_ticket, persona_id, contrato_id, sala_id,
-        tipo, categoria, descripcion, estado, prioridad, asignado_a, creado_por, fecha_cierre, resolucion)
-      VALUES ($1, $2, $3, $4, 'control_calidad', 'servicio', 'Venta activada — control de calidad aprobado', 'resuelto', 'normal', $5, $5, NOW(), 'Venta verificada y activada correctamente')
-    `, [numTicket, persona_id, contratoId, sala_id || userSalaId, userId]);
+      INSERT INTO sac_activaciones (contrato_id, usuario_id, observacion)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (contrato_id) DO NOTHING
+    `, [contratoId, userId, observacion || 'Venta activada - control de calidad aprobado']);
 
-    res.json({ ok: true, numero_ticket: numTicket });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Mantener ruta legacy
+router.post('/activar/:contrato_id', auth, async (req, res) => {
+  req.params.contrato_id = req.params.contrato_id;
+  req.body.observacion = req.body.observacion || 'Venta activada - control de calidad aprobado';
+  // Redirigir al nuevo endpoint
+  const contratoId = req.params.contrato_id;
+  const { id: userId } = req.user;
+  const { observacion } = req.body;
+  try {
+    const cRes = await pool.query('SELECT id FROM contratos WHERE id = $1', [contratoId]);
+    if (cRes.rows.length === 0) return res.status(404).json({ error: 'Contrato no encontrado' });
+    await pool.query(`
+      INSERT INTO sac_activaciones (contrato_id, usuario_id, observacion)
+      VALUES ($1, $2, $3) ON CONFLICT (contrato_id) DO NOTHING
+    `, [contratoId, userId, observacion]);
+    res.json({ ok: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -441,7 +501,7 @@ router.post('/activar/:contrato_id', auth, async (req, res) => {
 
 // ─────────────────────────────────────────────────────────
 // GET /api/sac/fidelizacion
-// Contratos de 90+ días sin re-cita reciente
+// Contratos con fecha_contrato entre 60-120 días atrás, estado='activo'
 // ─────────────────────────────────────────────────────────
 router.get('/fidelizacion', auth, async (req, res) => {
   const { sala_id } = req.query;
@@ -457,12 +517,12 @@ router.get('/fidelizacion', auth, async (req, res) => {
       SELECT c.id, c.numero_contrato, c.fecha_contrato, c.monto_total,
              p.id AS persona_id, p.nombres, p.apellidos, p.telefono,
              s.nombre AS sala_nombre,
-             CURRENT_DATE - c.fecha_contrato AS dias_desde_venta
+             CURRENT_DATE - c.fecha_contrato::date AS dias_desde_compra
       FROM contratos c
       JOIN personas p ON c.persona_id = p.id
       LEFT JOIN salas s ON c.sala_id = s.id
-      WHERE c.estado IN ('activo', 'completado')
-        AND c.fecha_contrato <= CURRENT_DATE - INTERVAL '90 days'
+      WHERE c.estado = 'activo'
+        AND c.fecha_contrato::date BETWEEN CURRENT_DATE - INTERVAL '120 days' AND CURRENT_DATE - INTERVAL '60 days'
         AND NOT EXISTS (
           SELECT 1 FROM leads l2
           WHERE l2.persona_id = p.id
@@ -482,20 +542,43 @@ router.get('/fidelizacion', auth, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────
-// POST /api/sac/recitar/:persona_id
-// Crea nuevo lead para re-citar al cliente (fidelización)
+// POST /api/sac/fidelizacion/:contrato_id/agendar
+// Crear lead con fecha_cita para re-visita
 // ─────────────────────────────────────────────────────────
+router.post('/fidelizacion/:contrato_id/agendar', auth, async (req, res) => {
+  const contratoId = req.params.contrato_id;
+  const { id: userId, sala_id: userSalaId } = req.user;
+  const { fecha_cita } = req.body;
+  try {
+    // Obtener persona_id del contrato
+    const cRes = await pool.query('SELECT persona_id FROM contratos WHERE id = $1', [contratoId]);
+    if (cRes.rows.length === 0) return res.status(404).json({ error: 'Contrato no encontrado' });
+    const personaId = cRes.rows[0].persona_id;
+
+    const result = await pool.query(`
+      INSERT INTO leads (persona_id, sala_id, tmk_id, fuente_id, tipificacion_id, estado, fecha_cita, observacion)
+      VALUES ($1, $2, $3, 1, 2, 'confirmada', $4, 'Re-visita generada desde modulo de fidelizacion SAC')
+      RETURNING id
+    `, [personaId, userSalaId || 1, userId, fecha_cita || null]);
+
+    res.json({ ok: true, lead_id: result.rows[0].id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Mantener ruta legacy
 router.post('/recitar/:persona_id', auth, async (req, res) => {
   const personaId = req.params.persona_id;
   const { id: userId, sala_id: userSalaId } = req.user;
+  const { fecha_cita } = req.body;
   try {
-    // Tipificación "Cita" = id 2
     const result = await pool.query(`
-      INSERT INTO leads (persona_id, sala_id, tmk_id, fuente_id, tipificacion_id, estado, observacion)
-      VALUES ($1, $2, $3, 1, 2, 'pendiente', 'Re-cita generada desde módulo de fidelización SAC')
+      INSERT INTO leads (persona_id, sala_id, tmk_id, fuente_id, tipificacion_id, estado, fecha_cita, observacion)
+      VALUES ($1, $2, $3, 1, 2, 'confirmada', $4, 'Re-cita generada desde modulo de fidelizacion SAC')
       RETURNING id
-    `, [personaId, userSalaId || 1, userId]);
-
+    `, [personaId, userSalaId || 1, userId, fecha_cita || null]);
     res.json({ ok: true, lead_id: result.rows[0].id });
   } catch (err) {
     console.error(err);

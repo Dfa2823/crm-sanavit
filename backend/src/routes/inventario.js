@@ -33,6 +33,9 @@ initTable().catch(console.error);
       ALTER TABLE productos ADD COLUMN IF NOT EXISTS lote VARCHAR(50);
       ALTER TABLE productos ADD COLUMN IF NOT EXISTS laboratorio VARCHAR(150);
       ALTER TABLE productos ADD COLUMN IF NOT EXISTS foto_url TEXT;
+      ALTER TABLE productos ADD COLUMN IF NOT EXISTS imagen_url TEXT;
+      ALTER TABLE productos ADD COLUMN IF NOT EXISTS precio_sin_iva NUMERIC(10,2);
+      ALTER TABLE productos ADD COLUMN IF NOT EXISTS precio_con_iva NUMERIC(10,2);
     `);
   } catch (e) { /* ya existen */ }
 })();
@@ -73,6 +76,16 @@ router.get('/stock', auth, async (req, res) => {
          p.nombre,
          p.tipo,
          p.precio_venta,
+         p.precio_compra,
+         p.precio_sin_iva,
+         p.iva_porcentaje,
+         p.precio_con_iva,
+         p.tiene_iva,
+         p.laboratorio,
+         p.lote,
+         p.fecha_vencimiento,
+         p.imagen_url,
+         p.descripcion,
          p.activo,
          COALESCE(SUM(
            CASE m.tipo
@@ -84,7 +97,7 @@ router.get('/stock', auth, async (req, res) => {
        FROM productos p
        LEFT JOIN movimientos_inventario m ON m.producto_id = p.id
        ${whereClause}
-       GROUP BY p.id, p.codigo, p.nombre, p.tipo, p.precio_venta, p.activo
+       GROUP BY p.id
        ORDER BY p.nombre ASC`
     );
 
@@ -245,18 +258,35 @@ router.post('/productos', auth, async (req, res) => {
   if (!['admin', 'director'].includes(rol)) {
     return res.status(403).json({ error: 'Sin permiso. Solo admin o director.' });
   }
-  const { codigo, nombre, tipo, descripcion, precio_venta, precio_compra, iva_porcentaje, fecha_vencimiento, lote, laboratorio } = req.body;
+  const { codigo, nombre, tipo, descripcion, precio_venta, precio_compra, iva_porcentaje, fecha_vencimiento, lote, laboratorio, precio_sin_iva, tiene_iva, imagen_url } = req.body;
   if (!nombre || !nombre.trim()) {
     return res.status(400).json({ error: 'El nombre del producto es requerido' });
   }
+
+  // Calculo automatico de IVA
+  const ivaPct = Number(iva_porcentaje) || 15;
+  let precioSinIva = precio_sin_iva !== undefined && precio_sin_iva !== '' ? Number(precio_sin_iva) : null;
+  let precioConIva = null;
+  let precioVentaFinal = Number(precio_venta) || 0;
+
+  if (precioSinIva !== null) {
+    if (tiene_iva === false) {
+      precioConIva = precioSinIva;
+    } else {
+      precioConIva = Math.round(precioSinIva * (1 + ivaPct / 100) * 100) / 100;
+    }
+    precioVentaFinal = precioConIva; // compatibilidad
+  }
+
   try {
     const result = await pool.query(
-      `INSERT INTO productos (codigo, nombre, tipo, descripcion, precio_venta, precio_compra, iva_porcentaje, fecha_vencimiento, lote, laboratorio, activo)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
+      `INSERT INTO productos (codigo, nombre, tipo, descripcion, precio_venta, precio_compra, iva_porcentaje, fecha_vencimiento, lote, laboratorio, precio_sin_iva, precio_con_iva, tiene_iva, imagen_url, activo)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, true)
        RETURNING *`,
       [codigo || null, nombre.trim(), tipo || 'servicio', descripcion || null,
-       Number(precio_venta) || 0, Number(precio_compra) || 0, Number(iva_porcentaje) || 15,
-       fecha_vencimiento || null, lote || null, laboratorio || null]
+       precioVentaFinal, Number(precio_compra) || 0, ivaPct,
+       fecha_vencimiento || null, lote || null, laboratorio || null,
+       precioSinIva, precioConIva, tiene_iva !== false, imagen_url || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -276,7 +306,22 @@ router.patch('/productos/:id', auth, async (req, res) => {
     return res.status(403).json({ error: 'Sin permiso. Solo admin o director.' });
   }
 
-  const allowedFields = ['nombre', 'descripcion', 'precio_venta', 'precio_compra', 'iva_porcentaje', 'fecha_vencimiento', 'lote', 'laboratorio', 'activo', 'codigo'];
+  // Calculo automatico de IVA si se envia precio_sin_iva
+  if (req.body.precio_sin_iva !== undefined && req.body.precio_sin_iva !== '') {
+    const precioSinIva = Number(req.body.precio_sin_iva);
+    const ivaPct = Number(req.body.iva_porcentaje) || 15;
+    let precioConIva;
+    if (req.body.tiene_iva === false) {
+      precioConIva = precioSinIva;
+    } else {
+      precioConIva = Math.round(precioSinIva * (1 + ivaPct / 100) * 100) / 100;
+    }
+    req.body.precio_sin_iva = precioSinIva;
+    req.body.precio_con_iva = precioConIva;
+    req.body.precio_venta = precioConIva; // compatibilidad
+  }
+
+  const allowedFields = ['nombre', 'descripcion', 'precio_venta', 'precio_compra', 'iva_porcentaje', 'fecha_vencimiento', 'lote', 'laboratorio', 'activo', 'codigo', 'precio_sin_iva', 'precio_con_iva', 'tiene_iva', 'imagen_url'];
   const updates = [];
   const values  = [];
   let idx = 1;

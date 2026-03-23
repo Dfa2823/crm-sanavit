@@ -78,11 +78,12 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
     sala_id,
     tmk_id,          // null = distribuir round-robin entre TMKs de la sala
     fuente_id,
-    tipificacion_id,
+    tipificacion_id, // OPCIONAL: puede ser null
     tiene_encabezado, // boolean
     mapeo,            // { nombre_completo: 0, nombres: null, apellidos: null, telefono: 1, telefono2: 2, ciudad: 3, ... }
   } = config;
 
+  // Solo sala y fuente son requeridos; tipificacion es OPCIONAL
   if (!sala_id || !fuente_id) {
     return res.status(400).json({ error: 'Faltan campos requeridos: sala y fuente' });
   }
@@ -115,22 +116,38 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
       if (tmkIds.length === 0) tmkIds = [userId]; // fallback al importador
     }
 
-    // Verificar tipificación para determinar estado inicial
-    const tipRes = await pool.query('SELECT requiere_fecha_cita FROM tipificaciones WHERE id = $1', [tipificacion_id]);
-    const estadoInicial = (tipRes.rows[0]?.requiere_fecha_cita) ? 'confirmada' : 'pendiente';
+    // Verificar tipificación para determinar estado inicial (solo si se proporcionó)
+    let estadoInicial = 'pendiente';
+    if (tipificacion_id) {
+      const tipRes = await pool.query('SELECT requiere_fecha_cita FROM tipificaciones WHERE id = $1', [tipificacion_id]);
+      if (tipRes.rows[0]?.requiere_fecha_cita) estadoInicial = 'confirmada';
+    }
 
-    const stats = { importados: 0, duplicados: 0, errores: 0, detalles_errores: [], duplicados_detalle: [] };
+    const stats = {
+      importados: 0,
+      duplicados_bd: 0,       // ya existen en BD (persona + lead en sala)
+      duplicados_internos: 0, // duplicados dentro del archivo
+      errores: 0,
+      detalles_errores: [],
+      duplicados_bd_detalle: [],
+      duplicados_internos_detalle: [],
+    };
     const nombreArchivo = req.file?.originalname || 'desconocido';
+
+    // Set para detectar duplicados internos (dentro del archivo) por teléfono normalizado
+    const telefonosVistos = new Set();
 
     // Helpers
     function normalizarTelefono(val) {
       if (!val && val !== 0) return null;
-      let t = String(val).trim().replace(/[\s\-\.]/g, '');
-      // Formato internacional 00593XXXXXXXXX → 0XXXXXXXXX
+      let t = String(val).trim().replace(/[\s\-\.()]/g, '');
+      // Formato internacional 00593XXXXXXXXX -> 0XXXXXXXXX
       if (t.startsWith('00593')) t = '0' + t.slice(5);
-      // Formato +593XXXXXXXXX → 0XXXXXXXXX
+      // Formato +593XXXXXXXXX -> 0XXXXXXXXX
       if (t.startsWith('+593')) t = '0' + t.slice(4);
-      // 9 dígitos sin cero inicial → agregar 0
+      // 593XXXXXXXXX (sin + ni 00) -> 0XXXXXXXXX
+      if (t.startsWith('593') && t.length >= 12) t = '0' + t.slice(3);
+      // 9 dígitos sin cero inicial -> agregar 0
       if (/^\d{9}$/.test(t)) t = '0' + t;
       // Validar: debe tener 10 dígitos y empezar con 0
       if (/^0\d{9}$/.test(t)) return t;
@@ -188,7 +205,23 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
 
         if (!telefono && !telefono2) { stats.errores++; continue; }
 
-        // Buscar persona existente por teléfono, cédula o email
+        // --- Detección de duplicados internos (dentro del archivo) ---
+        const telKey = telefono || telefono2;
+        if (telefonosVistos.has(telKey)) {
+          stats.duplicados_internos++;
+          if (stats.duplicados_internos_detalle.length < 200) {
+            stats.duplicados_internos_detalle.push({
+              nombres, apellidos, telefono, telefono2, cedula, fila: i + 2,
+              motivo: 'Duplicado dentro del archivo',
+            });
+          }
+          continue;
+        }
+        telefonosVistos.add(telKey);
+        // También agregar telefono2 si existe
+        if (telefono2 && telefono2 !== telKey) telefonosVistos.add(telefono2);
+
+        // --- Detección de duplicados contra BD (persona existente) ---
         const telCheck = [telefono, telefono2].filter(Boolean);
         let personaId = null;
         let existQuery = `SELECT id FROM personas WHERE (telefono = ANY($1) OR telefono2 = ANY($1))`;
@@ -199,6 +232,7 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
         }
         existQuery += ` LIMIT 1`;
         const existing = await pool.query(existQuery, existParams);
+
         if (existing.rows.length > 0) {
           personaId = existing.rows[0].id;
         } else {
@@ -218,9 +252,12 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
           [personaId, sala_id]
         );
         if (leadExist.rows.length > 0) {
-          stats.duplicados++;
-          if (stats.duplicados_detalle.length < 200) {
-            stats.duplicados_detalle.push({ nombres, apellidos, telefono, cedula, fila: i + 2 });
+          stats.duplicados_bd++;
+          if (stats.duplicados_bd_detalle.length < 500) {
+            stats.duplicados_bd_detalle.push({
+              nombres, apellidos, telefono, telefono2, cedula, ciudad, fila: i + 2,
+              motivo: 'Ya existe en la base de datos',
+            });
           }
           continue;
         }
@@ -255,14 +292,75 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
       ok: true,
       total_procesadas: datos.length,
       importados: stats.importados,
-      duplicados: stats.duplicados,
+      duplicados_bd: stats.duplicados_bd,
+      duplicados_internos: stats.duplicados_internos,
       errores: stats.errores,
       detalles_errores: stats.detalles_errores,
-      duplicados_detalle: stats.duplicados_detalle,
+      duplicados_bd_detalle: stats.duplicados_bd_detalle,
+      duplicados_internos_detalle: stats.duplicados_internos_detalle,
       archivo_nombre: nombreArchivo,
+      // Retrocompatibilidad
+      duplicados: stats.duplicados_bd + stats.duplicados_internos,
+      duplicados_detalle: [...stats.duplicados_bd_detalle, ...stats.duplicados_internos_detalle],
     });
   } catch (err) {
     console.error('Importar ejecutar error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/importar/duplicados/descargar
+// Genera un archivo Excel con los duplicados enviados por query (POST sería mejor
+// pero usamos los datos que el frontend ya tiene del resultado de importación)
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/duplicados/descargar', auth, async (req, res) => {
+  const { rol } = req.user;
+  if (!['admin', 'director', 'supervisor_cc'].includes(rol)) {
+    return res.status(403).json({ error: 'Sin permiso' });
+  }
+
+  try {
+    const { duplicados_bd_detalle = [], duplicados_internos_detalle = [] } = req.body;
+    const todos = [
+      ...duplicados_bd_detalle.map(d => ({ ...d, tipo: 'Duplicado en BD' })),
+      ...duplicados_internos_detalle.map(d => ({ ...d, tipo: 'Duplicado en archivo' })),
+    ];
+
+    if (todos.length === 0) {
+      return res.status(400).json({ error: 'No hay duplicados para descargar' });
+    }
+
+    // Preparar datos para Excel
+    const data = todos.map(d => ({
+      'Fila en archivo': d.fila || '',
+      'Tipo de duplicado': d.tipo || '',
+      'Nombres': d.nombres || '',
+      'Apellidos': d.apellidos || '',
+      'Telefono': d.telefono || '',
+      'Telefono 2': d.telefono2 || '',
+      'Cedula': d.cedula || '',
+      'Ciudad': d.ciudad || '',
+      'Motivo': d.motivo || '',
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(data);
+
+    // Ajustar ancho de columnas
+    ws['!cols'] = [
+      { wch: 14 }, { wch: 20 }, { wch: 25 }, { wch: 25 },
+      { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 30 },
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Duplicados');
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=duplicados_importacion.xlsx');
+    res.send(buffer);
+  } catch (err) {
+    console.error('Descargar duplicados error:', err);
     res.status(500).json({ error: err.message });
   }
 });

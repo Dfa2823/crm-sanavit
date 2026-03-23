@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  getUsuarios, createUsuario, updateUsuario, toggleUsuario, updatePermisos,
+  getUsuarios, createUsuario, updateUsuario, toggleUsuario, inactivarUsuario, reasignarEInactivar, updatePermisos,
   getSalas, createSala,
   getTipificaciones, createTipificacion, updateTipificacion,
   getFuentes, createFuente, updateFuente,
@@ -59,16 +59,23 @@ const TODOS_LOS_MODULOS = [
 ]
 
 const ROL_DEFAULTS = {
-  admin:         ['kpis','premanifiesto','recepcion','leads','supervisor','calendario','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar','nomina','metas','admin'],
-  director:      ['kpis','premanifiesto','recepcion','leads','supervisor','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar','nomina','metas'],
-  supervisor_cc: ['supervisor','premanifiesto','leads','calendario','reportes','outsourcing','importar'],
-  tmk:           ['leads'],
-  confirmador:   ['calendario','premanifiesto'],
-  hostess:       ['recepcion','ventas'],
-  consultor:     ['recepcion','ventas'],
-  asesor_cartera:['kpis','cartera','reportes'],
-  sac:           ['sac','kpis','reportes'],
-  outsourcing:   ['leads','premanifiesto'],
+  admin:              ['kpis','premanifiesto','recepcion','leads','supervisor','calendario','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar','nomina','metas','admin'],
+  director:           ['kpis','premanifiesto','recepcion','leads','supervisor','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar','nomina','metas'],
+  director_operativo: ['kpis','premanifiesto','recepcion','leads','supervisor','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','importar','nomina','metas'],
+  supervisor_cc:      ['supervisor','premanifiesto','leads','calendario','reportes','outsourcing','importar'],
+  tmk:                ['leads'],
+  confirmador:        ['calendario','premanifiesto'],
+  hostess:            ['recepcion','ventas'],
+  consultor:          ['recepcion','ventas'],
+  asesor_cartera:     ['kpis','cartera','reportes'],
+  sac:                ['sac','kpis','reportes'],
+  outsourcing:        ['leads','premanifiesto'],
+  jefe_sala:          ['kpis','premanifiesto','recepcion','leads','supervisor','calendario','ventas','reportes','inventario','alertas'],
+  cartera:            ['kpis','cartera','reportes'],
+  medico:             ['recepcion','ventas'],
+  asistente:          ['kpis','premanifiesto','recepcion','inventario'],
+  oficios_varios:     [],
+  business_manager:   ['kpis','premanifiesto','recepcion','leads','supervisor','cartera','ventas','reportes','outsourcing','comisiones','liquidaciones','sac','inventario','alertas','nomina','metas'],
 }
 
 // ─────────────────────────────── ModalPermisos ──────────────────────────────
@@ -324,6 +331,7 @@ function TabUsuarios({ salas, roles }) {
   const [modalNuevo, setModalNuevo] = useState(false)
   const [modalEditar, setModalEditar] = useState(null)
   const [modalPermisos, setModalPermisos] = useState(null)
+  const [modalReasignar, setModalReasignar] = useState(null) // { usuario, leads_pendientes }
   const [guardando, setGuardando] = useState(false)
   const [mensajeExito, setMensajeExito] = useState('')
 
@@ -404,10 +412,49 @@ function TabUsuarios({ salas, roles }) {
 
   async function handleToggle(u) {
     try {
-      await toggleUsuario(u.id, !u.activo)
-      cargar()
+      if (u.activo) {
+        // Intentar inactivar — puede requerir reasignación
+        try {
+          await inactivarUsuario(u.id)
+          setMensajeExito('Usuario desactivado correctamente')
+          cargar()
+        } catch (err) {
+          if (err.response?.status === 409 && err.response?.data?.requiere_reasignacion) {
+            // Mostrar modal de reasignación
+            setModalReasignar({
+              usuario: u,
+              leads_pendientes: err.response.data.leads_pendientes,
+            })
+          } else {
+            throw err
+          }
+        }
+      } else {
+        // Activar
+        await toggleUsuario(u.id, true)
+        setMensajeExito('Usuario activado correctamente')
+        cargar()
+      }
     } catch (err) {
       setError('Error al cambiar estado: ' + (err.response?.data?.error || err.message))
+    }
+  }
+
+  async function handleReasignarEInactivar() {
+    if (!modalReasignar) return
+    setGuardando(true)
+    setError('')
+    try {
+      const result = await reasignarEInactivar(modalReasignar.usuario.id)
+      setMensajeExito(
+        `Usuario inactivado. ${result.reasignados} leads reasignados entre ${result.tmks_destino} TMKs activos.`
+      )
+      setModalReasignar(null)
+      cargar()
+    } catch (err) {
+      setError('Error al reasignar e inactivar: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setGuardando(false)
     }
   }
 
@@ -720,6 +767,47 @@ function TabUsuarios({ salas, roles }) {
           onClose={() => setModalPermisos(null)}
           onSuccess={(msg) => { setMensajeExito(msg); cargar() }}
         />
+      )}
+
+      {/* Modal: Reasignar e Inactivar */}
+      {modalReasignar && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-800 text-lg">Reasignar leads</h3>
+              <button onClick={() => setModalReasignar(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+
+            <div className="mb-4 px-3 py-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-amber-800 text-sm font-medium mb-1">
+                {modalReasignar.usuario.nombre} tiene {modalReasignar.leads_pendientes} leads pendientes.
+              </p>
+              <p className="text-amber-700 text-xs">
+                Al confirmar, los leads se reasignarán aleatoriamente entre los TMKs activos de la misma sala y luego el usuario será inactivado.
+              </p>
+            </div>
+
+            {error && (
+              <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs">{error}</div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setModalReasignar(null)}
+                className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleReasignarEInactivar}
+                disabled={guardando}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                {guardando ? 'Procesando...' : 'Reasignar e Inactivar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

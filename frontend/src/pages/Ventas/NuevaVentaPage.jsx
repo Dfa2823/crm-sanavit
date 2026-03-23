@@ -77,7 +77,7 @@ export default function NuevaVentaPage() {
       setCatalogo(Array.isArray(prod) ? prod.filter(p => p.activo) : [])
       // Preseleccionar sala del usuario logueado
       if (usuario?.sala_id) {
-        setContrato(c => ({ ...c, sala_id: String(user.sala_id) }))
+        setContrato(c => ({ ...c, sala_id: String(usuario.sala_id) }))
       }
     }).catch(console.error)
   }, [])
@@ -392,13 +392,18 @@ export default function NuevaVentaPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Sala</label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                value={contrato.sala_id}
-                onChange={e => setContrato(c => ({ ...c, sala_id: e.target.value, consultor_id: '' }))}
-                disabled={!!usuario?.sala_id && !['admin','director'].includes(usuario?.rol)}>
-                <option value="">Seleccionar sala...</option>
-                {salas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-              </select>
+              {usuario?.sala_id && !['admin','director'].includes(usuario?.rol) ? (
+                <div className="w-full border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700 font-medium">
+                  {salas.find(s => String(s.id) === String(usuario.sala_id))?.nombre || `Sala #${usuario.sala_id}`}
+                </div>
+              ) : (
+                <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  value={contrato.sala_id}
+                  onChange={e => setContrato(c => ({ ...c, sala_id: e.target.value, consultor_id: '' }))}>
+                  <option value="">Seleccionar sala...</option>
+                  {salas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                </select>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Consultor</label>
@@ -588,17 +593,34 @@ export default function NuevaVentaPage() {
               </div>
 
               {/* Preview cuotas */}
-              {Number(plan.monto_total) > 0 && Number(plan.n_cuotas) > 0 && (
-                <div className="mt-3 p-3 bg-teal-50 rounded-lg">
-                  <p className="text-xs text-teal-700">
-                    💡 <strong>{plan.n_cuotas} cuotas</strong> de{' '}
-                    <strong>
-                      {fmt((Number(plan.monto_total) - Number(plan.cuota_inicial || 0)) / Number(plan.n_cuotas))}
-                    </strong>
-                    {' '}cada una · Valor financiado: {fmt(Number(plan.monto_total) - Number(plan.cuota_inicial || 0))}
-                  </p>
-                </div>
-              )}
+              {Number(plan.monto_total) > 0 && Number(plan.n_cuotas) > 0 && (() => {
+                const nCuotas = Number(plan.n_cuotas)
+                const valorFinanciado = Number(plan.monto_total) - Number(plan.cuota_inicial || 0)
+                const valorCuota = valorFinanciado / nCuotas
+                const aplicaInteres = nCuotas >= 4
+                const tasaInteres = 1.5
+                const montoInteres = aplicaInteres ? valorCuota * tasaInteres / 100 : 0
+                return (
+                  <div className="mt-3 space-y-2">
+                    <div className="p-3 bg-teal-50 rounded-lg">
+                      <p className="text-xs text-teal-700">
+                        <strong>{nCuotas} cuotas</strong> de{' '}
+                        <strong>{fmt(valorCuota)}</strong>
+                        {' '}cada una · Valor financiado: {fmt(valorFinanciado)}
+                      </p>
+                    </div>
+                    {aplicaInteres && (
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p className="text-xs text-amber-700">
+                          <strong>Interes aplicado:</strong> A partir de 4 cuotas se aplica interes del {tasaInteres}% mensual.
+                          Las primeras 3 cuotas no tienen interes. Desde la cuota 4: +{fmt(montoInteres)} por cuota
+                          (total cuota con interes: {fmt(valorCuota + montoInteres)}).
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           )}
         </div>

@@ -37,6 +37,11 @@ async function initMigrations() {
       ALTER TABLE recibos ADD COLUMN IF NOT EXISTS soporte_url TEXT;
       ALTER TABLE recibos ADD COLUMN IF NOT EXISTS soporte_nombre VARCHAR(255);
     `);
+    // Intereses en contratos y cuotas
+    await pool.query(`
+      ALTER TABLE contratos ADD COLUMN IF NOT EXISTS tasa_interes NUMERIC(5,2) DEFAULT 0;
+      ALTER TABLE cuotas ADD COLUMN IF NOT EXISTS monto_interes NUMERIC(10,2) DEFAULT 0;
+    `);
     // Marcar formas de pago que requieren referencia
     await pool.query(`
       UPDATE formas_pago SET requiere_referencia = true
@@ -262,9 +267,20 @@ router.post('/', auth, async (req, res) => {
 
     // Generar plan de cuotas si hay financiación
     const montoFinanciado = parseFloat(valor_financiado || 0);
+    const TASA_INTERES_DEFAULT = 1.5; // % mensual
     if (n_cuotas > 1 && montoFinanciado > 0) {
       const valorCuota = montoFinanciado / n_cuotas;
       const fechaInicio = fecha_primer_pago ? new Date(fecha_primer_pago) : new Date();
+      const aplicaInteres = n_cuotas >= 4;
+      const tasaInteres = aplicaInteres ? TASA_INTERES_DEFAULT : 0;
+
+      // Guardar tasa de interés en el contrato
+      if (aplicaInteres) {
+        await client.query(
+          'UPDATE contratos SET tasa_interes = $1 WHERE id = $2',
+          [tasaInteres, contrato.id]
+        );
+      }
 
       for (let i = 0; i < n_cuotas; i++) {
         const fechaVenc = new Date(fechaInicio);
@@ -273,10 +289,16 @@ router.post('/', auth, async (req, res) => {
         const ultimoDiaMes = new Date(fechaVenc.getFullYear(), fechaVenc.getMonth() + 1, 0).getDate();
         fechaVenc.setDate(Math.min(dia_pago, ultimoDiaMes));
 
+        // Primeras 3 cuotas sin interés, a partir de la 4ta se aplica
+        const montoInteres = (aplicaInteres && i >= 3)
+          ? Math.round(valorCuota * tasaInteres / 100 * 100) / 100
+          : 0;
+        const montoEsperado = Math.round((valorCuota + montoInteres) * 100) / 100;
+
         await client.query(`
-          INSERT INTO cuotas (contrato_id, numero_cuota, monto_esperado, fecha_vencimiento, estado)
-          VALUES ($1, $2, $3, $4, 'pendiente')
-        `, [contrato.id, i + 1, Math.round(valorCuota * 100) / 100, fechaVenc.toISOString().split('T')[0]]);
+          INSERT INTO cuotas (contrato_id, numero_cuota, monto_esperado, monto_interes, fecha_vencimiento, estado)
+          VALUES ($1, $2, $3, $4, $5, 'pendiente')
+        `, [contrato.id, i + 1, montoEsperado, montoInteres, fechaVenc.toISOString().split('T')[0]]);
       }
     }
 

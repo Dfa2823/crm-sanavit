@@ -10,3 +10,9 @@ export const ejecutarImport = (formData) =>
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 5 * 60 * 1000, // 5 minutos para bases grandes
   }).then(r => r.data)
+
+export const descargarDuplicados = (duplicados_bd_detalle, duplicados_internos_detalle) =>
+  client.post('/api/importar/duplicados/descargar',
+    { duplicados_bd_detalle, duplicados_internos_detalle },
+    { responseType: 'blob' }
+  ).then(r => r.data)

@@ -646,11 +646,14 @@ export default function Venta360Page() {
                 <p>Sin plan de cuotas (pago único o sin financiación)</p>
               </div>
             ) : (
+              <div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="text-center px-4 py-3 text-gray-600">Cuota</th>
-                    <th className="text-right px-4 py-3 text-gray-600">Monto</th>
+                    <th className="text-right px-4 py-3 text-gray-600">Capital</th>
+                    <th className="text-right px-4 py-3 text-gray-600">Interes</th>
+                    <th className="text-right px-4 py-3 text-gray-600">Total</th>
                     <th className="text-right px-4 py-3 text-gray-600">Pagado</th>
                     <th className="text-right px-4 py-3 text-gray-600">Saldo</th>
                     <th className="text-center px-4 py-3 text-gray-600">Vencimiento</th>
@@ -662,10 +665,20 @@ export default function Venta360Page() {
                   {cuotas.map(q => {
                     const saldo = parseFloat(q.monto_esperado) - parseFloat(q.monto_pagado || 0)
                     const isVencida = !q.fecha_pago && new Date(q.fecha_vencimiento) < new Date()
+                    const tieneInteres = parseFloat(q.monto_interes || 0) > 0
+                    const montoCapital = parseFloat(q.monto_esperado) - parseFloat(q.monto_interes || 0)
                     return (
-                      <tr key={q.id} className={`border-b border-gray-50 hover:bg-gray-50 ${isVencida ? 'bg-red-50/30' : ''}`}>
+                      <tr key={q.id} className={`border-b border-gray-50 hover:bg-gray-50 ${isVencida ? 'bg-red-50/30' : ''} ${tieneInteres ? 'bg-amber-50/30' : ''}`}>
                         <td className="px-4 py-3 text-center text-gray-600">#{q.numero_cuota}</td>
-                        <td className="px-4 py-3 text-right">{fmt(q.monto_esperado)}</td>
+                        <td className="px-4 py-3 text-right text-gray-700">{fmt(montoCapital)}</td>
+                        <td className="px-4 py-3 text-right">
+                          {tieneInteres ? (
+                            <span className="text-amber-600 font-medium">{fmt(q.monto_interes)}</span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium">{fmt(q.monto_esperado)}</td>
                         <td className="px-4 py-3 text-right text-green-600">{fmt(q.monto_pagado)}</td>
                         <td className="px-4 py-3 text-right text-orange-600 font-medium">{fmt(saldo)}</td>
                         <td className="px-4 py-3 text-center text-xs">{new Date(q.fecha_vencimiento).toLocaleDateString('es-EC')}</td>
@@ -679,9 +692,9 @@ export default function Venta360Page() {
                             isVencida               ? 'bg-red-100 text-red-700' :
                             'bg-gray-100 text-gray-600'
                           }`}>
-                            {q.estado === 'pagado' ? '✅ Pagado' :
-                             q.estado === 'parcial' ? '⚠️ Parcial' :
-                             isVencida ? '❌ Vencida' : '⏳ Pendiente'}
+                            {q.estado === 'pagado' ? 'Pagado' :
+                             q.estado === 'parcial' ? 'Parcial' :
+                             isVencida ? 'Vencida' : 'Pendiente'}
                           </span>
                         </td>
                       </tr>
@@ -689,6 +702,12 @@ export default function Venta360Page() {
                   })}
                 </tbody>
               </table>
+              {cuotas.some(q => parseFloat(q.monto_interes || 0) > 0) && (
+                <div className="px-4 py-3 bg-amber-50 border-t border-amber-200 text-xs text-amber-700">
+                  <strong>Nota:</strong> Las cuotas resaltadas incluyen interes del {contrato.tasa_interes || 1.5}% mensual (aplicado a partir de la 4ta cuota).
+                </div>
+              )}
+              </div>
             )
           )}
 

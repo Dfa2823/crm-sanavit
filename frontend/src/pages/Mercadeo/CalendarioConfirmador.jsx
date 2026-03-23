@@ -8,7 +8,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css'
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css'
 import './CalendarioVisual.css'
 import { apiLeads } from '../../api/leads'
-import { apiUsuarios } from '../../api/usuarios'
+// apiUsuarios ya no es necesario — se eliminó la reasignación de TMK
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../context/AuthContext'
 
@@ -357,21 +357,17 @@ function PendientesVista() {
   const navigate = useNavigate()
   const { addToast } = useToast()
   const [pendientes, setPendientes] = useState([])
-  const [tmks, setTmks]             = useState([])
   const [loading, setLoading]       = useState(true)
   const [modal, setModal]           = useState(null)
   const [formConfirmar, setFormConfirmar] = useState({ fecha_cita: '', hora_cita: '' })
+  const [formReagendar, setFormReagendar] = useState({ fecha_cita: '', hora_cita: '' })
   const [guardando, setGuardando]   = useState(false)
 
   const cargar = useCallback(async () => {
     setLoading(true)
     try {
-      const [pend, usuariosTmk] = await Promise.all([
-        apiLeads.calendario(),
-        apiUsuarios.listar({ rol: 'tmk' }),
-      ])
+      const pend = await apiLeads.calendario()
       setPendientes(pend)
-      setTmks(usuariosTmk)
     } finally { setLoading(false) }
   }, [])
 
@@ -392,6 +388,21 @@ function PendientesVista() {
     finally { setGuardando(false) }
   }
 
+  async function reagendarCita() {
+    if (!formReagendar.fecha_cita) return
+    setGuardando(true)
+    try {
+      await apiLeads.actualizar(modal.lead.id, {
+        estado: 'tentativa',
+        fecha_cita: `${formReagendar.fecha_cita}T${formReagendar.hora_cita || '09:00'}:00`,
+      })
+      addToast('Cita reagendada — requiere nueva confirmación')
+      setModal(null)
+      cargar()
+    } catch (err) { console.error(err) }
+    finally { setGuardando(false) }
+  }
+
   function formatFecha(iso) {
     if (!iso) return '—'
     return new Date(iso).toLocaleDateString('es-EC', {
@@ -403,8 +414,8 @@ function PendientesVista() {
   return (
     <>
       <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 mb-4">
-        <strong>📞 Pendientes por llamar:</strong> Prospectos tipificados como "Volver a llamar".
-        Confirma la cita (pasa al Pre-manifiesto) o reasigna a otro TMK.
+        <strong>Pendientes por llamar:</strong> Prospectos tipificados como "Volver a llamar".
+        Confirma la cita (pasa al Pre-manifiesto) o reagenda la fecha/hora.
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -468,9 +479,19 @@ function PendientesVista() {
                             onClick={() => { setModal({ tipo: 'confirmar', lead }); setFormConfirmar({ fecha_cita: '', hora_cita: '' }) }}
                             className="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium whitespace-nowrap"
                           >
-                            ✅ Confirmar cita
+                            Confirmar cita
                           </button>
-                          {/* Reasignar TMK eliminado — el confirmador resuelve el dato */}
+                          <button
+                            onClick={() => {
+                              const f = lead.fecha_cita ? new Date(lead.fecha_cita).toISOString().split('T')[0] : ''
+                              const h = lead.fecha_cita ? new Date(lead.fecha_cita).toTimeString().slice(0,5) : ''
+                              setFormReagendar({ fecha_cita: f, hora_cita: h })
+                              setModal({ tipo: 'reagendar', lead })
+                            }}
+                            className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg font-medium whitespace-nowrap"
+                          >
+                            Reagendar
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -514,7 +535,40 @@ function PendientesVista() {
         </div>
       )}
 
-      {/* Modal Reasignar TMK eliminado */}
+      {/* Modal Reagendar cita */}
+      {modal?.tipo === 'reagendar' && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="font-bold text-gray-800 text-lg mb-1">Cambiar fecha y hora de cita</h3>
+            <p className="text-sm text-gray-500 mb-4">{modal.lead.nombres} {modal.lead.apellidos} — {modal.lead.telefono}</p>
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 mb-4">
+              Al cambiar la fecha/hora, la cita volvera a estado "Tentativa" y debera ser confirmada nuevamente.
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nueva fecha *</label>
+                <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  min={new Date().toISOString().split('T')[0]}
+                  value={formReagendar.fecha_cita}
+                  onChange={e => setFormReagendar(f => ({ ...f, fecha_cita: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nueva hora</label>
+                <input type="time" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  value={formReagendar.hora_cita}
+                  onChange={e => setFormReagendar(f => ({ ...f, hora_cita: e.target.value }))} />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setModal(null)} className="flex-1 text-sm border border-gray-200 rounded-xl py-2.5 hover:bg-gray-50">Cancelar</button>
+              <button onClick={reagendarCita} disabled={guardando || !formReagendar.fecha_cita}
+                className="flex-1 text-sm bg-amber-500 hover:bg-amber-600 text-white rounded-xl py-2.5 font-medium disabled:opacity-50">
+                {guardando ? 'Guardando...' : 'Reagendar cita'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

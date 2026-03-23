@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { getCartera, getCarteraResumen, updateGestion } from '../../api/cartera'
+import { getCartera, getCarteraResumen, getTipificaciones, registrarGestion, getHistorialContrato } from '../../api/cartera'
 import { getSalas, getFormasPago } from '../../api/admin'
 import { createRecibo } from '../../api/recibos'
 
@@ -15,6 +15,27 @@ function fmtFecha(val) {
   return new Date(val).toLocaleDateString('es-EC')
 }
 
+function fmtFechaHora(val) {
+  if (!val) return '—'
+  return new Date(val).toLocaleString('es-EC', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+function esHoy(val) {
+  if (!val) return false
+  const d = new Date(val)
+  const hoy = new Date()
+  return d.getFullYear() === hoy.getFullYear() && d.getMonth() === hoy.getMonth() && d.getDate() === hoy.getDate()
+}
+
+function esPasadoOHoy(val) {
+  if (!val) return false
+  const d = new Date(val)
+  d.setHours(0,0,0,0)
+  const hoy = new Date()
+  hoy.setHours(0,0,0,0)
+  return d <= hoy
+}
+
 function Spinner() {
   return (
     <div className="flex items-center justify-center h-48">
@@ -26,7 +47,7 @@ function Spinner() {
 // ─────────────────── Export functions ───────────────────────────────────────
 function exportarCarteraCSV(cuotas) {
   if (!cuotas.length) return
-  const cols = ['Cliente', 'Teléfono', 'N° Contrato', 'Cuota', 'Vence', 'Días vencido', 'Saldo', 'Tramo mora', 'Consultor', 'Sala', 'Observación']
+  const cols = ['Cliente', 'Teléfono', 'N° Contrato', 'Cuota', 'Vence', 'Días vencido', 'Saldo', 'Tramo mora', 'Última gestión', 'Consultor', 'Sala', 'Observación']
   const rows = cuotas.map(c => [
     `${c.nombres || ''} ${c.apellidos || ''}`.trim(),
     c.telefono || '',
@@ -36,9 +57,10 @@ function exportarCarteraCSV(cuotas) {
     c.dias_vencido ?? '',
     c.saldo_cuota ?? '',
     c.tramo_mora || '',
+    c.ultima_tipificacion || c.tipificacion_cartera || '',
     c.consultor_nombre || '',
     c.sala_nombre || '',
-    c.observacion_gestion || '',
+    c.ultima_observacion_gestion || c.observacion_gestion || '',
   ])
   const csv = [cols, ...rows]
     .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
@@ -62,6 +84,7 @@ function exportarCarteraPDF(cuotas) {
       <td style="text-align:center">${c.dias_vencido ?? '—'}</td>
       <td style="text-align:right">$${Number(c.saldo_cuota || 0).toLocaleString('es-EC', { minimumFractionDigits: 2 })}</td>
       <td>${c.tramo_mora || '—'}</td>
+      <td>${c.ultima_tipificacion || c.tipificacion_cartera || '—'}</td>
       <td>${c.consultor_nombre || '—'}</td>
     </tr>`).join('')
   const totalSaldo = cuotas.reduce((s, c) => s + Number(c.saldo_cuota || 0), 0)
@@ -82,7 +105,7 @@ function exportarCarteraPDF(cuotas) {
     <table>
       <thead><tr>
         <th>Cliente</th><th>Teléfono</th><th>N° Contrato</th><th>Cuota</th>
-        <th>Vence</th><th>Días</th><th>Saldo</th><th>Tramo</th><th>Consultor</th>
+        <th>Vence</th><th>Días</th><th>Saldo</th><th>Tramo</th><th>Gestión</th><th>Consultor</th>
       </tr></thead>
       <tbody>${filas}</tbody>
     </table>
@@ -122,29 +145,29 @@ function AgingCard({ titulo, count, monto, bgCls, textCls, borderCls }) {
   )
 }
 
-// ─────────────────── Modal / inline panel de gestión ─────────────────────────
-const TIPIF_CARTERA = [
-  { value: 'contactado',     label: 'Contactado' },
-  { value: 'promesa_pago',   label: 'Promesa de pago' },
-  { value: 'no_contesta',    label: 'No contesta' },
-  { value: 'buzon',          label: 'Buzón' },
-  { value: 'numero_errado',  label: 'Número errado' },
-  { value: 'volver_a_llamar',label: 'Volver a llamar' },
-  { value: 'pagado',         label: 'Ya pagó' },
-]
-
-function PanelGestion({ cuota, onClose, onSaved }) {
-  const [observacion, setObservacion] = useState(cuota.observacion_gestion || '')
-  const [tipificacion, setTipificacion] = useState(cuota.tipificacion_cartera || '')
+// ─────────────────── Modal de gestión (con tipificaciones del backend) ───────
+function PanelGestion({ cuota, tipificaciones, onClose, onSaved }) {
+  const [tipId, setTipId]             = useState('')
+  const [observacion, setObservacion] = useState('')
+  const [fechaRellamar, setFechaRellamar] = useState('')
   const [saving, setSaving]           = useState(false)
   const [error, setError]             = useState('')
 
+  const tipSeleccionada = tipificaciones.find(t => String(t.id) === String(tipId))
+  const requiereFecha = tipSeleccionada?.requiere_fecha || false
+
   const guardar = async () => {
+    if (!tipId) { setError('Selecciona una tipificación'); return }
+    if (requiereFecha && !fechaRellamar) { setError('Esta tipificación requiere una fecha'); return }
     setSaving(true)
     setError('')
     try {
-      await updateGestion(cuota.cuota_id, { observacion, tipificacion_cartera: tipificacion })
-      onSaved(cuota.cuota_id, observacion, tipificacion)
+      await registrarGestion(cuota.cuota_id, {
+        tipificacion_cartera_id: Number(tipId),
+        observacion: observacion || undefined,
+        fecha_rellamar: requiereFecha ? fechaRellamar : undefined,
+      })
+      onSaved()
       onClose()
     } catch (err) {
       setError(err.response?.data?.error || err.message)
@@ -158,41 +181,58 @@ function PanelGestion({ cuota, onClose, onSaved }) {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-gray-800 text-base">Registrar gestión</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
         </div>
 
-        <div className="text-sm text-gray-600 space-y-1">
+        <div className="text-sm text-gray-600 space-y-1 bg-teal-50 rounded-lg p-3">
           <p><span className="font-semibold">Cliente:</span> {cuota.nombres} {cuota.apellidos}</p>
           <p><span className="font-semibold">Contrato:</span> {cuota.numero_contrato || '—'}</p>
           <p><span className="font-semibold">Cuota:</span> #{cuota.numero_cuota} — vence {fmtFecha(cuota.fecha_vencimiento)}</p>
           <p><span className="font-semibold">Saldo:</span> {fmt(cuota.saldo_cuota)}</p>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Tipificación de gestión</label>
-          <select
-            value={tipificacion}
-            onChange={e => setTipificacion(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 mb-3"
-          >
-            <option value="">Seleccionar...</option>
-            {TIPIF_CARTERA.map(t => (
-              <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
-          </select>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Observación de gestión</label>
-          <textarea
-            rows={3}
-            value={observacion}
-            onChange={e => setObservacion(e.target.value)}
-            placeholder="Ej: Contactado por WhatsApp, prometió pago el lunes..."
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
-          />
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Tipificación de gestión *</label>
+            <select
+              value={tipId}
+              onChange={e => setTipId(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            >
+              <option value="">Seleccionar...</option>
+              {tipificaciones.map(t => (
+                <option key={t.id} value={t.id}>{t.nombre}</option>
+              ))}
+            </select>
+          </div>
+
+          {requiereFecha && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Fecha para volver a llamar / seguimiento *
+              </label>
+              <input
+                type="datetime-local"
+                value={fechaRellamar}
+                onChange={e => setFechaRellamar(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Observación</label>
+            <textarea
+              rows={3}
+              value={observacion}
+              onChange={e => setObservacion(e.target.value)}
+              placeholder="Ej: Contactado por WhatsApp, prometió pago el lunes..."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+            />
+          </div>
         </div>
 
-        {error && (
-          <p className="text-red-600 text-xs">{error}</p>
-        )}
+        {error && <p className="text-red-600 text-xs bg-red-50 rounded-md px-2 py-1">{error}</p>}
 
         <div className="flex gap-3 justify-end pt-1">
           <button
@@ -206,7 +246,94 @@ function PanelGestion({ cuota, onClose, onSaved }) {
             disabled={saving}
             className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {saving ? 'Guardando…' : 'Guardar'}
+            {saving ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────── Modal de Historial ─────────────────────────────────────
+function PanelHistorial({ contrato, onClose }) {
+  const [gestiones, setGestiones] = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState('')
+
+  useEffect(() => {
+    setLoading(true)
+    getHistorialContrato(contrato.contrato_id)
+      .then(data => setGestiones(Array.isArray(data) ? data : []))
+      .catch(err => setError(err.response?.data?.error || err.message))
+      .finally(() => setLoading(false))
+  }, [contrato.contrato_id])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 space-y-4 max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-gray-800 text-base">Historial de gestiones</h3>
+            <p className="text-xs text-gray-500">
+              Contrato {contrato.numero_contrato} — {contrato.nombres} {contrato.apellidos}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+        </div>
+
+        {error && <p className="text-red-600 text-xs">{error}</p>}
+
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="w-6 h-6 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : gestiones.length === 0 ? (
+          <div className="text-center py-8 text-gray-400">
+            <p className="text-sm">No hay gestiones registradas para este contrato</p>
+          </div>
+        ) : (
+          <div className="overflow-y-auto flex-1">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                <tr>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Fecha</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Tipificación</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Observación</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Rellamar</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Cuota</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Usuario</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gestiones.map((g, i) => (
+                  <tr key={g.id} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/40'}`}>
+                    <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{fmtFechaHora(g.created_at)}</td>
+                    <td className="px-3 py-2">
+                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-teal-100 text-teal-700">
+                        {g.tipificacion_nombre || '—'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-600 max-w-[200px] truncate" title={g.observacion || ''}>
+                      {g.observacion || '—'}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
+                      {g.fecha_rellamar ? fmtFechaHora(g.fecha_rellamar) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-500">#{g.numero_cuota}</td>
+                    <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{g.usuario_nombre || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="flex justify-end pt-1">
+          <button
+            onClick={onClose}
+            className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+          >
+            Cerrar
           </button>
         </div>
       </div>
@@ -260,7 +387,7 @@ function PanelCobro({ cuota, formasPago, onClose, onSaved }) {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-gray-800 text-base">Registrar Cobro</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
         </div>
 
         <div className="text-sm text-gray-600 space-y-1 bg-teal-50 rounded-lg p-3">
@@ -323,7 +450,7 @@ function PanelCobro({ cuota, formasPago, onClose, onSaved }) {
           </button>
           <button onClick={guardar} disabled={saving}
             className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
-            {saving ? 'Registrando...' : '💰 Registrar Cobro'}
+            {saving ? 'Registrando...' : 'Registrar Cobro'}
           </button>
         </div>
       </div>
@@ -335,11 +462,12 @@ function PanelCobro({ cuota, formasPago, onClose, onSaved }) {
 export default function CarteraPage() {
   const { usuario } = useAuth()
 
-  const [cuotas,       setCuotas]       = useState([])
-  const [resumen,      setResumen]      = useState(null)
-  const [salas,        setSalas]        = useState([])
-  const [loading,      setLoading]      = useState(true)
-  const [error,        setError]        = useState('')
+  const [cuotas,          setCuotas]          = useState([])
+  const [resumen,         setResumen]         = useState(null)
+  const [salas,           setSalas]           = useState([])
+  const [tipificaciones,  setTipificaciones]  = useState([])
+  const [loading,         setLoading]         = useState(true)
+  const [error,           setError]           = useState('')
 
   // Filtros backend
   const [filtroSala,   setFiltroSala]   = useState(usuario?.sala_id || '')
@@ -350,9 +478,10 @@ export default function CarteraPage() {
   const [busqueda,     setBusqueda]     = useState('')
 
   // Paneles
-  const [panelCuota,   setPanelCuota]   = useState(null)
-  const [panelCobro,   setPanelCobro]   = useState(null)
-  const [formasPago,   setFormasPago]   = useState([])
+  const [panelCuota,    setPanelCuota]    = useState(null)
+  const [panelCobro,    setPanelCobro]    = useState(null)
+  const [panelHistorial, setPanelHistorial] = useState(null)
+  const [formasPago,    setFormasPago]    = useState([])
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -363,14 +492,16 @@ export default function CarteraPage() {
       if (filtroEstado && filtroEstado !== 'todos') params.estado = filtroEstado
       if (filtroAging)  params.aging   = filtroAging
 
-      const [dataCuotas, dataResumen, dataSalas] = await Promise.all([
+      const [dataCuotas, dataResumen, dataSalas, dataTipif] = await Promise.all([
         getCartera(params),
         getCarteraResumen(),
         getSalas(),
+        getTipificaciones(),
       ])
       setCuotas(Array.isArray(dataCuotas) ? dataCuotas : [])
       setResumen(dataResumen || null)
       setSalas(Array.isArray(dataSalas) ? dataSalas : [])
+      setTipificaciones(Array.isArray(dataTipif) ? dataTipif : [])
     } catch (err) {
       setError('Error al cargar cartera: ' + (err.response?.data?.error || err.message))
     } finally {
@@ -393,18 +524,29 @@ export default function CarteraPage() {
     return nombre.includes(term) || telefono.includes(term) || contrato.includes(term)
   })
 
-  // Actualizar observación y tipificación en lista local tras guardar
-  const handleGestionSaved = (cuotaId, observacion, tipificacion) => {
-    setCuotas(prev =>
-      prev.map(c => c.cuota_id === cuotaId ? { ...c, observacion_gestion: observacion, tipificacion_cartera: tipificacion } : c)
-    )
-  }
-
   // Botón WhatsApp
   const waLink = (tel) => {
     if (!tel) return null
     const num = tel.replace(/\D/g, '').replace(/^0/, '')
     return `https://wa.me/593${num}`
+  }
+
+  // Resolver tipificación para mostrar en tabla
+  const getTipLabel = (c) => {
+    return c.ultima_tipificacion || c.tipificacion_cartera || null
+  }
+
+  const getTipCls = (label) => {
+    if (!label) return ''
+    const l = label.toLowerCase()
+    if (l.includes('volver') || l.includes('llamar')) return 'bg-amber-100 text-amber-700'
+    if (l.includes('promesa') || l.includes('acuerdo')) return 'bg-blue-100 text-blue-700'
+    if (l.includes('pag')) return 'bg-emerald-100 text-emerald-700'
+    if (l.includes('no contesta') || l.includes('buz')) return 'bg-gray-100 text-gray-600'
+    if (l.includes('enojado')) return 'bg-red-100 text-red-700'
+    if (l.includes('equivocado')) return 'bg-orange-100 text-orange-700'
+    if (l.includes('refinan')) return 'bg-purple-100 text-purple-700'
+    return 'bg-teal-100 text-teal-700'
   }
 
   return (
@@ -417,13 +559,13 @@ export default function CarteraPage() {
             onClick={() => exportarCarteraCSV(cuotasFiltradas)}
             className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
           >
-            📥 CSV
+            CSV
           </button>
           <button
             onClick={() => exportarCarteraPDF(cuotasFiltradas)}
             className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
           >
-            🖨️ PDF
+            PDF
           </button>
           <button
             onClick={cargar}
@@ -491,7 +633,7 @@ export default function CarteraPage() {
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex justify-between">
           {error}
-          <button onClick={() => setError('')} className="text-red-400 hover:text-red-600 ml-4">×</button>
+          <button onClick={() => setError('')} className="text-red-400 hover:text-red-600 ml-4">&times;</button>
         </div>
       )}
 
@@ -542,7 +684,7 @@ export default function CarteraPage() {
 
             {cuotasFiltradas.length === 0 ? (
               <div className="p-12 text-center text-gray-400">
-                <div className="text-4xl mb-3">💳</div>
+                <p className="text-lg mb-1">Sin resultados</p>
                 <p className="font-medium">No hay cuotas para esta selección</p>
               </div>
             ) : (
@@ -558,131 +700,149 @@ export default function CarteraPage() {
                       <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Días</th>
                       <th className="text-right px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Saldo</th>
                       <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Tramo</th>
-                      <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Gestión</th>
+                      <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Última gestión</th>
                       <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Consultor</th>
                       <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {cuotasFiltradas.map((c, i) => (
-                      <tr
-                        key={c.cuota_id}
-                        className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${i % 2 === 0 ? '' : 'bg-gray-50/40'}`}
-                      >
-                        {/* Cliente */}
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-gray-800 whitespace-nowrap">
-                            {c.nombres} {c.apellidos}
-                          </div>
-                          {c.observacion_gestion && (
-                            <div className="text-xs text-teal-600 mt-0.5 max-w-[200px] truncate" title={c.observacion_gestion}>
-                              {c.observacion_gestion}
+                    {cuotasFiltradas.map((c, i) => {
+                      const tipLabel = getTipLabel(c)
+                      const tieneRellamar = esPasadoOHoy(c.fecha_rellamar)
+                      const llamarHoy = esHoy(c.fecha_rellamar)
+
+                      return (
+                        <tr
+                          key={c.cuota_id}
+                          className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${tieneRellamar ? 'bg-amber-50/50' : i % 2 === 0 ? '' : 'bg-gray-50/40'}`}
+                        >
+                          {/* Cliente */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="font-medium text-gray-800 whitespace-nowrap">
+                                {c.nombres} {c.apellidos}
+                              </div>
+                              {tieneRellamar && (
+                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold bg-amber-200 text-amber-800 animate-pulse whitespace-nowrap">
+                                  Llamar {llamarHoy ? 'hoy' : 'ahora'}
+                                </span>
+                              )}
                             </div>
-                          )}
-                        </td>
-
-                        {/* Teléfono + WhatsApp */}
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-mono text-xs text-gray-600">{c.telefono || '—'}</span>
-                            {c.telefono && (
-                              <a
-                                href={waLink(c.telefono)}
-                                target="_blank"
-                                rel="noreferrer"
-                                title="Enviar WhatsApp"
-                                className="text-green-500 hover:text-green-700 text-base leading-none"
-                              >
-                                💬
-                              </a>
+                            {(c.ultima_observacion_gestion || c.observacion_gestion) && (
+                              <div className="text-xs text-teal-600 mt-0.5 max-w-[200px] truncate" title={c.ultima_observacion_gestion || c.observacion_gestion}>
+                                {c.ultima_observacion_gestion || c.observacion_gestion}
+                              </div>
                             )}
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* N° Contrato */}
-                        <td className="px-4 py-3 font-mono text-xs text-teal-700 font-bold whitespace-nowrap">
-                          {c.numero_contrato || '—'}
-                        </td>
+                          {/* Teléfono + WhatsApp */}
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-xs text-gray-600">{c.telefono || '—'}</span>
+                              {c.telefono && (
+                                <a
+                                  href={waLink(c.telefono)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="Enviar WhatsApp"
+                                  className="text-green-500 hover:text-green-700 text-sm leading-none"
+                                >
+                                  WA
+                                </a>
+                              )}
+                            </div>
+                          </td>
 
-                        {/* Cuota */}
-                        <td className="px-4 py-3 text-center text-gray-600 whitespace-nowrap">
-                          #{c.numero_cuota}
-                        </td>
+                          {/* N° Contrato */}
+                          <td className="px-4 py-3 font-mono text-xs text-teal-700 font-bold whitespace-nowrap">
+                            {c.numero_contrato || '—'}
+                          </td>
 
-                        {/* Vencimiento */}
-                        <td className="px-4 py-3 text-center text-xs text-gray-500 whitespace-nowrap">
-                          {fmtFecha(c.fecha_vencimiento)}
-                        </td>
+                          {/* Cuota */}
+                          <td className="px-4 py-3 text-center text-gray-600 whitespace-nowrap">
+                            #{c.numero_cuota}
+                          </td>
 
-                        {/* Días vencido */}
-                        <td className="px-4 py-3 text-center whitespace-nowrap">
-                          {c.dias_vencido !== null && c.dias_vencido !== undefined ? (
-                            <span className={`font-bold tabular-nums ${
-                              c.dias_vencido > 90 ? 'text-red-700' :
-                              c.dias_vencido > 60 ? 'text-red-500' :
-                              c.dias_vencido > 30 ? 'text-orange-500' :
-                              c.dias_vencido > 0  ? 'text-yellow-600' :
-                              'text-gray-400'
-                            }`}>
-                              {c.dias_vencido > 0 ? c.dias_vencido : '—'}
-                            </span>
-                          ) : '—'}
-                        </td>
+                          {/* Vencimiento */}
+                          <td className="px-4 py-3 text-center text-xs text-gray-500 whitespace-nowrap">
+                            {fmtFecha(c.fecha_vencimiento)}
+                          </td>
 
-                        {/* Saldo */}
-                        <td className="px-4 py-3 text-right font-semibold text-gray-800 whitespace-nowrap">
-                          {fmt(c.saldo_cuota)}
-                        </td>
+                          {/* Días vencido */}
+                          <td className="px-4 py-3 text-center whitespace-nowrap">
+                            {c.dias_vencido !== null && c.dias_vencido !== undefined ? (
+                              <span className={`font-bold tabular-nums ${
+                                c.dias_vencido > 90 ? 'text-red-700' :
+                                c.dias_vencido > 60 ? 'text-red-500' :
+                                c.dias_vencido > 30 ? 'text-orange-500' :
+                                c.dias_vencido > 0  ? 'text-yellow-600' :
+                                'text-gray-400'
+                              }`}>
+                                {c.dias_vencido > 0 ? c.dias_vencido : '—'}
+                              </span>
+                            ) : '—'}
+                          </td>
 
-                        {/* Tramo */}
-                        <td className="px-4 py-3 text-center">
-                          <BadgeTramo tramo={c.tramo_mora} />
-                        </td>
+                          {/* Saldo */}
+                          <td className="px-4 py-3 text-right font-semibold text-gray-800 whitespace-nowrap">
+                            {fmt(c.saldo_cuota)}
+                          </td>
 
-                        {/* Gestión / Tipificación */}
-                        <td className="px-4 py-3 text-center">
-                          {c.tipificacion_cartera ? (
-                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                              c.tipificacion_cartera === 'volver_a_llamar' ? 'bg-amber-100 text-amber-700' :
-                              c.tipificacion_cartera === 'promesa_pago' ? 'bg-blue-100 text-blue-700' :
-                              c.tipificacion_cartera === 'contactado' ? 'bg-green-100 text-green-700' :
-                              c.tipificacion_cartera === 'no_contesta' ? 'bg-gray-100 text-gray-600' :
-                              c.tipificacion_cartera === 'pagado' ? 'bg-emerald-100 text-emerald-700' :
-                              'bg-gray-100 text-gray-600'
-                            }`}>
-                              {TIPIF_CARTERA.find(t => t.value === c.tipificacion_cartera)?.label || c.tipificacion_cartera}
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-gray-300">—</span>
-                          )}
-                        </td>
+                          {/* Tramo */}
+                          <td className="px-4 py-3 text-center">
+                            <BadgeTramo tramo={c.tramo_mora} />
+                          </td>
 
-                        {/* Consultor */}
-                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
-                          {c.consultor_nombre || '—'}
-                        </td>
+                          {/* Última gestión */}
+                          <td className="px-4 py-3 text-center">
+                            {tipLabel ? (
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${getTipCls(tipLabel)}`}>
+                                  {tipLabel}
+                                </span>
+                                {c.ultima_fecha_gestion && (
+                                  <span className="text-[9px] text-gray-400">{fmtFecha(c.ultima_fecha_gestion)}</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-gray-300">—</span>
+                            )}
+                          </td>
 
-                        {/* Acciones */}
-                        <td className="px-4 py-3 text-center whitespace-nowrap">
-                          <div className="flex items-center gap-2 justify-center">
-                            <button
-                              onClick={() => setPanelCobro(c)}
-                              className="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-xs font-medium"
-                              title="Registrar pago de esta cuota"
-                            >
-                              💰 Cobrar
-                            </button>
-                            <button
-                              onClick={() => setPanelCuota(c)}
-                              className="bg-teal-600 text-white px-3 py-1.5 rounded-lg hover:bg-teal-700 text-xs font-medium"
-                              title="Registrar gestión de cobranza"
-                            >
-                              Gestionar
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          {/* Consultor */}
+                          <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                            {c.consultor_nombre || '—'}
+                          </td>
+
+                          {/* Acciones */}
+                          <td className="px-4 py-3 text-center whitespace-nowrap">
+                            <div className="flex items-center gap-1.5 justify-center">
+                              <button
+                                onClick={() => setPanelCobro(c)}
+                                className="bg-green-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-green-700 text-xs font-medium"
+                                title="Registrar pago de esta cuota"
+                              >
+                                Cobrar
+                              </button>
+                              <button
+                                onClick={() => setPanelCuota(c)}
+                                className="bg-teal-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-teal-700 text-xs font-medium"
+                                title="Registrar gestión de cobranza"
+                              >
+                                Gestionar
+                              </button>
+                              <button
+                                onClick={() => setPanelHistorial(c)}
+                                className="border border-gray-300 text-gray-600 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 text-xs font-medium"
+                                title="Ver historial de gestiones del contrato"
+                              >
+                                Historial
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -695,8 +855,9 @@ export default function CarteraPage() {
       {panelCuota && (
         <PanelGestion
           cuota={panelCuota}
+          tipificaciones={tipificaciones}
           onClose={() => setPanelCuota(null)}
-          onSaved={handleGestionSaved}
+          onSaved={cargar}
         />
       )}
 
@@ -707,6 +868,14 @@ export default function CarteraPage() {
           formasPago={formasPago}
           onClose={() => setPanelCobro(null)}
           onSaved={cargar}
+        />
+      )}
+
+      {/* Modal de historial */}
+      {panelHistorial && (
+        <PanelHistorial
+          contrato={panelHistorial}
+          onClose={() => setPanelHistorial(null)}
         />
       )}
     </div>

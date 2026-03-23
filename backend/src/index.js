@@ -45,6 +45,7 @@ app.use('/api/importar',     authMiddleware, require('./routes/importar'));
 app.use('/api/nomina',       authMiddleware, require('./routes/nomina'));
 app.use('/api/metas',        authMiddleware, require('./routes/metas'));
 app.use('/api/buscar',       authMiddleware, require('./routes/buscar'));
+app.use('/api/consultor',    authMiddleware, require('./routes/consultor'));
 
 app.use('/api/productos', authMiddleware, require('./routes/productos'));
 app.use('/api/ventas',    authMiddleware, require('./routes/ventas'));
@@ -63,7 +64,7 @@ app.get('/health', (req, res) => {
             '/api/comisiones','/api/sac','/api/supervisor','/api/inventario',
             '/api/productos','/api/ventas','/api/recibos',
             '/api/alertas','/api/liquidaciones','/api/perfil','/api/importar',
-            '/api/nomina','/api/metas','/api/buscar'],
+            '/api/nomina','/api/metas','/api/buscar','/api/consultor'],
   });
 });
 
