@@ -5,16 +5,16 @@ import { getSalas } from '../../api/admin'
 import { useAuth } from '../../context/AuthContext'
 
 const ESTADO_CONFIG = {
-  activo:     { label: 'Activo',     cls: 'bg-green-100 text-green-700' },
-  inactivo:   { label: 'Inactivo',   cls: 'bg-red-100 text-red-700' },
-  cancelado:  { label: 'Cancelado',  cls: 'bg-gray-100 text-gray-600' },
-  completado: { label: 'Completado', cls: 'bg-blue-100 text-blue-700' },
-  suspendido: { label: 'Suspendido', cls: 'bg-yellow-100 text-yellow-700' },
+  activo:     { label: 'Activo',     cls: 'badge-green' },
+  inactivo:   { label: 'Inactivo',   cls: 'badge-red' },
+  cancelado:  { label: 'Cancelado',  cls: 'badge-gray' },
+  completado: { label: 'Completado', cls: 'badge-blue' },
+  suspendido: { label: 'Suspendido', cls: 'badge-amber' },
 }
 
 function BadgeEstado({ estado }) {
-  const cfg = ESTADO_CONFIG[estado] || { label: estado || '—', cls: 'bg-gray-100 text-gray-600' }
-  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cfg.cls}`}>{cfg.label}</span>
+  const cfg = ESTADO_CONFIG[estado] || { label: estado || '—', cls: 'badge-gray' }
+  return <span className={`badge ${cfg.cls}`}>{cfg.label}</span>
 }
 
 function fmt(val) {
@@ -85,22 +85,21 @@ export default function VentasPage() {
   const ventasPagina  = ventasFiltradas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">Contratos de Venta</h1>
+    <div className="space-y-6 animate-fadeIn">
+      <div className="flex items-center justify-end">
         <button
           onClick={() => navigate('/ventas/nueva')}
-          className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+          className="btn btn-primary"
         >
           + Nueva Venta
         </button>
       </div>
 
       {/* Filtros */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-center gap-4">
+      <div className="card p-4 flex flex-wrap items-center gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Sala</label>
-          <select className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+          <select className="input w-auto"
             value={salaId} onChange={e => setSalaId(e.target.value)}>
             <option value="">Todas las salas</option>
             {salas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
@@ -108,7 +107,7 @@ export default function VentasPage() {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Estado</label>
-          <select className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+          <select className="input w-auto"
             value={estado} onChange={e => setEstado(e.target.value)}>
             <option value="">Todos</option>
             <option value="activo">Activo</option>
@@ -128,8 +127,8 @@ export default function VentasPage() {
             onChange={e => setBusqueda(e.target.value)}
           />
         </div>
-        <div className="mt-4">
-          <button onClick={cargar} className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+        <div className="self-end">
+          <button onClick={cargar} className="btn btn-secondary">
             Actualizar
           </button>
         </div>
@@ -164,7 +163,7 @@ export default function VentasPage() {
           </div>
 
           {/* Tabla */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="card overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="font-semibold text-gray-700">Detalle de contratos</h2>
               <span className="text-sm text-gray-400">{ventasFiltradas.length} registros</span>
@@ -177,32 +176,32 @@ export default function VentasPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-100">
+                <table className="crm-table">
+                  <thead>
                     <tr>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">N° Contrato</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Cliente</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Consultor</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600">Sala</th>
-                      <th className="text-right px-4 py-3 font-semibold text-gray-600">Total</th>
-                      <th className="text-right px-4 py-3 font-semibold text-gray-600">Pagado</th>
-                      <th className="text-right px-4 py-3 font-semibold text-gray-600">Saldo</th>
-                      <th className="text-center px-4 py-3 font-semibold text-gray-600">Estado</th>
-                      <th className="text-center px-4 py-3 font-semibold text-gray-600">Fecha</th>
-                      <th className="px-4 py-3"></th>
+                      <th className="text-left">N° Contrato</th>
+                      <th className="text-left">Cliente</th>
+                      <th className="text-left">Consultor</th>
+                      <th className="text-left">Sala</th>
+                      <th className="text-right">Total</th>
+                      <th className="text-right">Pagado</th>
+                      <th className="text-right">Saldo</th>
+                      <th className="text-center">Estado</th>
+                      <th className="text-center">Fecha</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
                     {ventasPagina.map((v, i) => (
                       <tr key={v.id}
-                        className={`border-b border-gray-50 hover:bg-gray-50 cursor-pointer ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
+                        className="row-clickable"
                         onClick={() => navigate(`/ventas/${v.id}`)}
                       >
                         <td className="px-4 py-3 font-mono text-xs text-teal-700 font-bold">{v.numero_contrato || '—'}</td>
                         <td className="px-4 py-3">
                           <div className="font-medium text-gray-800">{v.nombres} {v.apellidos}</div>
                           {v.telefono && <div className="text-xs text-gray-400 font-mono">{v.telefono}</div>}
-                          {v.segunda_venta && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-medium">2da venta</span>}
+                          {v.segunda_venta && <span className="badge badge-purple">2da venta</span>}
                         </td>
                         <td className="px-4 py-3 text-gray-600 text-xs">{v.consultor_nombre || '—'}</td>
                         <td className="px-4 py-3 text-gray-600 text-xs">{v.sala_nombre || '—'}</td>

@@ -135,15 +135,15 @@ function TabControlCalidad() {
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-100">
+        <table className="crm-table">
+          <thead>
             <tr>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600">Cliente</th>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600">Telefono</th>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600">Contrato #</th>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600">Fecha Venta</th>
-              <th className="text-center px-4 py-3 font-semibold text-gray-600">Dias desde venta</th>
-              <th className="text-center px-4 py-3 font-semibold text-gray-600">Accion</th>
+              <th className="text-left">Cliente</th>
+              <th className="text-left">Telefono</th>
+              <th className="text-left">Contrato #</th>
+              <th className="text-left">Fecha Venta</th>
+              <th className="text-center">Dias desde venta</th>
+              <th className="text-center">Accion</th>
             </tr>
           </thead>
           <tbody>
@@ -791,18 +791,18 @@ function TabPQR({ usuario }) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-100">
+              <table className="crm-table">
+                <thead>
                   <tr>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">N Ticket</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Cliente</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Tipo</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Categoria</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Prioridad</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Estado</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Asignado</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Fecha</th>
-                    <th className="px-4 py-3"></th>
+                    <th className="text-left">N Ticket</th>
+                    <th className="text-left">Cliente</th>
+                    <th className="text-left">Tipo</th>
+                    <th className="text-left">Categoria</th>
+                    <th className="text-left">Prioridad</th>
+                    <th className="text-left">Estado</th>
+                    <th className="text-left">Asignado</th>
+                    <th className="text-left">Fecha</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -891,15 +891,15 @@ function TabFidelizacion() {
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-100">
+        <table className="crm-table">
+          <thead>
             <tr>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600">Cliente</th>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600">Telefono</th>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600">Fecha Compra</th>
-              <th className="text-center px-4 py-3 font-semibold text-gray-600">Dias desde compra</th>
-              <th className="text-right px-4 py-3 font-semibold text-gray-600">Monto</th>
-              <th className="text-center px-4 py-3 font-semibold text-gray-600">Accion</th>
+              <th className="text-left">Cliente</th>
+              <th className="text-left">Telefono</th>
+              <th className="text-left">Fecha Compra</th>
+              <th className="text-center">Dias desde compra</th>
+              <th className="text-right">Monto</th>
+              <th className="text-center">Accion</th>
             </tr>
           </thead>
           <tbody>

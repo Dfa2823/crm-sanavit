@@ -118,17 +118,17 @@ function exportarCarteraPDF(cuotas) {
 
 // ─────────────────── Badge de tramo de mora ──────────────────────────────────
 const TRAMO_CONFIG = {
-  vigente:      { label: 'Vigente',    cls: 'bg-gray-100 text-gray-600' },
-  mora_30:      { label: '1-30 días',  cls: 'bg-yellow-100 text-yellow-800' },
-  mora_60:      { label: '31-60 días', cls: 'bg-orange-100 text-orange-800' },
-  mora_90:      { label: '61-90 días', cls: 'bg-red-100 text-red-700' },
+  vigente:      { label: 'Vigente',    cls: 'badge-gray' },
+  mora_30:      { label: '1-30 días',  cls: 'badge-amber' },
+  mora_60:      { label: '31-60 días', cls: 'badge-orange' },
+  mora_90:      { label: '61-90 días', cls: 'badge-red' },
   mora_90_plus: { label: '+90 días',   cls: 'bg-red-200 text-red-900' },
 }
 
 function BadgeTramo({ tramo }) {
-  const cfg = TRAMO_CONFIG[tramo] || { label: tramo || '—', cls: 'bg-gray-100 text-gray-600' }
+  const cfg = TRAMO_CONFIG[tramo] || { label: tramo || '—', cls: 'badge-gray' }
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap ${cfg.cls}`}>
+    <span className={`badge whitespace-nowrap ${cfg.cls}`}>
       {cfg.label}
     </span>
   )
@@ -177,8 +177,8 @@ function PanelGestion({ cuota, tipificaciones, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+    <div className="modal-overlay">
+      <div className="modal max-w-md p-6 space-y-4 animate-fadeInScale">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-gray-800 text-base">Registrar gestión</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
@@ -237,14 +237,14 @@ function PanelGestion({ cuota, tipificaciones, onClose, onSaved }) {
         <div className="flex gap-3 justify-end pt-1">
           <button
             onClick={onClose}
-            className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+            className="btn btn-secondary"
           >
             Cancelar
           </button>
           <button
             onClick={guardar}
             disabled={saving}
-            className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn btn-primary"
           >
             {saving ? 'Guardando...' : 'Guardar'}
           </button>
@@ -269,8 +269,8 @@ function PanelHistorial({ contrato, onClose }) {
   }, [contrato.contrato_id])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 space-y-4 max-h-[85vh] flex flex-col">
+    <div className="modal-overlay">
+      <div className="modal max-w-2xl p-6 space-y-4 max-h-[85vh] flex flex-col animate-fadeInScale">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-bold text-gray-800 text-base">Historial de gestiones</h3>
@@ -293,23 +293,23 @@ function PanelHistorial({ contrato, onClose }) {
           </div>
         ) : (
           <div className="overflow-y-auto flex-1">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+            <table className="crm-table">
+              <thead>
                 <tr>
-                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Fecha</th>
-                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Tipificación</th>
-                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Observación</th>
-                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Rellamar</th>
-                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Cuota</th>
-                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Usuario</th>
+                  <th className="text-left">Fecha</th>
+                  <th className="text-left">Tipificación</th>
+                  <th className="text-left">Observación</th>
+                  <th className="text-left">Rellamar</th>
+                  <th className="text-left">Cuota</th>
+                  <th className="text-left">Usuario</th>
                 </tr>
               </thead>
               <tbody>
                 {gestiones.map((g, i) => (
-                  <tr key={g.id} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/40'}`}>
+                  <tr key={g.id}>
                     <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{fmtFechaHora(g.created_at)}</td>
                     <td className="px-3 py-2">
-                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-teal-100 text-teal-700">
+                      <span className="badge badge-teal text-[10px]">
                         {g.tipificacion_nombre || '—'}
                       </span>
                     </td>
@@ -331,7 +331,7 @@ function PanelHistorial({ contrato, onClose }) {
         <div className="flex justify-end pt-1">
           <button
             onClick={onClose}
-            className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+            className="btn btn-secondary"
           >
             Cerrar
           </button>
@@ -383,8 +383,8 @@ function PanelCobro({ cuota, formasPago, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+    <div className="modal-overlay">
+      <div className="modal max-w-md p-6 space-y-4 animate-fadeInScale">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-gray-800 text-base">Registrar Cobro</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
@@ -445,11 +445,11 @@ function PanelCobro({ cuota, formasPago, onClose, onSaved }) {
 
         <div className="flex gap-3 justify-end pt-1">
           <button onClick={onClose}
-            className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+            className="btn btn-secondary">
             Cancelar
           </button>
           <button onClick={guardar} disabled={saving}
-            className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
+            className="btn btn-success">
             {saving ? 'Registrando...' : 'Registrar Cobro'}
           </button>
         </div>
@@ -779,26 +779,26 @@ export default function CarteraPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 space-y-6">
+    <div className="min-h-screen bg-gray-50 p-6 space-y-6 animate-fadeIn">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-gray-800">Gestión de Cartera</h1>
         <div className="flex gap-2">
           <button
             onClick={() => exportarCarteraCSV(cuotasFiltradas)}
-            className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+            className="btn btn-secondary"
           >
             CSV
           </button>
           <button
             onClick={() => exportarCarteraPDF(cuotasFiltradas)}
-            className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+            className="btn btn-secondary"
           >
             PDF
           </button>
           <button
             onClick={cargar}
-            className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+            className="btn btn-secondary"
           >
             Actualizar
           </button>
@@ -806,11 +806,11 @@ export default function CarteraPage() {
       </div>
 
       {/* Filtros */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-wrap items-end gap-4">
+      <div className="card p-5 flex flex-wrap items-end gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Sala</label>
           <select
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            className="input w-auto"
             value={filtroSala}
             onChange={e => setFiltroSala(e.target.value)}
           >
@@ -822,7 +822,7 @@ export default function CarteraPage() {
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Estado cuota</label>
           <select
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            className="input w-auto"
             value={filtroEstado}
             onChange={e => setFiltroEstado(e.target.value)}
           >
@@ -835,7 +835,7 @@ export default function CarteraPage() {
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Aging (días vencido)</label>
           <select
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            className="input w-auto"
             value={filtroAging}
             onChange={e => setFiltroAging(e.target.value)}
           >
@@ -905,7 +905,7 @@ export default function CarteraPage() {
           </div>
 
           {/* Tabla */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="card overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
               <h2 className="font-semibold text-gray-700">Cuotas en mora / pendientes</h2>
               <span className="text-sm text-gray-400">{cuotasFiltradas.length} registros</span>
@@ -918,20 +918,20 @@ export default function CarteraPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-100 sticky top-0">
+                <table className="crm-table">
+                  <thead>
                     <tr>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Cliente</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Teléfono</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">N° Contrato</th>
-                      <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Cuota</th>
-                      <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Vence</th>
-                      <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Días</th>
-                      <th className="text-right px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Saldo</th>
-                      <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Tramo</th>
-                      <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Última gestión</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Consultor</th>
-                      <th className="text-center px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Acciones</th>
+                      <th className="text-left">Cliente</th>
+                      <th className="text-left">Teléfono</th>
+                      <th className="text-left">N° Contrato</th>
+                      <th className="text-center">Cuota</th>
+                      <th className="text-center">Vence</th>
+                      <th className="text-center">Días</th>
+                      <th className="text-right">Saldo</th>
+                      <th className="text-center">Tramo</th>
+                      <th className="text-center">Última gestión</th>
+                      <th className="text-left">Consultor</th>
+                      <th className="text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -943,7 +943,7 @@ export default function CarteraPage() {
                       return (
                         <tr
                           key={c.cuota_id}
-                          className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${tieneRellamar ? 'bg-amber-50/50' : i % 2 === 0 ? '' : 'bg-gray-50/40'}`}
+                          className={tieneRellamar ? 'bg-amber-50/50' : ''}
                         >
                           {/* Cliente */}
                           <td className="px-4 py-3">
@@ -1048,21 +1048,21 @@ export default function CarteraPage() {
                             <div className="flex items-center gap-1.5 justify-center">
                               <button
                                 onClick={() => setPanelCobro(c)}
-                                className="bg-green-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-green-700 text-xs font-medium"
+                                className="btn btn-success btn-xs"
                                 title="Registrar pago de esta cuota"
                               >
                                 Cobrar
                               </button>
                               <button
                                 onClick={() => setPanelCuota(c)}
-                                className="bg-teal-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-teal-700 text-xs font-medium"
+                                className="btn btn-primary btn-xs"
                                 title="Registrar gestión de cobranza"
                               >
                                 Gestionar
                               </button>
                               <button
                                 onClick={() => setPanelHistorial(c)}
-                                className="border border-gray-300 text-gray-600 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 text-xs font-medium"
+                                className="btn btn-secondary btn-xs"
                                 title="Ver historial de gestiones del contrato"
                               >
                                 Historial
@@ -1070,7 +1070,7 @@ export default function CarteraPage() {
                               {['admin', 'director', 'asesor_cartera'].includes(usuario?.rol) && (
                                 <button
                                   onClick={() => setPanelRefinanciacion(c)}
-                                  className="bg-purple-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-purple-700 text-xs font-medium"
+                                  className="btn btn-xs bg-purple-600 text-white hover:bg-purple-700"
                                   title="Refinanciar contrato"
                                 >
                                   Refinanciar

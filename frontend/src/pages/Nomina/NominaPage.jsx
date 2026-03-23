@@ -171,7 +171,7 @@ function DrawerNomina({ registro, onClose, onUpdate, esAdmin }) {
   const siguienteEstado = FLUJO[registro.estado]
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex justify-end">
+    <div className="drawer-overlay flex justify-end">
       <div className="w-full max-w-lg bg-white h-full overflow-y-auto shadow-2xl flex flex-col">
         {/* Cabecera */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">

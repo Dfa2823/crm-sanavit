@@ -141,10 +141,10 @@ function LeadDetailDrawer({ leadId, tipificaciones, onClose, onActualizado }) {
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
-      <div className="fixed right-0 top-0 h-full w-full max-w-xl bg-white shadow-2xl z-50 flex flex-col">
+      <div className="drawer-overlay" onClick={onClose} />
+      <div className="drawer flex flex-col animate-slideInRight">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white sticky top-0">
+        <div className="drawer-header">
           <div>
             <h2 className="font-bold text-gray-800 text-lg">
               {lead ? `${lead.nombres} ${lead.apellidos}` : 'Cargando...'}
@@ -554,7 +554,7 @@ export default function TMKDashboard() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 animate-fadeIn">
 
       {/* Stats rapidos */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -638,7 +638,7 @@ export default function TMKDashboard() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="table-base">
+            <table className="crm-table">
               <thead>
                 <tr>
                   <th>Cliente</th>

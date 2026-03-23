@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../context/AuthContext'
+import { useToast } from '../../context/ToastContext'
 import { getEmpresas, createEmpresa, updateEmpresa, getOutsourcingStats, getOutsourcingSalas, crearLeadOutsourcing, cargaMasivaOutsourcing, getMisLeads, getMiResumen } from '../../api/outsourcing'
 
 export default function OutsourcingPage() {
   const { usuario } = useAuth()
+  const { addToast: toast } = useToast()
   const esOutsourcing = usuario?.rol === 'outsourcing'
 
   const [tab, setTab] = useState(esOutsourcing ? 'mi_panel' : 'empresas')
@@ -54,6 +56,7 @@ export default function OutsourcingPage() {
       setEmpresas(data)
     } catch (e) {
       setError('Error al cargar empresas')
+      toast?.('Error al cargar datos', 'error')
     } finally {
       setLoading(false)
     }
@@ -65,6 +68,7 @@ export default function OutsourcingPage() {
       setSalas(data)
     } catch (e) {
       console.error('Error cargando salas:', e)
+      toast?.('Error al cargar datos', 'error')
     }
   }
 
@@ -78,6 +82,7 @@ export default function OutsourcingPage() {
       setStats(data.data || [])
     } catch (e) {
       console.error(e)
+      toast?.('Error al cargar datos', 'error')
     }
   }
 
@@ -93,6 +98,7 @@ export default function OutsourcingPage() {
     } catch (e) {
       console.error(e)
       setError('Error al cargar panel')
+      toast?.('Error al cargar datos', 'error')
     } finally {
       setLoadingPanel(false)
     }

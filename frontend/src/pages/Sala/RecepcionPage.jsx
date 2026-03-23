@@ -183,10 +183,10 @@ export default function RecepcionPage() {
   const sinCal   = citas.filter(c => !c.calificacion).length
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 animate-fadeIn">
 
       {/* Stats del día */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="card p-4 text-center">
           <div className="text-2xl font-bold text-blue-600">{citas.length}</div>
           <div className="text-xs text-gray-500">Total citas</div>
@@ -251,14 +251,14 @@ export default function RecepcionPage() {
             <button
               onClick={() => exportarManifiestoPDF(citas, hoyStr)}
               disabled={!citas.length}
-              className="btn-sm px-3 py-1.5 text-sm font-medium rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn btn-sm border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               🖨️ PDF
             </button>
             <button
               onClick={() => exportarManifiestoCSV(citas)}
               disabled={!citas.length}
-              className="btn-sm px-3 py-1.5 text-sm font-medium rounded-lg border border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn btn-sm border border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               📄 CSV
             </button>
@@ -277,7 +277,7 @@ export default function RecepcionPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="table-base">
+            <table className="crm-table">
               <thead>
                 <tr>
                   <th>Cliente</th>
@@ -348,7 +348,7 @@ export default function RecepcionPage() {
                                 acompanante: cita.acompanante || '',
                               })
                             }}
-                            className="btn-sm whitespace-nowrap px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
+                            className="btn btn-secondary btn-sm whitespace-nowrap"
                           >
                             Editar
                           </button>
@@ -371,8 +371,8 @@ export default function RecepcionPage() {
 
       {/* Modal: Calificar visita */}
       {modalCalificar && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal max-w-md p-6 animate-fadeInScale">
             <h3 className="font-bold text-gray-800 text-lg mb-1">
               {modalCalificar.calificacion ? 'Editar calificacion' : 'Registrar llegada y calificar'}
             </h3>

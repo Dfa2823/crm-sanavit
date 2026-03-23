@@ -12,11 +12,46 @@ export default {
     extend: {
       animation: {
         'fadeInUp': 'fadeInUp 0.25s ease-out',
+        'loginFadeIn': 'loginFadeIn 0.7s ease-out both',
+        'loginShake': 'loginShake 0.5s ease-in-out',
+        'spinSlow': 'spinSlow 18s linear infinite',
+        'fadeIn': 'fadeIn 0.3s ease-out',
+        'fadeInScale': 'fadeInScale 0.2s ease-out',
+        'slideInRight': 'slideInRight 0.3s ease-out',
       },
       keyframes: {
         fadeInUp: {
           '0%':   { opacity: '0', transform: 'translateY(12px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        loginFadeIn: {
+          '0%':   { opacity: '0', transform: 'translateY(24px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        loginShake: {
+          '0%, 100%': { transform: 'translateX(0)' },
+          '15%':      { transform: 'translateX(-8px)' },
+          '30%':      { transform: 'translateX(8px)' },
+          '45%':      { transform: 'translateX(-5px)' },
+          '60%':      { transform: 'translateX(5px)' },
+          '75%':      { transform: 'translateX(-2px)' },
+          '90%':      { transform: 'translateX(2px)' },
+        },
+        spinSlow: {
+          '0%':   { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' },
+        },
+        fadeIn: {
+          '0%':   { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        fadeInScale: {
+          '0%':   { opacity: '0', transform: 'scale(0.95)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        slideInRight: {
+          '0%':   { opacity: '0', transform: 'translateX(20px)' },
+          '100%': { opacity: '1', transform: 'translateX(0)' },
         },
       },
       colors: {

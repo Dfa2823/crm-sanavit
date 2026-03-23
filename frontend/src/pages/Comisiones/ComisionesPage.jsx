@@ -18,17 +18,9 @@ function Spinner() {
 
 function BadgeComision({ estado }) {
   if (estado === 'desbloqueada') {
-    return (
-      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700">
-        Desbloqueada
-      </span>
-    )
+    return <span className="badge badge-green">Desbloqueada</span>
   }
-  return (
-    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700">
-      Bloqueada
-    </span>
-  )
+  return <span className="badge badge-red">Bloqueada</span>
 }
 
 export default function ComisionesPage() {
@@ -106,7 +98,7 @@ export default function ComisionesPage() {
   const detalleComision     = detalleData.reduce((s, c) => s + parseFloat(c.comision_por_contrato || 0), 0)
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 space-y-6">
+    <div className="min-h-screen bg-gray-50 p-6 space-y-6 animate-fadeIn">
 
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -118,7 +110,7 @@ export default function ComisionesPage() {
               type="month"
               value={mes}
               onChange={e => setMes(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="input w-auto"
             />
           </div>
           {esAdmin && (
@@ -127,7 +119,7 @@ export default function ComisionesPage() {
               <select
                 value={salaFiltro}
                 onChange={e => setSalaFiltro(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="input w-auto"
               >
                 <option value="">Todas las salas</option>
                 {salas.map(s => (
@@ -139,7 +131,7 @@ export default function ComisionesPage() {
           <div className="mt-4">
             <button
               onClick={cargar}
-              className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+              className="btn btn-secondary"
             >
               Actualizar
             </button>
@@ -159,26 +151,26 @@ export default function ComisionesPage() {
         <>
           {/* 4 Stat Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="card p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">Total Consultores</p>
               <p className="text-3xl font-bold text-gray-800 mt-1">{totalConsultores}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="card p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-green-600">Con Desbloqueadas</p>
               <p className="text-3xl font-bold text-gray-800 mt-1">{conDesbloqueadas}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="card p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Cartera Total</p>
               <p className="text-3xl font-bold text-gray-800 mt-1">{fmt(carteraTotal)}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="card p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-orange-600">Total a Liquidar</p>
               <p className="text-3xl font-bold text-gray-800 mt-1">{fmt(totalALiquidar)}</p>
             </div>
           </div>
 
           {/* Tabla de consultores */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="card overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="font-semibold text-gray-700">Comisiones por consultor — {mes}</h2>
               <span className="text-sm text-gray-400">{datos.length} consultores</span>
@@ -190,32 +182,31 @@ export default function ComisionesPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-100">
+                <table className="crm-table">
+                  <thead>
                     <tr>
-                      <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Consultor</th>
-                      <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Sala</th>
-                      <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Contratos</th>
-                      <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Desblq.</th>
-                      <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Cobrado</th>
-                      <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Comisión (10%)</th>
-                      <th className="text-center text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Detalle</th>
+                      <th className="text-left">Consultor</th>
+                      <th className="text-left">Sala</th>
+                      <th className="text-right">Contratos</th>
+                      <th className="text-right">Desblq.</th>
+                      <th className="text-right">Cobrado</th>
+                      <th className="text-right">Comisión (10%)</th>
+                      <th className="text-center">Detalle</th>
                     </tr>
                   </thead>
                   <tbody>
                     {datos.map((d, i) => (
                       <tr
                         key={d.consultor_id}
-                        className={`border-b border-gray-50 hover:bg-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
                       >
                         <td className="py-3 px-4 font-medium text-gray-800">{d.consultor_nombre}</td>
                         <td className="py-3 px-4 text-gray-600 text-xs">{d.sala_nombre || '—'}</td>
                         <td className="py-3 px-4 text-right text-gray-700">{d.total_contratos}</td>
                         <td className="py-3 px-4 text-right">
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          <span className={`badge ${
                             parseInt(d.contratos_desbloqueados, 10) > 0
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-gray-100 text-gray-500'
+                              ? 'badge-green'
+                              : 'badge-gray'
                           }`}>
                             {d.contratos_desbloqueados}
                           </span>
@@ -225,7 +216,7 @@ export default function ComisionesPage() {
                         <td className="py-3 px-4 text-center">
                           <button
                             onClick={() => abrirDetalle({ id: d.consultor_id, nombre: d.consultor_nombre })}
-                            className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 text-sm font-medium"
+                            className="btn btn-primary btn-sm"
                           >
                             Ver →
                           </button>
@@ -245,11 +236,11 @@ export default function ComisionesPage() {
         <>
           {/* Overlay */}
           <div
-            className="fixed inset-0 bg-black/50 z-40"
+            className="drawer-overlay"
             onClick={cerrarDetalle}
           />
           {/* Panel lateral */}
-          <div className="fixed top-0 right-0 h-full w-full max-w-2xl bg-white shadow-2xl z-50 flex flex-col">
+          <div className="drawer max-w-2xl flex flex-col animate-slideInRight">
             {/* Header del drawer */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white">
               <div>
@@ -299,23 +290,22 @@ export default function ComisionesPage() {
 
                   {/* Tabla de contratos */}
                   <div className="overflow-x-auto rounded-xl border border-gray-100">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b border-gray-100">
+                    <table className="crm-table">
+                      <thead>
                         <tr>
-                          <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">N° Contrato</th>
-                          <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Cliente</th>
-                          <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Total</th>
-                          <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Cobrado</th>
-                          <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">%</th>
-                          <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Comisión</th>
-                          <th className="text-center text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Estado</th>
+                          <th className="text-left">N° Contrato</th>
+                          <th className="text-left">Cliente</th>
+                          <th className="text-right">Total</th>
+                          <th className="text-right">Cobrado</th>
+                          <th className="text-right">%</th>
+                          <th className="text-right">Comisión</th>
+                          <th className="text-center">Estado</th>
                         </tr>
                       </thead>
                       <tbody>
                         {detalleData.map((c, i) => (
                           <tr
                             key={c.id}
-                            className={`border-b border-gray-50 hover:bg-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
                           >
                             <td className="py-3 px-4 font-mono text-xs text-teal-700 font-bold">
                               {c.numero_contrato || '—'}

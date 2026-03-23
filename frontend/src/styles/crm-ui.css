@@ -1,0 +1,79 @@
+/* ═══════════════════════════════════════════════════════════════════
+   CRM Sanavit Ecuador — Animaciones, scrollbar y dark mode extras
+   Paleta: dark=#0a3d39  teal=#0d9488  mid=#0f766e  light=#5eead4
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* === ANIMACIONES === */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes slideInUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.3s ease-out;
+}
+
+.animate-slideInUp {
+  animation: slideInUp 0.3s ease-out;
+}
+
+.animate-fadeInScale {
+  animation: fadeInScale 0.2s ease-out;
+}
+
+/* === SCROLLBAR CUSTOM === */
+.scrollbar-thin::-webkit-scrollbar { width: 6px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* === DARK MODE — nuevas clases === */
+.dark .crm-table thead th {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+  color: #94a3b8 !important;
+}
+
+.dark .crm-table tbody td {
+  border-color: #334155 !important;
+  color: #cbd5e1 !important;
+}
+
+.dark .crm-table tbody tr:hover td {
+  background-color: #334155 !important;
+}
+
+.dark .modal,
+.dark .drawer {
+  background-color: #1e293b !important;
+}
+
+.dark .modal-overlay,
+.dark .drawer-overlay {
+  background-color: rgba(0, 0, 0, 0.65) !important;
+}
+
+.dark .modal-header,
+.dark .modal-footer,
+.dark .drawer-header {
+  border-color: #334155 !important;
+}

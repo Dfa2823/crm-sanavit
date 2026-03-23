@@ -70,7 +70,7 @@ export default function ConsultorPage() {
   useEffect(() => { cargar() }, [cargar])
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 space-y-6">
+    <div className="space-y-6">
 
       {/* Header + Filtros */}
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -102,10 +102,10 @@ export default function ConsultorPage() {
               <option value="completado">Completado</option>
             </select>
           </div>
-          <div className="mt-4">
+          <div className="self-end">
             <button
               onClick={cargar}
-              className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+              className="btn btn-secondary"
             >
               Actualizar
             </button>
@@ -209,17 +209,17 @@ export default function ConsultorPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-100">
+                  <table className="crm-table">
+                    <thead>
                       <tr>
-                        <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Cliente</th>
-                        <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Contrato</th>
-                        <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Fecha</th>
-                        <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Monto</th>
-                        <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Pagado</th>
-                        <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Saldo</th>
-                        <th className="text-center text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Estado</th>
-                        <th className="text-center text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4"></th>
+                        <th className="text-left">Cliente</th>
+                        <th className="text-left">Contrato</th>
+                        <th className="text-left">Fecha</th>
+                        <th className="text-right">Monto</th>
+                        <th className="text-right">Pagado</th>
+                        <th className="text-right">Saldo</th>
+                        <th className="text-center">Estado</th>
+                        <th className="text-center"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -291,17 +291,17 @@ export default function ConsultorPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-100">
+                  <table className="crm-table">
+                    <thead>
                       <tr>
-                        <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Tipo</th>
-                        <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Referencia</th>
-                        <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Monto contrato</th>
-                        <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Cobrado</th>
-                        <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">% Pagado</th>
-                        <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Comision ({comisiones[0]?.pct_comision || 10}%)</th>
-                        <th className="text-center text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Periodo</th>
-                        <th className="text-center text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Estado</th>
+                        <th className="text-left">Tipo</th>
+                        <th className="text-left">Referencia</th>
+                        <th className="text-right">Monto contrato</th>
+                        <th className="text-right">Cobrado</th>
+                        <th className="text-right">% Pagado</th>
+                        <th className="text-right">Comision ({comisiones[0]?.pct_comision || 10}%)</th>
+                        <th className="text-center">Periodo</th>
+                        <th className="text-center">Estado</th>
                       </tr>
                     </thead>
                     <tbody>
