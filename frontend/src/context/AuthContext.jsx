@@ -28,7 +28,7 @@ export function AuthProvider({ children }) {
 
     // Verificar que el token siga siendo válido (puede haber expirado en 8h)
     apiAuth.me()
-      .then(u => setUsuario(u))            // Actualiza con datos frescos del servidor
+      .then(res => setUsuario(res.usuario || res))  // /me retorna { usuario: {...} }
       .catch(() => {                        // Token inválido o expirado → limpiar sesión
         localStorage.removeItem('crm_token')
         localStorage.removeItem('crm_usuario')
