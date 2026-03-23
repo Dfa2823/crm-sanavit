@@ -187,21 +187,21 @@ export default function RecepcionPage() {
 
       {/* Stats del día */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="card p-4 text-center">
-          <div className="text-2xl font-bold text-blue-600">{citas.length}</div>
+        <div className="card p-4 text-center hover-lift animate-staggerFadeIn" style={{ animationDelay: '0s' }}>
+          <div className="text-2xl font-bold text-blue-600 animate-countUp">{citas.length}</div>
           <div className="text-xs text-gray-500">Total citas</div>
         </div>
-        <div className="card p-4 text-center">
-          <div className="text-2xl font-bold text-green-600">{tours}</div>
-          <div className="text-xs text-gray-500">TOUR ✅</div>
+        <div className="card p-4 text-center hover-lift animate-staggerFadeIn" style={{ animationDelay: '0.08s' }}>
+          <div className="text-2xl font-bold text-green-600 animate-countUp">{tours}</div>
+          <div className="text-xs text-gray-500">TOUR</div>
         </div>
-        <div className="card p-4 text-center">
-          <div className="text-2xl font-bold text-red-600">{noTours}</div>
-          <div className="text-xs text-gray-500">NO TOUR ❌</div>
+        <div className="card p-4 text-center hover-lift animate-staggerFadeIn" style={{ animationDelay: '0.16s' }}>
+          <div className="text-2xl font-bold text-red-600 animate-countUp">{noTours}</div>
+          <div className="text-xs text-gray-500">NO TOUR</div>
         </div>
-        <div className="card p-4 text-center">
-          <div className="text-2xl font-bold text-yellow-600">{sinCal}</div>
-          <div className="text-xs text-gray-500">Por calificar ⏳</div>
+        <div className="card p-4 text-center hover-lift animate-staggerFadeIn" style={{ animationDelay: '0.24s' }}>
+          <div className="text-2xl font-bold text-yellow-600 animate-countUp">{sinCal}</div>
+          <div className="text-xs text-gray-500">Por calificar</div>
         </div>
       </div>
 
@@ -266,14 +266,19 @@ export default function RecepcionPage() {
         </div>
 
         {loading ? (
-          <div className="p-12 text-center text-gray-400">
-            <div className="w-6 h-6 border-2 border-teal-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-            Cargando...
+          <div className="space-y-3 animate-fadeIn p-4">
+            <div className="shimmer h-10 w-full rounded-lg" />
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="shimmer h-14 w-full rounded-lg" style={{ animationDelay: `${i * 0.1}s` }} />
+            ))}
           </div>
         ) : citas.length === 0 ? (
-          <div className="p-12 text-center text-gray-400">
-            <div className="text-4xl mb-3">📭</div>
-            <p className="font-medium">Sin citas registradas para hoy</p>
+          <div className="flex flex-col items-center justify-center py-16 px-4 animate-fadeIn">
+            <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center mb-5">
+              <svg className="w-10 h-10 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
+            </div>
+            <p className="text-sm font-medium text-gray-500">Sin citas registradas para hoy</p>
+            <p className="text-xs text-gray-400 mt-1.5">Las citas del manifiesto apareceran aqui</p>
           </div>
         ) : (
           <div className="overflow-x-auto">

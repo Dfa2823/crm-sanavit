@@ -247,7 +247,7 @@ export default function OutsourcingPage() {
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === id ? 'border-teal-600 text-teal-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-all duration-200 ${tab === id ? 'border-teal-600 text-teal-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
           >
             {label}
           </button>
@@ -256,7 +256,7 @@ export default function OutsourcingPage() {
 
       {/* ═══════════════ TAB MI PANEL (outsourcing) ═══════════════ */}
       {tab === 'mi_panel' && (
-        <div>
+        <div className="tab-content-enter">
           {/* Filtro de mes */}
           <div className="flex gap-3 mb-6">
             <input
@@ -271,7 +271,16 @@ export default function OutsourcingPage() {
           </div>
 
           {loadingPanel ? (
-            <div className="text-center py-12 text-gray-400">Cargando...</div>
+            <div className="space-y-4 animate-fadeIn">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {[1,2,3,4,5,6].map(i => (
+                  <div key={i} className="rounded-xl border border-gray-200 p-4">
+                    <div className="shimmer h-3 w-20 mb-2 rounded" />
+                    <div className="shimmer h-7 w-14 rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : (
             <>
               {/* Tarjetas KPI */}
@@ -284,7 +293,7 @@ export default function OutsourcingPage() {
                   { label: 'Monto vendido', valor: formatMoney(resumen?.monto_vendido), color: 'bg-purple-50 text-purple-700', borde: 'border-purple-200', esMonto: true },
                   { label: 'Total cobrado', valor: formatMoney(resumen?.total_cobrado), color: 'bg-teal-50 text-teal-700', borde: 'border-teal-200', esMonto: true },
                 ].map((kpi) => (
-                  <div key={kpi.label} className={`rounded-xl border ${kpi.borde} ${kpi.color} p-4`}>
+                  <div key={kpi.label} className={`rounded-xl border ${kpi.borde} ${kpi.color} p-4 hover-lift`}>
                     <p className="text-xs font-medium opacity-70 mb-1">{kpi.label}</p>
                     <p className={`font-bold ${kpi.esMonto ? 'text-lg' : 'text-2xl'}`}>{kpi.valor}</p>
                   </div>
@@ -640,7 +649,7 @@ export default function OutsourcingPage() {
 
       {/* ═══════════════ TAB ESTADISTICAS ═══════════════ */}
       {tab === 'stats' && (
-        <div>
+        <div className="tab-content-enter">
           <div className="flex gap-3 mb-4">
             <input
               type="month"

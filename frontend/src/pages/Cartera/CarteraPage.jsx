@@ -38,8 +38,21 @@ function esPasadoOHoy(val) {
 
 function Spinner() {
   return (
-    <div className="flex items-center justify-center h-48">
-      <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+    <div className="space-y-6 animate-fadeIn">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="rounded-xl border border-gray-200 p-5">
+            <div className="shimmer h-3 w-20 mb-3 rounded" />
+            <div className="shimmer h-8 w-14 rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="card overflow-hidden">
+        <div className="shimmer h-12 w-full rounded-t-xl" />
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="shimmer h-14 w-full" style={{ animationDelay: `${i * 0.1}s` }} />
+        ))}
+      </div>
     </div>
   )
 }
@@ -137,7 +150,7 @@ function BadgeTramo({ tramo }) {
 // ─────────────────── Stat card de aging ──────────────────────────────────────
 function AgingCard({ titulo, count, monto, bgCls, textCls, borderCls }) {
   return (
-    <div className={`rounded-xl border p-5 ${bgCls} ${borderCls}`}>
+    <div className={`rounded-xl border p-5 hover-lift ${bgCls} ${borderCls}`}>
       <p className={`text-xs font-semibold uppercase tracking-wide opacity-80 ${textCls}`}>{titulo}</p>
       <p className={`text-3xl font-bold mt-1 ${textCls}`}>{count ?? 0}</p>
       <p className={`text-sm mt-1 font-medium ${textCls} opacity-80`}>{fmt(monto)}</p>
@@ -912,9 +925,12 @@ export default function CarteraPage() {
             </div>
 
             {cuotasFiltradas.length === 0 ? (
-              <div className="p-12 text-center text-gray-400">
-                <p className="text-lg mb-1">Sin resultados</p>
-                <p className="font-medium">No hay cuotas para esta selección</p>
+              <div className="flex flex-col items-center justify-center py-16 px-4 animate-fadeIn">
+                <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center mb-5">
+                  <svg className="w-10 h-10 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>
+                </div>
+                <p className="text-sm font-medium text-gray-500">No hay cuotas para esta seleccion</p>
+                <p className="text-xs text-gray-400 mt-1.5">Intenta ajustar los filtros de tramo o busqueda</p>
               </div>
             ) : (
               <div className="overflow-x-auto">

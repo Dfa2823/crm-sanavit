@@ -148,17 +148,20 @@ const ICON_THEMES = {
 // Premium KPI Card
 // ---------------------------------------------------------------------------
 
-function MiniCard({ titulo, valor, icon: Icon, color = 'teal' }) {
+function MiniCard({ titulo, valor, icon: Icon, color = 'teal', index = 0 }) {
   const theme = ICON_THEMES[color] || ICON_THEMES.teal
   return (
-    <div className="group bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md hover:border-gray-200 transition-all duration-300">
+    <div
+      className="group bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md hover:border-gray-200 transition-all duration-300 hover-lift animate-staggerFadeIn"
+      style={{ animationDelay: `${index * 0.08}s` }}
+    >
       <div className="flex items-start gap-4">
         <div className={`shrink-0 w-11 h-11 rounded-xl ${theme.bg} ring-1 ${theme.ring} flex items-center justify-center transition-transform duration-300 group-hover:scale-105`}>
           {Icon && <Icon className={`w-5 h-5 ${theme.text}`} />}
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wide leading-none">{titulo}</p>
-          <p className="text-2xl font-bold text-gray-800 mt-1.5 leading-none truncate">{valor}</p>
+          <p className="text-2xl font-bold text-gray-800 mt-1.5 leading-none truncate animate-countUp">{valor}</p>
         </div>
       </div>
     </div>
@@ -172,7 +175,7 @@ function MiniCard({ titulo, valor, icon: Icon, color = 'teal' }) {
 function CarteraCard({ titulo, count, monto, color = 'amber', icon: Icon }) {
   const theme = ICON_THEMES[color] || ICON_THEMES.amber
   return (
-    <div className="group bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md hover:border-gray-200 transition-all duration-300">
+    <div className="group bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md hover:border-gray-200 transition-all duration-300 hover-lift">
       <div className="flex items-start gap-4">
         <div className={`shrink-0 w-11 h-11 rounded-xl ${theme.bg} ring-1 ${theme.ring} flex items-center justify-center transition-transform duration-300 group-hover:scale-105`}>
           {Icon && <Icon className={`w-5 h-5 ${theme.text}`} />}
@@ -220,13 +223,14 @@ function Section({ title, subtitle, icon: Icon, children }) {
 // Empty State
 // ---------------------------------------------------------------------------
 
-function EmptyState({ message = 'No hay datos disponibles' }) {
+function EmptyState({ message = 'No hay datos disponibles', subtitle = '' }) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-4">
-      <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
-        <IconChart className="w-8 h-8 text-gray-300" />
+    <div className="flex flex-col items-center justify-center py-16 px-4 animate-fadeIn">
+      <div className="w-20 h-20 rounded-2xl bg-gray-50 dark:bg-slate-800 flex items-center justify-center mb-5">
+        <IconChart className="w-10 h-10 text-gray-300 dark:text-gray-600" />
       </div>
-      <p className="text-sm text-gray-400 font-medium text-center">{message}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400 font-medium text-center">{message}</p>
+      {subtitle && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 text-center max-w-xs">{subtitle}</p>}
     </div>
   )
 }
@@ -359,9 +363,24 @@ export default function KPIsDashboard() {
 
       {/* Loading */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center h-64 gap-3">
-          <div className="w-10 h-10 border-[3px] border-teal-200 border-t-teal-600 rounded-full animate-spin" />
-          <span className="text-sm text-gray-400 font-medium">Cargando datos...</span>
+        <div className="space-y-6 animate-fadeIn">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="shimmer w-10 h-10 rounded-xl" />
+                  <div className="flex-1 space-y-2">
+                    <div className="shimmer h-3 w-16 rounded" />
+                    <div className="shimmer h-6 w-12 rounded" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="card p-6"><div className="shimmer h-48 w-full rounded-lg" /></div>
+            <div className="card p-6"><div className="shimmer h-48 w-full rounded-lg" /></div>
+          </div>
         </div>
       ) : !kpis ? (
         <EmptyState message="No hay datos disponibles para el periodo seleccionado." />

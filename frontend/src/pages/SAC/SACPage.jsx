@@ -50,8 +50,11 @@ function Badge({ config, value }) {
 
 function Spinner() {
   return (
-    <div className="flex items-center justify-center h-48">
-      <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+    <div className="space-y-4 animate-fadeIn p-6">
+      <div className="shimmer h-10 w-full rounded-lg" />
+      {[1, 2, 3, 4, 5].map(i => (
+        <div key={i} className="shimmer h-14 w-full rounded-lg" style={{ animationDelay: `${i * 0.1}s` }} />
+      ))}
     </div>
   )
 }
@@ -124,10 +127,12 @@ function TabControlCalidad() {
   if (loading) return <Spinner />
   if (!contratos.length) {
     return (
-      <div className="p-12 text-center text-gray-400">
-        <div className="text-4xl mb-3">&#10003;</div>
-        <p className="font-medium">No hay ventas pendientes de activar</p>
-        <p className="text-sm mt-1">Todas las ventas de los ultimos 15 dias ya fueron verificadas</p>
+      <div className="flex flex-col items-center justify-center py-16 px-4 animate-fadeIn">
+        <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center mb-5">
+          <svg className="w-10 h-10 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+        </div>
+        <p className="text-sm font-medium text-gray-500">No hay ventas pendientes de activar</p>
+        <p className="text-xs text-gray-400 mt-1.5">Todas las ventas de los ultimos 15 dias ya fueron verificadas</p>
       </div>
     )
   }
@@ -785,9 +790,12 @@ function TabPQR({ usuario }) {
           </div>
 
           {tickets.length === 0 ? (
-            <div className="p-12 text-center text-gray-400">
-              <p className="font-medium">No hay tickets para esta seleccion</p>
-              <p className="text-sm mt-1">Cambia los filtros o crea un nuevo ticket</p>
+            <div className="flex flex-col items-center justify-center py-16 px-4 animate-fadeIn">
+              <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center mb-5">
+                <svg className="w-10 h-10 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" /><path d="M13 5v2" /><path d="M13 17v2" /><path d="M13 11v2" /></svg>
+              </div>
+              <p className="text-sm font-medium text-gray-500">No hay tickets para esta seleccion</p>
+              <p className="text-xs text-gray-400 mt-1.5">Cambia los filtros o crea un nuevo ticket</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -880,10 +888,12 @@ function TabFidelizacion() {
   if (loading) return <Spinner />
   if (!clientes.length) {
     return (
-      <div className="p-12 text-center text-gray-400">
-        <div className="text-4xl mb-3">&#127919;</div>
-        <p className="font-medium">No hay clientes pendientes de re-visita</p>
-        <p className="text-sm mt-1">Los clientes de 60-120 dias ya fueron contactados</p>
+      <div className="flex flex-col items-center justify-center py-16 px-4 animate-fadeIn">
+        <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center mb-5">
+          <svg className="w-10 h-10 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+        </div>
+        <p className="text-sm font-medium text-gray-500">No hay clientes pendientes de re-visita</p>
+        <p className="text-xs text-gray-400 mt-1.5">Los clientes de 60-120 dias ya fueron contactados</p>
       </div>
     )
   }
@@ -992,7 +1002,7 @@ export default function SACPage() {
             <button
               key={tab.key}
               onClick={() => setTabActivo(tab.key)}
-              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-all duration-200
                 ${tabActivo === tab.key
                   ? 'border-teal-600 text-teal-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -1006,7 +1016,7 @@ export default function SACPage() {
 
       {/* Contenido del tab activo */}
       {tabActivo === 'calidad' && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 tab-content-enter">
           <div className="px-5 py-4 border-b border-gray-100">
             <h2 className="font-semibold text-gray-700">Ventas pendientes de activar (ultimos 15 dias)</h2>
             <p className="text-xs text-gray-400 mt-0.5">Contratos recientes que no han pasado control de calidad</p>
@@ -1016,11 +1026,11 @@ export default function SACPage() {
       )}
 
       {tabActivo === 'pqr' && (
-        <TabPQR usuario={usuario} />
+        <div className="tab-content-enter"><TabPQR usuario={usuario} /></div>
       )}
 
       {tabActivo === 'fidelizacion' && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 tab-content-enter">
           <div className="px-5 py-4 border-b border-gray-100">
             <h2 className="font-semibold text-gray-700">Clientes para re-visita (60-120 dias)</h2>
             <p className="text-xs text-gray-400 mt-0.5">Clientes activos entre 60 y 120 dias desde su compra</p>

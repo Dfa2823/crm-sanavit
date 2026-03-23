@@ -24,8 +24,21 @@ function fmt(val) {
 
 function Spinner() {
   return (
-    <div className="flex items-center justify-center h-48">
-      <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+    <div className="space-y-6 animate-fadeIn">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="rounded-xl border border-gray-200 p-4">
+            <div className="shimmer h-3 w-20 mb-3 rounded" />
+            <div className="shimmer h-8 w-16 rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="card overflow-hidden">
+        <div className="shimmer h-12 w-full rounded-t-xl" />
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="shimmer h-14 w-full" style={{ animationDelay: `${i * 0.1}s` }} />
+        ))}
+      </div>
     </div>
   )
 }
@@ -144,21 +157,21 @@ export default function VentasPage() {
         <>
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="rounded-xl border bg-teal-50 border-teal-200 p-4">
+            <div className="rounded-xl border bg-teal-50 border-teal-200 p-4 hover-lift animate-staggerFadeIn" style={{ animationDelay: '0s' }}>
               <p className="text-xs font-semibold uppercase text-teal-600 opacity-70">Contratos</p>
-              <p className="text-3xl font-bold text-teal-700 mt-1">{ventasFiltradas.length}</p>
+              <p className="text-3xl font-bold text-teal-700 mt-1 animate-countUp">{ventasFiltradas.length}</p>
             </div>
-            <div className="rounded-xl border bg-blue-50 border-blue-200 p-4">
+            <div className="rounded-xl border bg-blue-50 border-blue-200 p-4 hover-lift animate-staggerFadeIn" style={{ animationDelay: '0.08s' }}>
               <p className="text-xs font-semibold uppercase text-blue-600 opacity-70">Cartera Total</p>
-              <p className="text-2xl font-bold text-blue-700 mt-1">{fmt(totalMonto)}</p>
+              <p className="text-2xl font-bold text-blue-700 mt-1 animate-countUp">{fmt(totalMonto)}</p>
             </div>
-            <div className="rounded-xl border bg-green-50 border-green-200 p-4">
+            <div className="rounded-xl border bg-green-50 border-green-200 p-4 hover-lift animate-staggerFadeIn" style={{ animationDelay: '0.16s' }}>
               <p className="text-xs font-semibold uppercase text-green-600 opacity-70">Total Cobrado</p>
-              <p className="text-2xl font-bold text-green-700 mt-1">{fmt(totalPagado)}</p>
+              <p className="text-2xl font-bold text-green-700 mt-1 animate-countUp">{fmt(totalPagado)}</p>
             </div>
-            <div className="rounded-xl border bg-orange-50 border-orange-200 p-4">
+            <div className="rounded-xl border bg-orange-50 border-orange-200 p-4 hover-lift animate-staggerFadeIn" style={{ animationDelay: '0.24s' }}>
               <p className="text-xs font-semibold uppercase text-orange-600 opacity-70">% Cobrado</p>
-              <p className="text-3xl font-bold text-orange-700 mt-1">{porcentaje}%</p>
+              <p className="text-3xl font-bold text-orange-700 mt-1 animate-countUp">{porcentaje}%</p>
             </div>
           </div>
 
@@ -170,9 +183,14 @@ export default function VentasPage() {
 
             </div>
             {ventasFiltradas.length === 0 ? (
-              <div className="p-12 text-center text-gray-400">
-                <div className="text-4xl mb-3">💼</div>
-                <p className="font-medium">No hay contratos para esta selección</p>
+              <div className="flex flex-col items-center justify-center py-16 px-4 animate-fadeIn">
+                <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center mb-5">
+                  <svg className="w-10 h-10 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-gray-500">No hay contratos para esta seleccion</p>
+                <p className="text-xs text-gray-400 mt-1.5">Intenta ajustar los filtros o crear una nueva venta</p>
               </div>
             ) : (
               <div className="overflow-x-auto">

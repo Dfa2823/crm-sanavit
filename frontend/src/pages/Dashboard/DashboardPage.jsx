@@ -214,29 +214,69 @@ const ICON_THEMES = {
 
 function Loading() {
   return (
-    <div className="flex flex-col items-center justify-center h-64 gap-3">
-      <div className="w-10 h-10 border-[3px] border-teal-200 border-t-teal-600 rounded-full animate-spin" />
-      <span className="text-sm text-gray-400 font-medium">Cargando datos...</span>
-    </div>
-  )
-}
-
-function EmptyState({ message = 'No hay datos disponibles', icon: Icon = IconChart }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 px-4">
-      <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
-        <Icon className="w-8 h-8 text-gray-300" />
+    <div className="space-y-6 animate-fadeIn">
+      {/* Header skeleton */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="shimmer h-7 w-64 rounded" />
+            <div className="shimmer h-4 w-40 rounded" />
+          </div>
+          <div className="shimmer h-10 w-36 rounded-xl" />
+        </div>
       </div>
-      <p className="text-sm text-gray-400 font-medium text-center">{message}</p>
+      {/* KPI cards skeleton */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <div className="flex items-start gap-4">
+              <div className="shimmer w-11 h-11 rounded-xl" />
+              <div className="flex-1 space-y-2">
+                <div className="shimmer h-3 w-20 rounded" />
+                <div className="shimmer h-7 w-14 rounded" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Section skeleton */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+        {[1, 2, 3, 4, 5, 6].map(i => (
+          <div key={i} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <div className="flex items-start gap-4">
+              <div className="shimmer w-11 h-11 rounded-xl" />
+              <div className="flex-1 space-y-2">
+                <div className="shimmer h-3 w-16 rounded" />
+                <div className="shimmer h-7 w-12 rounded" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
-function KPICard({ label, valor, icon: Icon, color = 'teal', sublabel, trend }) {
+function EmptyState({ message = 'No hay datos disponibles', subtitle = '', icon: Icon = IconChart }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-4 animate-fadeIn">
+      <div className="w-20 h-20 rounded-2xl bg-gray-50 dark:bg-slate-800 flex items-center justify-center mb-5">
+        <Icon className="w-10 h-10 text-gray-300 dark:text-gray-600" />
+      </div>
+      <p className="text-sm text-gray-500 dark:text-gray-400 font-medium text-center">{message}</p>
+      {subtitle && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 text-center max-w-xs">{subtitle}</p>}
+    </div>
+  )
+}
+
+function KPICard({ label, valor, icon: Icon, color = 'teal', sublabel, trend, index = 0 }) {
   const theme = ICON_THEMES[color] || ICON_THEMES.teal
 
   return (
-    <div className="group bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md hover:border-gray-200 transition-all duration-300 cursor-default">
+    <div
+      className="group bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md hover:border-gray-200 transition-all duration-300 cursor-default hover-lift animate-staggerFadeIn"
+      style={{ animationDelay: `${index * 0.08}s` }}
+    >
       <div className="flex items-start gap-4">
         {/* Icon circle */}
         <div className={`shrink-0 w-11 h-11 rounded-xl ${theme.bg} ring-1 ${theme.ring} flex items-center justify-center transition-transform duration-300 group-hover:scale-105`}>
@@ -247,7 +287,7 @@ function KPICard({ label, valor, icon: Icon, color = 'teal', sublabel, trend }) 
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wide leading-none">{label}</p>
           <div className="flex items-baseline gap-2 mt-1.5">
-            <p className="text-2xl font-bold text-gray-800 leading-none truncate">{valor ?? '--'}</p>
+            <p className="text-2xl font-bold text-gray-800 leading-none truncate animate-countUp">{valor ?? '--'}</p>
             {/* Trend indicator */}
             {trend != null && trend !== 0 && (
               <span className={`inline-flex items-center gap-0.5 text-xs font-semibold ${trend > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
@@ -271,7 +311,7 @@ function AccesoRapido({ icon: Icon, label, to }) {
   return (
     <button
       onClick={() => navigate(to)}
-      className="group flex flex-col items-center gap-3 p-5 bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-teal-200 transition-all duration-300"
+      className="group flex flex-col items-center gap-3 p-5 bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-teal-200 transition-all duration-300 hover-lift"
     >
       <div className="w-11 h-11 rounded-xl bg-teal-50 ring-1 ring-teal-100 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
         {Icon && <Icon className="w-5 h-5 text-teal-600" />}
@@ -419,11 +459,12 @@ function DashboardAdmin() {
             badge={<LiveDot segsDesde={segsDesde} />}
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <KPICard label="Leads hoy"    valor={kpisHoy?.leads_hoy ?? '--'}    icon={IconTarget}   color="teal"  />
-              <KPICard label="Citas pendientes" valor={kpisHoy?.citas_manana ?? '--'} icon={IconCalendar} color="blue"  />
-              <KPICard label="Tours hoy"    valor={kpisHoy?.tours_hoy ?? '--'}    icon={IconBuilding} color="green" />
+              <KPICard label="Leads hoy"    valor={kpisHoy?.leads_hoy ?? '--'}    icon={IconTarget}   color="teal"  index={0} />
+              <KPICard label="Citas pendientes" valor={kpisHoy?.citas_manana ?? '--'} icon={IconCalendar} color="blue"  index={1} />
+              <KPICard label="Tours hoy"    valor={kpisHoy?.tours_hoy ?? '--'}    icon={IconBuilding} color="green" index={2} />
               <KPICard
                 label="Cobros del dia"
+                index={3}
                 valor={kpisHoy?.cobros_dia != null
                   ? `$${Number(kpisHoy.cobros_dia).toLocaleString('es-EC', { maximumFractionDigits: 0 })}`
                   : '--'}

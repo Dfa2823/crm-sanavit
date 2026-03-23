@@ -10,8 +10,19 @@ function fmt(val) {
 
 function Spinner() {
   return (
-    <div className="flex items-center justify-center h-48">
-      <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+    <div className="space-y-6 animate-fadeIn">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="shimmer h-3 w-24 mb-3 rounded" />
+            <div className="shimmer h-8 w-16 rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="shimmer h-12 w-full rounded-lg" />
+      {[1, 2, 3, 4, 5].map(i => (
+        <div key={i} className="shimmer h-14 w-full rounded-lg" style={{ animationDelay: `${i * 0.1}s` }} />
+      ))}
     </div>
   )
 }
@@ -125,24 +136,24 @@ export default function ConsultorPage() {
         <>
           {/* 4 KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover-lift animate-staggerFadeIn" style={{ animationDelay: '0s' }}>
               <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">Ventas del mes</p>
-              <p className="text-3xl font-bold text-gray-800 mt-1">{resumen?.ventas_mes || 0}</p>
+              <p className="text-3xl font-bold text-gray-800 mt-1 animate-countUp">{resumen?.ventas_mes || 0}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover-lift animate-staggerFadeIn" style={{ animationDelay: '0.08s' }}>
               <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Tours del mes</p>
-              <p className="text-3xl font-bold text-gray-800 mt-1">{resumen?.tours_mes || 0}</p>
+              <p className="text-3xl font-bold text-gray-800 mt-1 animate-countUp">{resumen?.tours_mes || 0}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover-lift animate-staggerFadeIn" style={{ animationDelay: '0.16s' }}>
               <p className="text-xs font-semibold uppercase tracking-wide text-orange-600">Comisiones pendientes</p>
-              <p className="text-3xl font-bold text-gray-800 mt-1">
+              <p className="text-3xl font-bold text-gray-800 mt-1 animate-countUp">
                 {resumen?.comisiones_pendientes || 0}
                 <span className="text-sm font-normal text-gray-400 ml-1">({fmt(resumen?.monto_comisiones_pendientes)})</span>
               </p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover-lift animate-staggerFadeIn" style={{ animationDelay: '0.24s' }}>
               <p className="text-xs font-semibold uppercase tracking-wide text-green-600">Comisiones aprobadas</p>
-              <p className="text-3xl font-bold text-gray-800 mt-1">
+              <p className="text-3xl font-bold text-gray-800 mt-1 animate-countUp">
                 {resumen?.comisiones_aprobadas || 0}
                 <span className="text-sm font-normal text-gray-400 ml-1">({fmt(resumen?.monto_comisiones_aprobadas)})</span>
               </p>
@@ -194,7 +205,7 @@ export default function ConsultorPage() {
 
           {/* Tabla Mis Clientes */}
           {tab === 'clientes' && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden tab-content-enter">
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h2 className="font-semibold text-gray-700">Mis Clientes</h2>
                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-medium">
@@ -203,9 +214,12 @@ export default function ConsultorPage() {
               </div>
 
               {clientes.length === 0 ? (
-                <div className="p-12 text-center text-gray-400">
-                  <div className="text-4xl mb-3">📊</div>
-                  <p className="font-medium">No tienes contratos en este periodo</p>
+                <div className="flex flex-col items-center justify-center py-16 px-4 animate-fadeIn">
+                  <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center mb-5">
+                    <svg className="w-10 h-10 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
+                  </div>
+                  <p className="text-sm font-medium text-gray-500">No tienes contratos en este periodo</p>
+                  <p className="text-xs text-gray-400 mt-1.5">Selecciona otro mes para ver tus clientes</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -276,7 +290,7 @@ export default function ConsultorPage() {
 
           {/* Tabla Mis Comisiones */}
           {tab === 'comisiones' && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden tab-content-enter">
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h2 className="font-semibold text-gray-700">Mis Comisiones -- {mes}</h2>
                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-medium">
@@ -285,9 +299,12 @@ export default function ConsultorPage() {
               </div>
 
               {comisiones.length === 0 ? (
-                <div className="p-12 text-center text-gray-400">
-                  <div className="text-4xl mb-3">💰</div>
-                  <p className="font-medium">No hay comisiones para este periodo</p>
+                <div className="flex flex-col items-center justify-center py-16 px-4 animate-fadeIn">
+                  <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center mb-5">
+                    <svg className="w-10 h-10 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+                  </div>
+                  <p className="text-sm font-medium text-gray-500">No hay comisiones para este periodo</p>
+                  <p className="text-xs text-gray-400 mt-1.5">Las comisiones apareceran cuando se registren ventas</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">

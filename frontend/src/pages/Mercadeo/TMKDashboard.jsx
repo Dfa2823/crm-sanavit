@@ -626,15 +626,19 @@ export default function TMKDashboard() {
         </div>
 
         {loading ? (
-          <div className="p-12 text-center text-gray-400">
-            <div className="w-6 h-6 border-2 border-teal-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-            Cargando...
+          <div className="space-y-3 animate-fadeIn p-4">
+            <div className="shimmer h-10 w-full rounded-lg" />
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="shimmer h-14 w-full rounded-lg" style={{ animationDelay: `${i * 0.1}s` }} />
+            ))}
           </div>
         ) : leadsFiltrados.length === 0 ? (
-          <div className="p-12 text-center text-gray-400">
-            <div className="text-4xl mb-3">---</div>
-            <p className="font-medium">No hay leads{filtroEstado !== 'todos' ? ` con estado "${ESTADO_LABEL[filtroEstado] || filtroEstado}"` : ''}</p>
-            <p className="text-sm mt-1">Haz clic en "+ Nuevo Lead" para comenzar</p>
+          <div className="flex flex-col items-center justify-center py-16 px-4 animate-fadeIn">
+            <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center mb-5">
+              <svg className="w-10 h-10 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
+            </div>
+            <p className="text-sm font-medium text-gray-500">No hay leads{filtroEstado !== 'todos' ? ` con estado "${ESTADO_LABEL[filtroEstado] || filtroEstado}"` : ''}</p>
+            <p className="text-xs text-gray-400 mt-1.5">Haz clic en "+ Nuevo Lead" para comenzar</p>
           </div>
         ) : (
           <div className="overflow-x-auto">

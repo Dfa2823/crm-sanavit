@@ -15,9 +15,13 @@ export default {
         'loginFadeIn': 'loginFadeIn 0.7s ease-out both',
         'loginShake': 'loginShake 0.5s ease-in-out',
         'spinSlow': 'spinSlow 18s linear infinite',
-        'fadeIn': 'fadeIn 0.3s ease-out',
+        'fadeIn': 'fadeIn 0.3s ease-out both',
         'fadeInScale': 'fadeInScale 0.2s ease-out',
         'slideInRight': 'slideInRight 0.3s ease-out',
+        'staggerFadeIn': 'staggerFadeIn 0.4s ease-out both',
+        'countUp': 'countUp 0.5s ease-out both',
+        'softPulse': 'softPulse 2s ease-in-out infinite',
+        'shimmer': 'shimmer 1.5s infinite',
       },
       keyframes: {
         fadeInUp: {
@@ -52,6 +56,22 @@ export default {
         slideInRight: {
           '0%':   { opacity: '0', transform: 'translateX(20px)' },
           '100%': { opacity: '1', transform: 'translateX(0)' },
+        },
+        staggerFadeIn: {
+          '0%':   { opacity: '0', transform: 'translateY(12px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        countUp: {
+          '0%':   { opacity: '0', transform: 'translateY(10px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        softPulse: {
+          '0%, 100%': { opacity: '1' },
+          '50%':      { opacity: '0.7' },
+        },
+        shimmer: {
+          '0%':   { backgroundPosition: '-200% 0' },
+          '100%': { backgroundPosition: '200% 0' },
         },
       },
       colors: {
