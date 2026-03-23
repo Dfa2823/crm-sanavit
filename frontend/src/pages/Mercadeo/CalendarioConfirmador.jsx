@@ -8,7 +8,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css'
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css'
 import './CalendarioVisual.css'
 import { apiLeads } from '../../api/leads'
-// apiUsuarios ya no es necesario — se eliminó la reasignación de TMK
+import client from '../../api/client'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../context/AuthContext'
 
@@ -57,6 +57,9 @@ function DrawerCita({ lead, onClose, onActualizar }) {
   const [nuevaFecha, setNuevaFecha] = useState('')
   const [nuevaHora, setNuevaHora]  = useState('')
   const [guardando, setGuardando]  = useState(false)
+  const [editDatos, setEditDatos]  = useState(false)
+  const [formDatos, setFormDatos]  = useState({})
+  const [guardandoDatos, setGuardandoDatos] = useState(false)
 
   const esAdmin = ['admin', 'director', 'supervisor_cc', 'confirmador'].includes(usuario?.rol)
 
@@ -66,7 +69,33 @@ function DrawerCita({ lead, onClose, onActualizar }) {
       setNuevaFecha(d.toISOString().split('T')[0])
       setNuevaHora(d.toTimeString().slice(0, 5))
     }
+    if (lead) {
+      setFormDatos({
+        nombres: lead.nombres || '', apellidos: lead.apellidos || '',
+        telefono: lead.telefono || '', ciudad: lead.ciudad || '',
+        patologia: lead.patologia || '', edad: lead.edad || '',
+        email: lead.email || '', observacion: lead.observacion || '',
+      })
+      setEditDatos(false)
+    }
   }, [lead])
+
+  async function guardarDatos() {
+    setGuardandoDatos(true)
+    try {
+      if (lead.persona_id) {
+        const { observacion, ...personaData } = formDatos
+        await client.patch(`/api/personas/${lead.persona_id}`, personaData)
+      }
+      if (formDatos.observacion !== lead.observacion) {
+        await apiLeads.actualizar(lead.id, { observacion: formDatos.observacion })
+      }
+      addToast('Datos actualizados correctamente')
+      setEditDatos(false)
+      onActualizar()
+    } catch { addToast('Error al guardar datos', 'error') }
+    finally { setGuardandoDatos(false) }
+  }
 
   if (!lead) return null
 
@@ -174,37 +203,61 @@ function DrawerCita({ lead, onClose, onActualizar }) {
             )}
           </div>
 
-          {/* TMK */}
-          {lead.tmk_nombre && (
-            <div>
-              <p className="text-xs text-gray-500 font-medium mb-0.5">TMK asignado</p>
-              <p className="text-sm text-gray-700">{lead.tmk_nombre}</p>
+          {/* Datos del cliente — editables */}
+          <div className="border border-gray-100 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold text-gray-500 uppercase">Datos del cliente</p>
+              {esAdmin && !editDatos && (
+                <button onClick={() => setEditDatos(true)}
+                  className="text-xs text-teal-600 hover:underline font-medium">✏️ Editar</button>
+              )}
             </div>
-          )}
+            {editDatos ? (
+              <div className="space-y-2">
+                {[
+                  { k: 'nombres', l: 'Nombres' }, { k: 'apellidos', l: 'Apellidos' },
+                  { k: 'telefono', l: 'Teléfono' }, { k: 'ciudad', l: 'Ciudad' },
+                  { k: 'edad', l: 'Edad' }, { k: 'email', l: 'Email' },
+                  { k: 'patologia', l: 'Patología' },
+                ].map(({ k, l }) => (
+                  <div key={k}>
+                    <label className="text-xs text-gray-500">{l}</label>
+                    <input value={formDatos[k] || ''} onChange={e => setFormDatos(p => ({ ...p, [k]: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                  </div>
+                ))}
+                <div>
+                  <label className="text-xs text-gray-500">Observación</label>
+                  <textarea value={formDatos.observacion || ''} rows={2}
+                    onChange={e => setFormDatos(p => ({ ...p, observacion: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={guardarDatos} disabled={guardandoDatos}
+                    className="flex-1 text-xs bg-teal-500 hover:bg-teal-600 text-white rounded-lg py-1.5 font-medium disabled:opacity-50">
+                    {guardandoDatos ? 'Guardando…' : 'Guardar datos'}
+                  </button>
+                  <button onClick={() => setEditDatos(false)}
+                    className="flex-1 text-xs border border-gray-200 rounded-lg py-1.5 hover:bg-gray-50">Cancelar</button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+                <div><span className="text-xs text-gray-400">Nombre</span><p className="text-gray-700">{lead.nombres} {lead.apellidos}</p></div>
+                <div><span className="text-xs text-gray-400">Teléfono</span><p className="text-gray-700">{lead.telefono || '—'}</p></div>
+                <div><span className="text-xs text-gray-400">Ciudad</span><p className="text-gray-700">{lead.ciudad || '—'}</p></div>
+                <div><span className="text-xs text-gray-400">Edad</span><p className="text-gray-700">{lead.edad || '—'}</p></div>
+                <div className="col-span-2"><span className="text-xs text-gray-400">Patología</span><p className="text-gray-700">{lead.patologia || '—'}</p></div>
+                {lead.observacion && <div className="col-span-2"><span className="text-xs text-gray-400">Observación</span><p className="text-gray-600">{lead.observacion}</p></div>}
+              </div>
+            )}
+          </div>
 
-          {/* Sala */}
-          {lead.sala_nombre && (
-            <div>
-              <p className="text-xs text-gray-500 font-medium mb-0.5">Sala</p>
-              <p className="text-sm text-gray-700">{lead.sala_nombre}</p>
-            </div>
-          )}
-
-          {/* Ciudad */}
-          {lead.ciudad && (
-            <div>
-              <p className="text-xs text-gray-500 font-medium mb-0.5">Ciudad</p>
-              <p className="text-sm text-gray-700">{lead.ciudad}</p>
-            </div>
-          )}
-
-          {/* Observación */}
-          {lead.observacion && (
-            <div>
-              <p className="text-xs text-gray-500 font-medium mb-0.5">Observación</p>
-              <p className="text-sm text-gray-600 leading-relaxed">{lead.observacion}</p>
-            </div>
-          )}
+          {/* TMK y Sala (solo lectura) */}
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            {lead.tmk_nombre && <div><p className="text-xs text-gray-400">TMK</p><p className="text-gray-700">{lead.tmk_nombre}</p></div>}
+            {lead.sala_nombre && <div><p className="text-xs text-gray-400">Sala</p><p className="text-gray-700">{lead.sala_nombre}</p></div>}
+          </div>
         </div>
 
         {/* Acciones */}
