@@ -206,7 +206,9 @@ export default function Sidebar({ isOpen = true, onToggle, isMobileOpen = false,
       )}
 
       {/* ─── Navegacion ─── */}
-      <nav className={`flex-1 ${isOpen ? 'px-3' : 'px-2'} py-3 space-y-0.5 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent`}>
+      <nav className={`flex-1 min-h-0 ${isOpen ? 'px-3' : 'px-2'} py-3 space-y-0.5 overflow-y-auto`}
+        style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.15) transparent' }}
+      >
         {isOpen ? (
           grouped.map((group, gi) => (
             <div key={group.section} className={gi > 0 ? 'mt-5' : 'mt-1'}>
