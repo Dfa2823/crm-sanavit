@@ -23,6 +23,22 @@ pool.query(`
   )
 `).catch(console.error);
 
+// ─── Auto-crear tabla comisiones_suspendidas ─────────────────────────────────
+pool.query(`
+  CREATE TABLE IF NOT EXISTS comisiones_suspendidas (
+    id SERIAL PRIMARY KEY,
+    liquidacion_id INTEGER REFERENCES liquidaciones(id) NOT NULL,
+    contrato_id INTEGER REFERENCES contratos(id) NOT NULL,
+    usuario_id INTEGER REFERENCES usuarios(id) NOT NULL,
+    monto_comision NUMERIC(12,2) NOT NULL DEFAULT 0,
+    motivo TEXT,
+    suspendido_por INTEGER REFERENCES usuarios(id),
+    fecha TIMESTAMPTZ DEFAULT NOW(),
+    activo BOOLEAN DEFAULT true,
+    UNIQUE(liquidacion_id, contrato_id)
+  )
+`).catch(console.error);
+
 // ─── Middleware solo admin/director ─────────────────────────────────────────
 function requireAdminOrDirector(req, res, next) {
   if (!['admin', 'director'].includes(req.user.rol)) {
@@ -87,6 +103,7 @@ router.post('/calcular', auth, requireAdminOrDirector, async (req, res) => {
 
   try {
     // Calcular comisiones agrupadas por consultor
+    // REQ2: Comisión sobre monto BASE (sin intereses). Se resta monto_interes de cuotas pagadas.
     const calculo = await pool.query(`
       SELECT
         c.consultor_id,
@@ -95,17 +112,19 @@ router.post('/calcular', auth, requireAdminOrDirector, async (req, res) => {
         COALESCE(SUM(
           CASE
             WHEN (COALESCE(pagado.total, 0) / NULLIF(c.monto_total, 0) * 100) >= COALESCE(u.pct_desbloqueo, 30)
-            THEN COALESCE(pagado.total, 0) * COALESCE(u.pct_comision_venta, 10) / 100
+            THEN COALESCE(pagado.total_base, 0) * COALESCE(u.pct_comision_venta, 10) / 100
             ELSE 0
           END
         ), 0) AS monto_comision
       FROM contratos c
       JOIN usuarios u ON c.consultor_id = u.id
       LEFT JOIN (
-        SELECT contrato_id, SUM(valor) AS total
-        FROM recibos
-        WHERE estado = 'activo'
-        GROUP BY contrato_id
+        SELECT r.contrato_id,
+               SUM(r.valor) AS total,
+               SUM(r.valor) - COALESCE((SELECT SUM(COALESCE(cu.monto_interes, 0)) FROM cuotas cu WHERE cu.contrato_id = r.contrato_id AND cu.estado = 'pagado'), 0) AS total_base
+        FROM recibos r
+        WHERE r.estado = 'activo'
+        GROUP BY r.contrato_id
       ) pagado ON pagado.contrato_id = c.id
       WHERE TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $1
         AND c.estado NOT IN ('cancelado')
@@ -257,5 +276,295 @@ router.patch('/:id', auth, requireAdminOrDirector, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/liquidaciones/:id/detalle
+// Devuelve los contratos que componen la liquidación del consultor,
+// con el monto de comisión individual y estado de suspensión.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/:id/detalle', auth, requireAdminOrDirector, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Obtener la liquidación
+    const liqRes = await pool.query(
+      `SELECT l.*, u.nombre AS consultor_nombre, u.pct_comision_venta, u.pct_desbloqueo
+       FROM liquidaciones l
+       JOIN usuarios u ON l.consultor_id = u.id
+       WHERE l.id = $1`,
+      [id]
+    );
+    if (liqRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Liquidación no encontrada' });
+    }
+    const liq = liqRes.rows[0];
+    const pctComision = parseFloat(liq.pct_comision_venta || 10);
+    const pctDesbloqueo = parseFloat(liq.pct_desbloqueo || 30);
+
+    // Contratos del consultor en ese mes
+    // REQ2: total_base = total_pagado - intereses de cuotas pagadas
+    const contratosRes = await pool.query(`
+      SELECT
+        c.id, c.numero_contrato, c.fecha_contrato, c.monto_total, c.estado,
+        c.tipo_plan,
+        p.nombres, p.apellidos, p.num_documento,
+        COALESCE(pagado.total, 0) AS total_pagado,
+        COALESCE(pagado.total_base, 0) AS total_pagado_base,
+        CASE
+          WHEN COALESCE(pagado.total, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
+          THEN true ELSE false
+        END AS desbloqueado,
+        CASE
+          WHEN COALESCE(pagado.total, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
+          THEN ROUND(COALESCE(pagado.total_base, 0) * $4 / 100, 2)
+          ELSE 0
+        END AS comision_individual
+      FROM contratos c
+      JOIN personas p ON c.persona_id = p.id
+      LEFT JOIN (
+        SELECT r.contrato_id,
+               SUM(r.valor) AS total,
+               SUM(r.valor) - COALESCE((SELECT SUM(COALESCE(cu.monto_interes, 0)) FROM cuotas cu WHERE cu.contrato_id = r.contrato_id AND cu.estado = 'pagado'), 0) AS total_base
+        FROM recibos r
+        WHERE r.estado = 'activo'
+        GROUP BY r.contrato_id
+      ) pagado ON pagado.contrato_id = c.id
+      WHERE c.consultor_id = $1
+        AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $2
+        AND c.estado NOT IN ('cancelado')
+      ORDER BY c.fecha_contrato
+    `, [liq.consultor_id, liq.mes, pctDesbloqueo, pctComision]);
+
+    // Obtener suspensiones activas para esta liquidación
+    const suspRes = await pool.query(
+      `SELECT cs.*, u.nombre AS suspendido_por_nombre
+       FROM comisiones_suspendidas cs
+       LEFT JOIN usuarios u ON cs.suspendido_por = u.id
+       WHERE cs.liquidacion_id = $1 AND cs.activo = true`,
+      [id]
+    );
+    const suspMap = {};
+    for (const s of suspRes.rows) {
+      suspMap[s.contrato_id] = s;
+    }
+
+    // Calcular monto con y sin suspensiones
+    let totalComision = 0;
+    let totalSuspendido = 0;
+    const contratos = contratosRes.rows.map(c => {
+      const comision = parseFloat(c.comision_individual || 0);
+      const susp = suspMap[c.id] || null;
+      if (susp) {
+        totalSuspendido += parseFloat(susp.monto_comision);
+      } else {
+        totalComision += comision;
+      }
+      return {
+        ...c,
+        comision_individual: comision,
+        suspendido: !!susp,
+        suspension: susp ? {
+          id: susp.id,
+          motivo: susp.motivo,
+          suspendido_por_nombre: susp.suspendido_por_nombre,
+          fecha: susp.fecha,
+        } : null,
+      };
+    });
+
+    res.json({
+      liquidacion: liq,
+      contratos,
+      resumen: {
+        total_comision: Math.round(totalComision * 100) / 100,
+        total_suspendido: Math.round(totalSuspendido * 100) / 100,
+        neto_comision: Math.round((totalComision) * 100) / 100,
+      },
+    });
+  } catch (err) {
+    console.error('Error en GET /api/liquidaciones/:id/detalle:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/liquidaciones/:id/suspender
+// Body: { contrato_id, motivo }
+// Suspende la comisión de un contrato específico en la liquidación
+// ─────────────────────────────────────────────────────────────────────────────
+router.patch('/:id/suspender', auth, requireAdminOrDirector, async (req, res) => {
+  const { id } = req.params;
+  const { contrato_id, motivo } = req.body;
+
+  if (!contrato_id) {
+    return res.status(400).json({ error: 'contrato_id es requerido' });
+  }
+
+  try {
+    // Verificar que la liquidación existe y no está pagada
+    const liqRes = await pool.query(
+      `SELECT l.*, u.pct_comision_venta, u.pct_desbloqueo
+       FROM liquidaciones l
+       JOIN usuarios u ON l.consultor_id = u.id
+       WHERE l.id = $1`,
+      [id]
+    );
+    if (liqRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Liquidación no encontrada' });
+    }
+    const liq = liqRes.rows[0];
+    if (liq.estado === 'pagada') {
+      return res.status(400).json({ error: 'No se puede suspender comisiones de una liquidación pagada' });
+    }
+
+    // Calcular la comisión individual de ese contrato (base, sin intereses)
+    const pctComision = parseFloat(liq.pct_comision_venta || 10);
+    const pctDesbloqueo = parseFloat(liq.pct_desbloqueo || 30);
+
+    const cRes = await pool.query(`
+      SELECT
+        c.monto_total,
+        COALESCE(pagado.total, 0) AS total_pagado,
+        COALESCE(pagado.total_base, 0) AS total_pagado_base
+      FROM contratos c
+      LEFT JOIN (
+        SELECT contrato_id,
+               SUM(valor) AS total,
+               SUM(valor) - COALESCE((SELECT SUM(monto_interes) FROM cuotas WHERE contrato_id = r_agg.contrato_id AND estado = 'pagado'), 0) AS total_base
+        FROM recibos r_agg
+        WHERE estado = 'activo'
+        GROUP BY contrato_id
+      ) pagado ON pagado.contrato_id = c.id
+      WHERE c.id = $1
+    `, [contrato_id]);
+
+    if (cRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Contrato no encontrado' });
+    }
+    const contrato = cRes.rows[0];
+    const pctPagado = parseFloat(contrato.total_pagado) / parseFloat(contrato.monto_total || 1) * 100;
+    const montoComision = pctPagado >= pctDesbloqueo
+      ? Math.round(parseFloat(contrato.total_pagado_base) * pctComision / 100 * 100) / 100
+      : 0;
+
+    // Insertar o reactivar suspensión
+    await pool.query(`
+      INSERT INTO comisiones_suspendidas (liquidacion_id, contrato_id, usuario_id, monto_comision, motivo, suspendido_por, activo)
+      VALUES ($1, $2, $3, $4, $5, $6, true)
+      ON CONFLICT (liquidacion_id, contrato_id) DO UPDATE SET
+        activo = true,
+        motivo = EXCLUDED.motivo,
+        monto_comision = EXCLUDED.monto_comision,
+        suspendido_por = EXCLUDED.suspendido_por,
+        fecha = NOW()
+    `, [id, contrato_id, liq.consultor_id, montoComision, motivo || null, req.user.id]);
+
+    // Recalcular monto_comision de la liquidación restando suspensiones activas
+    await recalcularMontoLiquidacion(id);
+
+    res.json({ ok: true, mensaje: 'Comisión suspendida correctamente' });
+  } catch (err) {
+    console.error('Error en PATCH /api/liquidaciones/:id/suspender:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/liquidaciones/:id/reactivar
+// Body: { contrato_id }
+// Reactiva la comisión de un contrato previamente suspendido
+// ─────────────────────────────────────────────────────────────────────────────
+router.patch('/:id/reactivar', auth, requireAdminOrDirector, async (req, res) => {
+  const { id } = req.params;
+  const { contrato_id } = req.body;
+
+  if (!contrato_id) {
+    return res.status(400).json({ error: 'contrato_id es requerido' });
+  }
+
+  try {
+    // Verificar que la liquidación existe y no está pagada
+    const liqRes = await pool.query('SELECT * FROM liquidaciones WHERE id = $1', [id]);
+    if (liqRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Liquidación no encontrada' });
+    }
+    if (liqRes.rows[0].estado === 'pagada') {
+      return res.status(400).json({ error: 'No se puede reactivar comisiones de una liquidación pagada' });
+    }
+
+    // Desactivar la suspensión
+    const result = await pool.query(
+      `UPDATE comisiones_suspendidas SET activo = false WHERE liquidacion_id = $1 AND contrato_id = $2 AND activo = true RETURNING *`,
+      [id, contrato_id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No se encontró suspensión activa para este contrato' });
+    }
+
+    // Recalcular monto_comision de la liquidación
+    await recalcularMontoLiquidacion(id);
+
+    res.json({ ok: true, mensaje: 'Comisión reactivada correctamente' });
+  } catch (err) {
+    console.error('Error en PATCH /api/liquidaciones/:id/reactivar:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Helper: recalcular monto_comision descontando suspendidas ───────────────
+async function recalcularMontoLiquidacion(liquidacionId) {
+  const liqRes = await pool.query(
+    `SELECT l.*, u.pct_comision_venta, u.pct_desbloqueo
+     FROM liquidaciones l
+     JOIN usuarios u ON l.consultor_id = u.id
+     WHERE l.id = $1`,
+    [liquidacionId]
+  );
+  if (liqRes.rows.length === 0) return;
+  const liq = liqRes.rows[0];
+  const pctComision = parseFloat(liq.pct_comision_venta || 10);
+  const pctDesbloqueo = parseFloat(liq.pct_desbloqueo || 30);
+
+  // Obtener total comisión bruta (sobre monto base, sin intereses)
+  const totalRes = await pool.query(`
+    SELECT COALESCE(SUM(
+      CASE
+        WHEN COALESCE(pagado.total, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
+        THEN COALESCE(pagado.total_base, 0) * $4 / 100
+        ELSE 0
+      END
+    ), 0) AS comision_bruta
+    FROM contratos c
+    LEFT JOIN (
+      SELECT contrato_id,
+             SUM(valor) AS total,
+             SUM(valor) - COALESCE((SELECT SUM(monto_interes) FROM cuotas WHERE contrato_id = r_agg.contrato_id AND estado = 'pagado'), 0) AS total_base
+      FROM recibos r_agg
+      WHERE estado = 'activo'
+      GROUP BY contrato_id
+    ) pagado ON pagado.contrato_id = c.id
+    WHERE c.consultor_id = $1
+      AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $2
+      AND c.estado NOT IN ('cancelado')
+  `, [liq.consultor_id, liq.mes, pctDesbloqueo, pctComision]);
+
+  const comisionBruta = parseFloat(totalRes.rows[0].comision_bruta || 0);
+
+  // Obtener total suspendido
+  const suspRes = await pool.query(
+    `SELECT COALESCE(SUM(monto_comision), 0) AS total_suspendido
+     FROM comisiones_suspendidas
+     WHERE liquidacion_id = $1 AND activo = true`,
+    [liquidacionId]
+  );
+  const totalSuspendido = parseFloat(suspRes.rows[0].total_suspendido || 0);
+
+  const nuevoMonto = Math.round((comisionBruta - totalSuspendido) * 100) / 100;
+
+  await pool.query(
+    `UPDATE liquidaciones SET monto_comision = $1 WHERE id = $2`,
+    [Math.max(nuevoMonto, 0), liquidacionId]
+  );
+}
 
 module.exports = router;

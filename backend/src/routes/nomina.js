@@ -194,11 +194,12 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
 
     for (const u of usuariosRes.rows) {
       // 2a. Comisión por ventas (si es consultor con contratos del mes)
+      // REQ2: Comisión sobre monto BASE (sin intereses). Se resta monto_interes de cuotas pagadas.
       const cvRes = await pool.query(`
         SELECT
           COALESCE(SUM(CASE
             WHEN COALESCE(pagado.total, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
-            THEN COALESCE(pagado.total, 0) * $4 / 100
+            THEN COALESCE(pagado.total_base, 0) * $4 / 100
             ELSE 0
           END), 0)::numeric AS comision_ventas,
           COUNT(CASE
@@ -207,9 +208,11 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           END)::integer AS contratos_desbloqueados
         FROM contratos c
         LEFT JOIN (
-          SELECT contrato_id, SUM(valor) AS total
-          FROM recibos WHERE estado = 'activo'
-          GROUP BY contrato_id
+          SELECT r.contrato_id,
+                 SUM(r.valor) AS total,
+                 SUM(r.valor) - COALESCE((SELECT SUM(COALESCE(cu.monto_interes, 0)) FROM cuotas cu WHERE cu.contrato_id = r.contrato_id AND cu.estado = 'pagado'), 0) AS total_base
+          FROM recibos r WHERE r.estado = 'activo'
+          GROUP BY r.contrato_id
         ) pagado ON pagado.contrato_id = c.id
         WHERE c.consultor_id = $1
           AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $2
@@ -302,8 +305,26 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
       }
 
       // 2g. Comisión por abonos a cartera de meses anteriores (consultor)
+      // REQ2: Comisión sobre monto base (sin intereses). Se descuenta la porción de interés
+      // proporcional a los pagos del período sobre contratos de meses anteriores.
       const abonosRes = await pool.query(`
-        SELECT COALESCE(SUM(r.valor), 0) * $3 / 100 AS comision_abonos
+        SELECT COALESCE(
+          SUM(r.valor) - COALESCE((
+            SELECT SUM(COALESCE(cu.monto_interes, 0))
+            FROM cuotas cu
+            WHERE cu.contrato_id IN (
+              SELECT DISTINCT r2.contrato_id FROM recibos r2
+              JOIN contratos c2 ON r2.contrato_id = c2.id
+              WHERE c2.consultor_id = $1
+                AND TO_CHAR(r2.fecha_pago, 'YYYY-MM') = $2
+                AND TO_CHAR(c2.fecha_contrato, 'YYYY-MM') != $2
+                AND r2.estado = 'activo'
+                AND c2.estado NOT IN ('cancelado')
+            )
+            AND cu.estado = 'pagado'
+            AND TO_CHAR(cu.updated_at, 'YYYY-MM') = $2
+          ), 0)
+        , 0) * $3 / 100 AS comision_abonos
         FROM recibos r
         JOIN contratos c ON r.contrato_id = c.id
         WHERE c.consultor_id = $1

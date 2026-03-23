@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { getLiquidaciones, calcularMes, actualizarEstado } from '../../api/liquidaciones'
+import { getLiquidaciones, calcularMes, actualizarEstado, getDetalleLiquidacion, suspenderComision, reactivarComision } from '../../api/liquidaciones'
 import { getSalas } from '../../api/admin'
 
 // ─── Utilidades ──────────────────────────────────────────────────────────────
@@ -166,6 +166,267 @@ function ModalAccion({ modal, observacion, setObservacion, onConfirmar, onCancel
   )
 }
 
+// ─── Modal de detalle de liquidación (contratos + suspender/reactivar) ────────
+
+function ModalDetalle({ liquidacionId, onClose, esAdmin, onActualizado }) {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [data, setData] = useState(null)
+  const [suspModal, setSuspModal] = useState(null) // { contrato_id, numero_contrato }
+  const [motivo, setMotivo] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  const cargarDetalle = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await getDetalleLiquidacion(liquidacionId)
+      setData(res)
+    } catch (err) {
+      setError(err.response?.data?.error || err.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [liquidacionId])
+
+  useEffect(() => { cargarDetalle() }, [cargarDetalle])
+
+  async function handleSuspender() {
+    if (!suspModal) return
+    setGuardando(true)
+    try {
+      await suspenderComision(liquidacionId, { contrato_id: suspModal.contrato_id, motivo })
+      setSuspModal(null)
+      setMotivo('')
+      await cargarDetalle()
+      if (onActualizado) onActualizado()
+    } catch (err) {
+      setError(err.response?.data?.error || err.message)
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  async function handleReactivar(contrato_id) {
+    if (!window.confirm('Reactivar esta comision?')) return
+    setGuardando(true)
+    try {
+      await reactivarComision(liquidacionId, { contrato_id })
+      await cargarDetalle()
+      if (onActualizado) onActualizado()
+    } catch (err) {
+      setError(err.response?.data?.error || err.message)
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const esPagada = data?.liquidacion?.estado === 'pagada'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+          <div>
+            <h3 className="text-lg font-bold text-gray-800">
+              Detalle de Liquidacion
+            </h3>
+            {data && (
+              <p className="text-sm text-gray-500">
+                {data.liquidacion.consultor_nombre} — {data.liquidacion.mes}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
+          )}
+
+          {loading ? (
+            <div className="flex items-center justify-center h-32">
+              <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : data ? (
+            <>
+              {/* Resumen cards */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-teal-50 rounded-lg p-3 text-center">
+                  <p className="text-xs font-semibold text-teal-600 uppercase">Comision Neta</p>
+                  <p className="text-xl font-bold text-teal-800">{fmt(data.resumen.neto_comision)}</p>
+                </div>
+                <div className="bg-red-50 rounded-lg p-3 text-center">
+                  <p className="text-xs font-semibold text-red-600 uppercase">Suspendido</p>
+                  <p className="text-xl font-bold text-red-800">{fmt(data.resumen.total_suspendido)}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs font-semibold text-gray-600 uppercase">Comision Bruta</p>
+                  <p className="text-xl font-bold text-gray-800">{fmt(data.resumen.total_comision + data.resumen.total_suspendido)}</p>
+                </div>
+              </div>
+
+              {/* Tabla de contratos */}
+              <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left text-xs font-semibold text-gray-500 uppercase py-2.5 px-3">Contrato</th>
+                      <th className="text-left text-xs font-semibold text-gray-500 uppercase py-2.5 px-3">Cliente</th>
+                      <th className="text-right text-xs font-semibold text-gray-500 uppercase py-2.5 px-3">Monto</th>
+                      <th className="text-right text-xs font-semibold text-gray-500 uppercase py-2.5 px-3">Pagado</th>
+                      <th className="text-center text-xs font-semibold text-gray-500 uppercase py-2.5 px-3">Desbloq.</th>
+                      <th className="text-right text-xs font-semibold text-gray-500 uppercase py-2.5 px-3">Comision</th>
+                      <th className="text-center text-xs font-semibold text-gray-500 uppercase py-2.5 px-3">Estado</th>
+                      {esAdmin && !esPagada && (
+                        <th className="text-center text-xs font-semibold text-gray-500 uppercase py-2.5 px-3">Accion</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.contratos.map((c, i) => (
+                      <tr
+                        key={c.id}
+                        className={`border-b border-gray-50 ${c.suspendido ? 'bg-red-50/40' : i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
+                      >
+                        <td className={`py-2.5 px-3 font-medium ${c.suspendido ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                          {c.numero_contrato}
+                        </td>
+                        <td className={`py-2.5 px-3 ${c.suspendido ? 'line-through text-gray-400' : 'text-gray-600'}`}>
+                          {c.nombres} {c.apellidos}
+                        </td>
+                        <td className={`py-2.5 px-3 text-right ${c.suspendido ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                          {fmt(c.monto_total)}
+                        </td>
+                        <td className={`py-2.5 px-3 text-right ${c.suspendido ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                          {fmt(c.total_pagado)}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          {c.desbloqueado ? (
+                            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-800">Si</span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold bg-gray-100 text-gray-500">No</span>
+                          )}
+                        </td>
+                        <td className={`py-2.5 px-3 text-right font-bold ${c.suspendido ? 'line-through text-gray-400' : 'text-teal-700'}`}>
+                          {fmt(c.comision_individual)}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          {c.suspendido ? (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-red-100 text-red-800">
+                              Suspendida
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-green-100 text-green-800">
+                              Activa
+                            </span>
+                          )}
+                        </td>
+                        {esAdmin && !esPagada && (
+                          <td className="py-2.5 px-3 text-center">
+                            {c.suspendido ? (
+                              <button
+                                onClick={() => handleReactivar(c.id)}
+                                disabled={guardando}
+                                className="px-3 py-1 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                              >
+                                Reactivar
+                              </button>
+                            ) : c.desbloqueado && c.comision_individual > 0 ? (
+                              <button
+                                onClick={() => { setSuspModal({ contrato_id: c.id, numero_contrato: c.numero_contrato }); setMotivo('') }}
+                                disabled={guardando}
+                                className="px-3 py-1 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                              >
+                                Suspender
+                              </button>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {data.contratos.length === 0 && (
+                      <tr>
+                        <td colSpan={esAdmin && !esPagada ? 8 : 7} className="py-8 text-center text-gray-400">
+                          No hay contratos para este consultor en el periodo
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Info de suspensiones */}
+              {data.contratos.filter(c => c.suspendido).length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                  <strong>Nota:</strong> Las comisiones suspendidas no se incluyen en el neto a pagar. Si el cliente formaliza, se pueden reactivar en el siguiente corte.
+                  {data.contratos.filter(c => c.suspendido).map(c => (
+                    <div key={c.id} className="mt-1 text-xs text-amber-700">
+                      <strong>{c.numero_contrato}:</strong> {c.suspension?.motivo || 'Sin motivo registrado'} — por {c.suspension?.suspendido_por_nombre || '—'}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-gray-100 flex justify-end shrink-0">
+          <button onClick={onClose} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">
+            Cerrar
+          </button>
+        </div>
+
+        {/* Sub-modal: motivo de suspensión */}
+        {suspModal && (
+          <div className="absolute inset-0 z-60 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/30 rounded-xl" onClick={() => setSuspModal(null)} />
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 p-6">
+              <h4 className="text-base font-bold text-gray-800 mb-1">Suspender comision</h4>
+              <p className="text-sm text-gray-500 mb-3">
+                Contrato: <span className="font-medium text-gray-700">{suspModal.numero_contrato}</span>
+              </p>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                Motivo <span className="text-gray-400 font-normal">(opcional)</span>
+              </label>
+              <textarea
+                rows={3}
+                value={motivo}
+                onChange={e => setMotivo(e.target.value)}
+                placeholder="Ej. Cliente en proceso de retracto, pendiente formalizar..."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  onClick={() => setSuspModal(null)}
+                  disabled={guardando}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSuspender}
+                  disabled={guardando}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                >
+                  {guardando ? 'Guardando...' : 'Confirmar suspension'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Pagina principal ─────────────────────────────────────────────────────────
 
 export default function LiquidacionesPage() {
@@ -185,6 +446,9 @@ export default function LiquidacionesPage() {
   const [modal, setModal]           = useState(null)  // { fila, accion } | null
   const [observacion, setObservacion] = useState('')
   const [guardando, setGuardando]   = useState(false)
+
+  // Modal de detalle de liquidación
+  const [detalleId, setDetalleId]   = useState(null)
 
   // Cargar salas (solo admin/director)
   useEffect(() => {
@@ -416,7 +680,15 @@ export default function LiquidacionesPage() {
                     key={d.id}
                     className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
                   >
-                    <td className="py-3 px-4 font-medium text-gray-800">{d.consultor_nombre}</td>
+                    <td className="py-3 px-4 font-medium text-gray-800">
+                      <button
+                        onClick={() => setDetalleId(d.id)}
+                        className="text-teal-700 hover:text-teal-900 hover:underline text-left"
+                        title="Ver detalle de contratos"
+                      >
+                        {d.consultor_nombre}
+                      </button>
+                    </td>
                     <td className="py-3 px-4 text-gray-500 text-xs">{d.sala_nombre || '—'}</td>
                     <td className="py-3 px-4 text-right text-gray-700">{d.contratos_count ?? '—'}</td>
                     <td className="py-3 px-4 text-right font-bold text-teal-700">{fmt(d.monto_comision)}</td>
@@ -458,6 +730,16 @@ export default function LiquidacionesPage() {
         onCancelar={cerrarModal}
         guardando={guardando}
       />
+
+      {/* Modal de detalle de liquidación (contratos + suspender/reactivar) */}
+      {detalleId && (
+        <ModalDetalle
+          liquidacionId={detalleId}
+          onClose={() => setDetalleId(null)}
+          esAdmin={esAdmin}
+          onActualizado={cargar}
+        />
+      )}
     </div>
   )
 }
