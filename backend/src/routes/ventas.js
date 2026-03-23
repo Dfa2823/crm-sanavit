@@ -527,4 +527,102 @@ router.delete('/:id/documentos/:docId', auth, async (req, res) => {
   }
 });
 
+// PATCH /api/ventas/:id/condonar-intereses — condonar intereses por pago anticipado
+router.patch('/:id/condonar-intereses', auth, async (req, res) => {
+  const { rol, id: userId, nombre: userName } = req.user;
+  if (!['admin', 'director', 'asesor_cartera', 'sac'].includes(rol)) {
+    return res.status(403).json({ error: 'Sin permiso para condonar intereses' });
+  }
+
+  const contratoId = parseInt(req.params.id, 10);
+  const { motivo } = req.body;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verificar que el contrato existe y está activo
+    const check = await client.query(
+      'SELECT id, numero_contrato, estado FROM contratos WHERE id = $1',
+      [contratoId]
+    );
+    if (check.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Contrato no encontrado' });
+    }
+    if (check.rows[0].estado !== 'activo') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Solo se pueden condonar intereses en contratos activos' });
+    }
+
+    // Obtener cuotas pendientes con interés > 0
+    const cuotasRes = await client.query(
+      `SELECT id, numero_cuota, monto_esperado, monto_interes
+       FROM cuotas
+       WHERE contrato_id = $1 AND estado IN ('pendiente', 'parcial') AND monto_interes > 0
+       ORDER BY numero_cuota`,
+      [contratoId]
+    );
+
+    if (cuotasRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'No hay cuotas pendientes con intereses para condonar' });
+    }
+
+    let totalInteresCondonado = 0;
+    const cuotasActualizadas = [];
+
+    for (const cuota of cuotasRes.rows) {
+      const interes = parseFloat(cuota.monto_interes);
+      const nuevoMonto = Math.round((parseFloat(cuota.monto_esperado) - interes) * 100) / 100;
+      totalInteresCondonado += interes;
+
+      await client.query(
+        `UPDATE cuotas SET monto_interes = 0, monto_esperado = $1 WHERE id = $2`,
+        [nuevoMonto, cuota.id]
+      );
+
+      cuotasActualizadas.push({
+        cuota_id: cuota.id,
+        numero_cuota: cuota.numero_cuota,
+        interes_condonado: interes,
+        nuevo_monto: nuevoMonto,
+      });
+    }
+
+    // Registrar en audit_log
+    await client.query(
+      `INSERT INTO audit_log (usuario_id, username, accion, tabla, registro_id, datos_despues)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        userId,
+        userName || 'unknown',
+        'condonar_intereses',
+        'contratos',
+        contratoId,
+        JSON.stringify({
+          motivo: motivo || 'Pago anticipado',
+          total_interes_condonado: Math.round(totalInteresCondonado * 100) / 100,
+          cuotas_afectadas: cuotasActualizadas,
+        }),
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      ok: true,
+      numero_contrato: check.rows[0].numero_contrato,
+      total_interes_condonado: Math.round(totalInteresCondonado * 100) / 100,
+      cuotas_afectadas: cuotasActualizadas.length,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error condonar intereses:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

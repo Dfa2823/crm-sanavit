@@ -56,17 +56,20 @@ router.get('/progreso', auth, async (req, res) => {
         COALESCE(m.meta_contratos, 0)    AS meta_contratos,
         COALESCE(m.bono_cumplimiento, 0) AS bono_cumplimiento,
         m.id AS meta_id,
-        -- Real contratos (para consultores)
+        -- Real contratos: SOLO ventas nuevas del mes (clientes nuevos)
+        -- Excluye segunda_venta y reactivaciones (contratos de meses anteriores reactivados)
         (SELECT COUNT(*) FROM contratos c
           WHERE c.consultor_id = u.id
             AND DATE(c.fecha_contrato) BETWEEN $2::date AND $3::date
             AND c.estado NOT IN ('cancelado')
+            AND COALESCE(c.segunda_venta, false) = false
         ) AS real_contratos,
-        -- Real monto vendido
+        -- Real monto vendido: SOLO ventas nuevas del mes (clientes nuevos)
         (SELECT COALESCE(SUM(c.monto_total), 0) FROM contratos c
           WHERE c.consultor_id = u.id
             AND DATE(c.fecha_contrato) BETWEEN $2::date AND $3::date
             AND c.estado NOT IN ('cancelado')
+            AND COALESCE(c.segunda_venta, false) = false
         ) AS real_ventas_monto,
         -- Real tours (para TMKs, via leads.tmk_id)
         (SELECT COUNT(*) FROM visitas_sala vs

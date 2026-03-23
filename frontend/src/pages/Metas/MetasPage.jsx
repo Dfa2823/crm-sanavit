@@ -243,6 +243,9 @@ export default function MetasPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-800">Metas Mensuales</h1>
           <p className="text-sm text-gray-500 mt-0.5">Objetivos y progreso por empleado</p>
+          <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-1.5 inline-block">
+            Solo ventas nuevas del mes (clientes nuevos). No incluye segundas ventas, abonos a cartera ni reactivaciones.
+          </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">

@@ -852,4 +852,267 @@ router.get('/asistencia/dia', async (req, res) => {
   }
 });
 
+// ─── GET /api/nomina/reporte-validacion/:mes ────────────────────────────────
+// Reporte detallado por empleado con desglose de contratos para validación de nómina
+router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) => {
+  const { mes } = req.params;
+  const { sala_id } = req.query;
+  const salaParam = sala_id ? parseInt(sala_id, 10) : null;
+
+  if (!mes || !/^\d{4}-\d{2}$/.test(mes)) {
+    return res.status(400).json({ error: 'Formato de mes inválido. Usar YYYY-MM' });
+  }
+
+  try {
+    // 1. Obtener nóminas del mes
+    const nominaRes = await pool.query(`
+      SELECT n.*, u.nombre AS usuario_nombre, u.username, u.email,
+        COALESCE(u.sueldo_base, 0)::numeric AS sueldo_base_usuario,
+        COALESCE(u.pct_comision_venta, 10)::numeric AS pct_comision_venta,
+        COALESCE(u.pct_desbloqueo, 30)::numeric AS pct_desbloqueo,
+        COALESCE(u.pct_comision_cobro, 0)::numeric AS pct_comision_cobro,
+        ro.nombre AS rol, ro.label AS rol_label,
+        s.nombre AS sala_nombre
+      FROM nomina_mensual n
+      JOIN usuarios u ON n.usuario_id = u.id
+      JOIN roles ro ON u.rol_id = ro.id
+      LEFT JOIN salas s ON n.sala_id = s.id
+      WHERE n.mes = $1 AND ($2::integer IS NULL OR n.sala_id = $2)
+      ORDER BY u.nombre
+    `, [mes, salaParam]);
+
+    if (nominaRes.rows.length === 0) {
+      return res.json([]);
+    }
+
+    // Cargar escalas TMK activas
+    const escalasRes = await pool.query(
+      'SELECT * FROM escalas_tmk WHERE activo = true ORDER BY tours_min ASC'
+    );
+    const escalasTmk = escalasRes.rows;
+
+    const reporte = [];
+
+    for (const nom of nominaRes.rows) {
+      const uid = nom.usuario_id;
+
+      // 2. Obtener contratos del mes con detalle de pagos
+      const contratosRes = await pool.query(`
+        SELECT
+          c.id, c.numero_contrato, c.monto_total, c.estado AS contrato_estado,
+          c.fecha_contrato,
+          COALESCE(cl.nombre, 'Sin cliente') AS cliente_nombre,
+          COALESCE(pagado.total, 0)::numeric AS monto_pagado,
+          COALESCE(pagado.total_base, 0)::numeric AS monto_base_pagado,
+          CASE
+            WHEN c.monto_total > 0
+            THEN ROUND(COALESCE(pagado.total, 0) / c.monto_total * 100, 2)
+            ELSE 0
+          END AS pct_pagado,
+          CASE
+            WHEN c.monto_total > 0 AND COALESCE(pagado.total, 0) / c.monto_total * 100 >= $3
+            THEN 'desbloqueada'
+            WHEN c.estado = 'suspendido' THEN 'suspendida'
+            ELSE 'bloqueada'
+          END AS estado_comision,
+          CASE
+            WHEN c.monto_total > 0 AND COALESCE(pagado.total, 0) / c.monto_total * 100 >= $3
+            THEN ROUND(COALESCE(pagado.total_base, 0) * $4 / 100, 2)
+            ELSE 0
+          END AS comision_calculada,
+          COALESCE(pagado.total_base, 0)::numeric AS monto_base
+        FROM contratos c
+        LEFT JOIN (
+          SELECT l.id, l.nombre FROM leads l
+        ) cl ON cl.id = c.lead_id
+        LEFT JOIN (
+          SELECT r.contrato_id,
+                 SUM(r.valor) AS total,
+                 SUM(r.valor) - COALESCE((
+                   SELECT SUM(COALESCE(cu.monto_interes, 0))
+                   FROM cuotas cu WHERE cu.contrato_id = r.contrato_id AND cu.estado = 'pagado'
+                 ), 0) AS total_base
+          FROM recibos r WHERE r.estado = 'activo'
+          GROUP BY r.contrato_id
+        ) pagado ON pagado.contrato_id = c.id
+        WHERE c.consultor_id = $1
+          AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $2
+          AND c.estado NOT IN ('cancelado')
+        ORDER BY c.fecha_contrato
+      `, [uid, mes, parseFloat(nom.pct_desbloqueo), parseFloat(nom.pct_comision_venta)]);
+
+      // 3. Contratos de arrastre (meses anteriores con pagos en este mes)
+      const arrastresRes = await pool.query(`
+        SELECT
+          c.id, c.numero_contrato, c.monto_total, c.estado AS contrato_estado,
+          c.fecha_contrato,
+          COALESCE(cl.nombre, 'Sin cliente') AS cliente_nombre,
+          COALESCE(pagos_mes.total_mes, 0)::numeric AS monto_pagado_mes,
+          COALESCE(pagos_mes.total_base_mes, 0)::numeric AS monto_base_pagado_mes,
+          ROUND(COALESCE(pagos_mes.total_base_mes, 0) * $3 / 100, 2) AS comision_arrastre
+        FROM contratos c
+        LEFT JOIN (
+          SELECT l.id, l.nombre FROM leads l
+        ) cl ON cl.id = c.lead_id
+        LEFT JOIN (
+          SELECT r.contrato_id,
+                 SUM(r.valor) AS total_mes,
+                 SUM(r.valor) - COALESCE((
+                   SELECT SUM(COALESCE(cu.monto_interes, 0))
+                   FROM cuotas cu
+                   WHERE cu.contrato_id = r.contrato_id
+                     AND cu.estado = 'pagado'
+                     AND TO_CHAR(cu.updated_at, 'YYYY-MM') = $2
+                 ), 0) AS total_base_mes
+          FROM recibos r
+          WHERE r.estado = 'activo'
+            AND TO_CHAR(r.fecha_pago, 'YYYY-MM') = $2
+          GROUP BY r.contrato_id
+        ) pagos_mes ON pagos_mes.contrato_id = c.id
+        WHERE c.consultor_id = $1
+          AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') != $2
+          AND c.estado NOT IN ('cancelado')
+          AND COALESCE(pagos_mes.total_mes, 0) > 0
+        ORDER BY c.fecha_contrato
+      `, [uid, mes, parseFloat(nom.pct_comision_venta)]);
+
+      // 4. Desglose semanal TMK (ya almacenado en nomina)
+      let desglose_semanal = nom.desglose_semanal_tmk;
+      if (typeof desglose_semanal === 'string') {
+        try { desglose_semanal = JSON.parse(desglose_semanal); } catch { desglose_semanal = null; }
+      }
+
+      // 5. Armar registro de reporte
+      reporte.push({
+        nomina_id: nom.id,
+        usuario_id: uid,
+        usuario_nombre: nom.usuario_nombre,
+        username: nom.username,
+        email: nom.email,
+        rol: nom.rol,
+        rol_label: nom.rol_label,
+        sala_nombre: nom.sala_nombre,
+        mes: nom.mes,
+        estado_nomina: nom.estado,
+
+        // Datos de sueldo
+        sueldo_base_config: Number(nom.sueldo_base_config),
+        dias_trabajados: Number(nom.dias_trabajados || 0),
+        dias_laborables: Number(nom.dias_laborables || 0),
+        garantizado: Number(nom.garantizado || nom.sueldo_base),
+
+        // Comisiones detalle
+        pct_comision_venta: Number(nom.pct_comision_venta),
+        pct_desbloqueo: Number(nom.pct_desbloqueo),
+        contratos_del_mes: contratosRes.rows.map(c => ({
+          id: c.id,
+          numero_contrato: c.numero_contrato || `C-${c.id}`,
+          cliente: c.cliente_nombre,
+          monto_total: Number(c.monto_total),
+          monto_pagado: Number(c.monto_pagado),
+          pct_pagado: Number(c.pct_pagado),
+          monto_base: Number(c.monto_base),
+          comision_calculada: Number(c.comision_calculada),
+          estado: c.estado_comision,
+        })),
+        comision_venta_recurrente: Number(nom.comision_venta_recurrente || 0),
+
+        // Arrastre de cartera
+        contratos_arrastre: arrastresRes.rows.map(c => ({
+          id: c.id,
+          numero_contrato: c.numero_contrato || `C-${c.id}`,
+          cliente: c.cliente_nombre,
+          fecha_contrato: c.fecha_contrato,
+          monto_total: Number(c.monto_total),
+          monto_pagado_mes: Number(c.monto_pagado_mes),
+          monto_base_pagado_mes: Number(c.monto_base_pagado_mes),
+          comision_arrastre: Number(c.comision_arrastre),
+        })),
+        comision_abonos_cartera: Number(nom.comision_abonos_cartera || 0),
+        comision_reactivaciones: Number(nom.comision_reactivaciones || 0),
+        comision_arrastre_tmk: Number(nom.comision_arrastre_tmk || 0),
+
+        // Bonos
+        bono_tours: Number(nom.bono_tours || 0),
+        tours_count: Number(nom.tours_count || 0),
+        desglose_semanal_tmk: desglose_semanal,
+        bono_citas: Number(nom.bono_citas || 0),
+        citas_count: Number(nom.citas_count || 0),
+        bono_meta: Number(nom.bono_meta || 0),
+
+        // Cobros
+        comision_ventas: Number(nom.comision_ventas || 0),
+        comision_cobros: Number(nom.comision_cobros || 0),
+
+        // Otros
+        otros_ingresos: Number(nom.otros_ingresos || 0),
+        observaciones: nom.observaciones,
+
+        // Totales
+        total_ingresos: Number(nom.total_ingresos || 0),
+        aporte_iess: Number(nom.aporte_iess || 0),
+        anticipo: Number(nom.anticipo || 0),
+        otras_deducciones: Number(nom.otras_deducciones || 0),
+        total_deducciones: Number(nom.total_deducciones || 0),
+        neto_a_pagar: Number(nom.neto_a_pagar || 0),
+      });
+    }
+
+    res.json(reporte);
+  } catch (err) {
+    console.error('Error en GET /api/nomina/reporte-validacion/:mes:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/nomina/notificar/:nomina_id ──────────────────────────────────
+// Placeholder para envío de notificación de liquidación por email
+// TODO: Configurar SMTP (nodemailer o similar) para envío real de emails
+// TODO: Agregar tabla de configuración de email en admin
+router.post('/notificar/:nomina_id', requireAdminOrDirector, async (req, res) => {
+  const { nomina_id } = req.params;
+
+  try {
+    // Verificar que la nómina existe y está aprobada o pagada
+    const nominaRes = await pool.query(`
+      SELECT n.*, u.nombre AS usuario_nombre, u.email
+      FROM nomina_mensual n
+      JOIN usuarios u ON n.usuario_id = u.id
+      WHERE n.id = $1
+    `, [nomina_id]);
+
+    if (!nominaRes.rows.length) {
+      return res.status(404).json({ error: 'Registro de nómina no encontrado' });
+    }
+
+    const nom = nominaRes.rows[0];
+
+    if (!['aprobada', 'pagada'].includes(nom.estado)) {
+      return res.status(400).json({ error: 'Solo se puede notificar nóminas aprobadas o pagadas' });
+    }
+
+    // TODO: Aquí iría el envío real del email con nodemailer
+    // const transporter = nodemailer.createTransport({ host, port, auth });
+    // await transporter.sendMail({
+    //   to: nom.email,
+    //   subject: `Liquidación ${nom.mes} - SANAVIT`,
+    //   html: `<p>Hola ${nom.usuario_nombre}, tu liquidación del período ${nom.mes} es de $${Number(nom.neto_a_pagar).toFixed(2)}. Genera tu factura por este valor.</p>`
+    // });
+
+    res.json({
+      success: true,
+      message: 'Notificación generada (email pendiente de configurar)',
+      preview: {
+        destinatario: nom.usuario_nombre,
+        email: nom.email || '(sin email registrado)',
+        asunto: `Liquidación ${nom.mes} - SANAVIT`,
+        mensaje: `Hola ${nom.usuario_nombre}, tu liquidación del período ${nom.mes} es de $${Number(nom.neto_a_pagar).toFixed(2)}. Genera tu factura por este valor.`,
+      }
+    });
+  } catch (err) {
+    console.error('Error en POST /api/nomina/notificar/:nomina_id:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

@@ -86,8 +86,9 @@ export default function AppLayout() {
 
   let title = TITULOS[pathname]
   if (!title && pathname.startsWith('/sala/cliente/')) title = 'Hoja de Vida del Cliente'
-  if (!title && pathname.startsWith('/ventas/') && !pathname.endsWith('/imprimir')) title = 'Vista 360° del Contrato'
+  if (!title && pathname.startsWith('/ventas/') && pathname.endsWith('/acta-entrega')) title = 'Acta de Entrega'
   if (!title && pathname.startsWith('/ventas/') && pathname.endsWith('/imprimir')) title = 'Imprimir Contrato'
+  if (!title && pathname.startsWith('/ventas/') && !pathname.endsWith('/imprimir') && !pathname.endsWith('/acta-entrega')) title = 'Vista 360° del Contrato'
   if (!title) title = 'CRM Sanavit Ecuador'
 
   return (

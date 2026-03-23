@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getNomina, calcularNomina, updateNomina, getReporteNomina, getAsistenciaDia, registrarAsistenciaBulk, getResumenMensual } from '../../api/nomina'
+import { getNomina, calcularNomina, updateNomina, getReporteNomina, getReporteValidacion, notificarNomina, getAsistenciaDia, registrarAsistenciaBulk, getResumenMensual } from '../../api/nomina'
 import { getSalas } from '../../api/admin'
 import { useAuth } from '../../context/AuthContext'
 
@@ -363,6 +363,581 @@ function DrawerNomina({ registro, onClose, onUpdate, esAdmin }) {
           >
             Descargar Rol de Pago PDF
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal de Reporte de Validación ───────────────────────────────────────────
+function ModalReporteValidacion({ mes, salaId, onClose }) {
+  const [data, setData] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [expandido, setExpandido] = useState({})
+
+  useEffect(() => {
+    async function cargar() {
+      setLoading(true)
+      setError('')
+      try {
+        const params = {}
+        if (salaId) params.sala_id = salaId
+        const result = await getReporteValidacion(mes, params)
+        setData(Array.isArray(result) ? result : [])
+      } catch (err) {
+        setError(err.response?.data?.error || 'Error al cargar reporte de validación')
+      } finally {
+        setLoading(false)
+      }
+    }
+    cargar()
+  }, [mes, salaId])
+
+  function toggleExpandido(nominaId) {
+    setExpandido(prev => ({ ...prev, [nominaId]: !prev[nominaId] }))
+  }
+
+  function exportarExcel() {
+    // Generar CSV con desglose completo (compatible con Excel)
+    const filas = []
+    // Header
+    filas.push([
+      'Empleado','Rol','Sala','Sueldo Base Config','Días Trabajados','Días Laborables','Garantizado',
+      '% Com. Venta','% Desbloqueo',
+      'Contrato','Cliente','Monto Total','Monto Pagado','% Pagado','Monto Base','Comisión Calculada','Estado Comisión',
+      'Com. Venta Recurrente','Com. Abonos Cartera','Com. Reactivaciones','Com. Arrastre TMK',
+      'Bono Tours','Tours','Bono Citas','Citas','Bono Meta',
+      'Otros Ingresos','Total Ingresos',
+      'IESS','Anticipo','Otras Deducciones','Total Deducciones',
+      'Neto a Pagar','Estado Nómina'
+    ])
+
+    for (const emp of data) {
+      const contratos = emp.contratos_del_mes || []
+      const arrastres = emp.contratos_arrastre || []
+      const allContratos = [
+        ...contratos.map(c => ({ ...c, tipo: 'mes' })),
+        ...arrastres.map(c => ({ ...c, tipo: 'arrastre' })),
+      ]
+
+      if (allContratos.length === 0) {
+        filas.push([
+          emp.usuario_nombre, emp.rol_label || emp.rol, emp.sala_nombre || '',
+          emp.sueldo_base_config, emp.dias_trabajados, emp.dias_laborables, emp.garantizado,
+          emp.pct_comision_venta, emp.pct_desbloqueo,
+          '', '', '', '', '', '', '', '',
+          emp.comision_venta_recurrente, emp.comision_abonos_cartera, emp.comision_reactivaciones, emp.comision_arrastre_tmk,
+          emp.bono_tours, emp.tours_count, emp.bono_citas, emp.citas_count, emp.bono_meta,
+          emp.otros_ingresos, emp.total_ingresos,
+          emp.aporte_iess, emp.anticipo, emp.otras_deducciones, emp.total_deducciones,
+          emp.neto_a_pagar, emp.estado_nomina
+        ])
+      } else {
+        for (let i = 0; i < allContratos.length; i++) {
+          const c = allContratos[i]
+          filas.push([
+            i === 0 ? emp.usuario_nombre : '', i === 0 ? (emp.rol_label || emp.rol) : '', i === 0 ? (emp.sala_nombre || '') : '',
+            i === 0 ? emp.sueldo_base_config : '', i === 0 ? emp.dias_trabajados : '', i === 0 ? emp.dias_laborables : '', i === 0 ? emp.garantizado : '',
+            i === 0 ? emp.pct_comision_venta : '', i === 0 ? emp.pct_desbloqueo : '',
+            c.numero_contrato || `C-${c.id}`, c.cliente || c.cliente_nombre || '', c.monto_total,
+            c.tipo === 'mes' ? c.monto_pagado : c.monto_pagado_mes,
+            c.tipo === 'mes' ? c.pct_pagado : '',
+            c.tipo === 'mes' ? c.monto_base : (c.monto_base_pagado_mes || ''),
+            c.tipo === 'mes' ? c.comision_calculada : (c.comision_arrastre || ''),
+            c.tipo === 'mes' ? c.estado : 'arrastre',
+            i === 0 ? emp.comision_venta_recurrente : '', i === 0 ? emp.comision_abonos_cartera : '',
+            i === 0 ? emp.comision_reactivaciones : '', i === 0 ? emp.comision_arrastre_tmk : '',
+            i === 0 ? emp.bono_tours : '', i === 0 ? emp.tours_count : '',
+            i === 0 ? emp.bono_citas : '', i === 0 ? emp.citas_count : '',
+            i === 0 ? emp.bono_meta : '',
+            i === 0 ? emp.otros_ingresos : '', i === 0 ? emp.total_ingresos : '',
+            i === 0 ? emp.aporte_iess : '', i === 0 ? emp.anticipo : '',
+            i === 0 ? emp.otras_deducciones : '', i === 0 ? emp.total_deducciones : '',
+            i === 0 ? emp.neto_a_pagar : '', i === 0 ? emp.estado_nomina : '',
+          ])
+        }
+      }
+    }
+
+    const csv = '\uFEFF' + filas.map(row => row.map(v => `"${v === undefined || v === null ? '' : v}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `reporte_validacion_nomina_${mes}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function exportarPDFValidacion() {
+    const rows = data.map(emp => {
+      const contratosHTML = (emp.contratos_del_mes || []).map(c => `
+        <tr class="sub-row">
+          <td style="padding-left:30px">${c.numero_contrato || 'C-' + c.id}</td>
+          <td>${c.cliente || ''}</td>
+          <td style="text-align:right">$${fmt(c.monto_total)}</td>
+          <td style="text-align:right">$${fmt(c.monto_pagado)}</td>
+          <td style="text-align:right">${c.pct_pagado}%</td>
+          <td style="text-align:right">$${fmt(c.monto_base)}</td>
+          <td style="text-align:right">$${fmt(c.comision_calculada)}</td>
+          <td><span class="badge-${c.estado}">${c.estado}</span></td>
+        </tr>
+      `).join('')
+
+      const arrastresHTML = (emp.contratos_arrastre || []).map(c => `
+        <tr class="sub-row arrastre">
+          <td style="padding-left:30px">${c.numero_contrato || 'C-' + c.id}</td>
+          <td>${c.cliente || ''}</td>
+          <td style="text-align:right">$${fmt(c.monto_total)}</td>
+          <td style="text-align:right">$${fmt(c.monto_pagado_mes)}</td>
+          <td></td>
+          <td style="text-align:right">$${fmt(c.monto_base_pagado_mes)}</td>
+          <td style="text-align:right">$${fmt(c.comision_arrastre)}</td>
+          <td><span class="badge-arrastre">arrastre</span></td>
+        </tr>
+      `).join('')
+
+      const semanalHTML = emp.rol === 'tmk' && Array.isArray(emp.desglose_semanal_tmk) && emp.desglose_semanal_tmk.length > 0
+        ? `<tr class="sub-row"><td colspan="8" style="padding-left:30px;font-size:10px;color:#0d9488">
+            <strong>Desglose semanal TMK:</strong> ${emp.desglose_semanal_tmk.map(s => {
+              const d = new Date(s.semana_inicio + 'T00:00:00')
+              return `Sem ${d.getDate()}/${d.getMonth()+1}: ${s.tours} tours=$${fmt(s.total_semana)}`
+            }).join(' | ')}
+          </td></tr>`
+        : ''
+
+      return `
+        <tr class="emp-row">
+          <td colspan="3"><strong>${emp.usuario_nombre}</strong> <span style="color:#6b7280;font-size:10px">${emp.rol_label || emp.rol} · ${emp.sala_nombre || ''}</span></td>
+          <td style="text-align:right">Garantizado: $${fmt(emp.garantizado)}</td>
+          <td style="text-align:right">Com: $${fmt(emp.comision_ventas)}</td>
+          <td style="text-align:right">Bonos: $${fmt(emp.bono_tours + emp.bono_citas + emp.bono_meta)}</td>
+          <td style="text-align:right">Deduc: $${fmt(emp.total_deducciones)}</td>
+          <td style="text-align:right;font-weight:700;color:#0d9488"><strong>$${fmt(emp.neto_a_pagar)}</strong></td>
+        </tr>
+        ${contratosHTML}${arrastresHTML}${semanalHTML}
+      `
+    }).join('')
+
+    const totNeto = data.reduce((a, e) => a + e.neto_a_pagar, 0)
+
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; padding: 20px; font-size: 10px; color: #1a1a1a; }
+  h1 { font-size: 16px; color: #0d9488; margin-bottom: 4px; }
+  p.subtitle { margin: 0 0 12px 0; color: #6b7280; font-size: 11px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #0d9488; color: white; padding: 5px 6px; text-align: left; font-size: 9px; text-transform: uppercase; }
+  td { padding: 4px 6px; border-bottom: 1px solid #e5e7eb; }
+  .emp-row td { background: #f3f4f6; border-top: 2px solid #d1d5db; }
+  .sub-row td { font-size: 9px; color: #4b5563; }
+  .arrastre td { background: #fefce8; }
+  .badge-desbloqueada { background: #d1fae5; color: #065f46; padding: 1px 6px; border-radius: 8px; font-size: 8px; }
+  .badge-bloqueada { background: #fee2e2; color: #991b1b; padding: 1px 6px; border-radius: 8px; font-size: 8px; }
+  .badge-suspendida { background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 8px; font-size: 8px; }
+  .badge-arrastre { background: #e0e7ff; color: #3730a3; padding: 1px 6px; border-radius: 8px; font-size: 8px; }
+  .total-final { background: #0d9488; color: white; padding: 10px; text-align: right; font-size: 14px; font-weight: 700; margin-top: 12px; border-radius: 6px; }
+  @media print { @page { size: A4 landscape; margin: 8mm; } }
+</style></head><body>
+<h1>SANAVIT - Reporte de Validacion de Nomina</h1>
+<p class="subtitle">Periodo: ${mes} | ${data.length} empleados | Generado: ${new Date().toLocaleDateString('es-EC')}</p>
+<table>
+  <thead><tr>
+    <th>Contrato/Empleado</th><th>Cliente</th><th>Monto Total</th><th>Pagado</th><th>% Pago</th><th>Base</th><th>Comision</th><th>Estado</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div class="total-final">NETO TOTAL A PAGAR: $${fmt(totNeto)}</div>
+</body></html>`
+
+    const w = window.open('', '_blank', 'width=1200,height=900')
+    w.document.write(html)
+    w.document.close()
+    setTimeout(() => w.print(), 600)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-8 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl mx-4 mb-8 flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <div>
+            <h2 className="text-lg font-bold text-gray-800">Reporte de Validacion de Nomina</h2>
+            <p className="text-sm text-gray-500">Periodo: {mes} - Desglose detallado por empleado y contratos</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={exportarExcel} disabled={loading || data.length === 0}
+              className="border border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-medium">
+              Exportar Excel
+            </button>
+            <button onClick={exportarPDFValidacion} disabled={loading || data.length === 0}
+              className="border border-blue-300 text-blue-700 hover:bg-blue-50 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-medium">
+              Exportar PDF
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none ml-2">&times;</button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {loading ? (
+            <div className="flex items-center justify-center h-48">
+              <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : error ? (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>
+          ) : data.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <p className="font-medium">No hay datos de nomina para validar en {mes}</p>
+              <p className="text-sm mt-1">Primero calcula la nomina del mes.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* Resumen totales */}
+              <div className="grid grid-cols-4 gap-3 mb-4">
+                <div className="border rounded-xl p-3 bg-slate-50 border-slate-200">
+                  <p className="text-xs text-gray-500">Empleados</p>
+                  <p className="text-lg font-bold text-gray-800">{data.length}</p>
+                </div>
+                <div className="border rounded-xl p-3 bg-blue-50 border-blue-200">
+                  <p className="text-xs text-gray-500">Total Bruto</p>
+                  <p className="text-lg font-bold text-gray-800">${fmt(data.reduce((a, e) => a + e.total_ingresos, 0))}</p>
+                </div>
+                <div className="border rounded-xl p-3 bg-orange-50 border-orange-200">
+                  <p className="text-xs text-gray-500">Deducciones</p>
+                  <p className="text-lg font-bold text-gray-800">${fmt(data.reduce((a, e) => a + e.total_deducciones, 0))}</p>
+                </div>
+                <div className="border rounded-xl p-3 bg-teal-50 border-teal-200">
+                  <p className="text-xs text-gray-500">Neto Total</p>
+                  <p className="text-lg font-bold text-teal-700">${fmt(data.reduce((a, e) => a + e.neto_a_pagar, 0))}</p>
+                </div>
+              </div>
+
+              {/* Tabla por empleado expandible */}
+              {data.map(emp => {
+                const isOpen = expandido[emp.nomina_id]
+                const contratos = emp.contratos_del_mes || []
+                const arrastres = emp.contratos_arrastre || []
+                return (
+                  <div key={emp.nomina_id} className="border border-gray-200 rounded-xl overflow-hidden">
+                    {/* Fila principal */}
+                    <button
+                      onClick={() => toggleExpandido(emp.nomina_id)}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`}>&#9654;</span>
+                        <div>
+                          <span className="font-semibold text-gray-800">{emp.usuario_nombre}</span>
+                          <span className="text-xs text-gray-500 ml-2">{emp.rol_label || emp.rol} {emp.sala_nombre ? `· ${emp.sala_nombre}` : ''}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-6 text-xs">
+                        <div className="text-right">
+                          <span className="text-gray-500">Garantizado</span>
+                          <span className="ml-2 font-medium text-gray-700">${fmt(emp.garantizado)}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-gray-500">Comisiones</span>
+                          <span className="ml-2 font-medium text-gray-700">${fmt(emp.comision_ventas + emp.comision_cobros)}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-gray-500">Bonos</span>
+                          <span className="ml-2 font-medium text-gray-700">${fmt(emp.bono_tours + emp.bono_citas + emp.bono_meta)}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-gray-500">Deducciones</span>
+                          <span className="ml-2 font-medium text-red-600">-${fmt(emp.total_deducciones)}</span>
+                        </div>
+                        <div className="bg-teal-600 text-white px-3 py-1 rounded-lg font-semibold">
+                          ${fmt(emp.neto_a_pagar)}
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* Detalle expandido */}
+                    {isOpen && (
+                      <div className="px-4 py-3 space-y-4 bg-white">
+                        {/* Info base */}
+                        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
+                          <div className="bg-gray-50 rounded-lg p-2">
+                            <p className="text-gray-500">Sueldo base</p>
+                            <p className="font-semibold">${fmt(emp.sueldo_base_config)}</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-2">
+                            <p className="text-gray-500">Dias trab/lab</p>
+                            <p className="font-semibold">{emp.dias_trabajados}/{emp.dias_laborables}</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-2">
+                            <p className="text-gray-500">Garantizado</p>
+                            <p className="font-semibold">${fmt(emp.garantizado)}</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-2">
+                            <p className="text-gray-500">% Com. Venta</p>
+                            <p className="font-semibold">{emp.pct_comision_venta}%</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-2">
+                            <p className="text-gray-500">% Desbloqueo</p>
+                            <p className="font-semibold">{emp.pct_desbloqueo}%</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-2">
+                            <p className="text-gray-500">Estado nomina</p>
+                            <p className="font-semibold capitalize">{emp.estado_nomina}</p>
+                          </div>
+                        </div>
+
+                        {/* Contratos del mes */}
+                        {contratos.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Contratos del mes ({contratos.length})</p>
+                            <div className="overflow-x-auto rounded-lg border border-gray-100">
+                              <table className="w-full text-xs">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Contrato</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Cliente</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-gray-600">Monto Total</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-gray-600">Pagado</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-gray-600">% Pago</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-gray-600">Base (sin int.)</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-gray-600">Comision</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Estado</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {contratos.map(c => (
+                                    <tr key={c.id} className="border-t border-gray-50">
+                                      <td className="px-3 py-2 font-medium">{c.numero_contrato || `C-${c.id}`}</td>
+                                      <td className="px-3 py-2 text-gray-600">{c.cliente}</td>
+                                      <td className="px-3 py-2 text-right">${fmt(c.monto_total)}</td>
+                                      <td className="px-3 py-2 text-right">${fmt(c.monto_pagado)}</td>
+                                      <td className="px-3 py-2 text-right">{c.pct_pagado}%</td>
+                                      <td className="px-3 py-2 text-right">${fmt(c.monto_base)}</td>
+                                      <td className="px-3 py-2 text-right font-medium text-teal-700">${fmt(c.comision_calculada)}</td>
+                                      <td className="px-3 py-2">
+                                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                          c.estado === 'desbloqueada' ? 'bg-green-100 text-green-700' :
+                                          c.estado === 'suspendida' ? 'bg-yellow-100 text-yellow-700' :
+                                          'bg-red-100 text-red-700'
+                                        }`}>
+                                          {c.estado}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Contratos arrastre */}
+                        {arrastres.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-2">Arrastre cartera ({arrastres.length} contratos anteriores con pagos en {mes})</p>
+                            <div className="overflow-x-auto rounded-lg border border-indigo-100">
+                              <table className="w-full text-xs">
+                                <thead className="bg-indigo-50">
+                                  <tr>
+                                    <th className="text-left px-3 py-2 font-semibold text-indigo-700">Contrato</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-indigo-700">Cliente</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-indigo-700">Total Contrato</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-indigo-700">Pagado en {mes}</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-indigo-700">Base pagado</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-indigo-700">Comision arrastre</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {arrastres.map(c => (
+                                    <tr key={c.id} className="border-t border-indigo-50">
+                                      <td className="px-3 py-2 font-medium">{c.numero_contrato || `C-${c.id}`}</td>
+                                      <td className="px-3 py-2 text-gray-600">{c.cliente}</td>
+                                      <td className="px-3 py-2 text-right">${fmt(c.monto_total)}</td>
+                                      <td className="px-3 py-2 text-right">${fmt(c.monto_pagado_mes)}</td>
+                                      <td className="px-3 py-2 text-right">${fmt(c.monto_base_pagado_mes)}</td>
+                                      <td className="px-3 py-2 text-right font-medium text-indigo-700">${fmt(c.comision_arrastre)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Desglose semanal TMK */}
+                        {emp.rol === 'tmk' && Array.isArray(emp.desglose_semanal_tmk) && emp.desglose_semanal_tmk.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-teal-600 uppercase tracking-wide mb-2">Desglose semanal TMK (tours)</p>
+                            <div className="overflow-x-auto rounded-lg border border-teal-100">
+                              <table className="w-full text-xs">
+                                <thead className="bg-teal-50">
+                                  <tr>
+                                    <th className="text-left px-3 py-2 font-semibold text-teal-700">Semana</th>
+                                    <th className="text-center px-3 py-2 font-semibold text-teal-700">Tours</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-teal-700">$/Tour</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-teal-700">Bono Tours</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-teal-700">Bono Semanal</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-teal-700">Total</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {emp.desglose_semanal_tmk.map((s, i) => {
+                                    const d = new Date(s.semana_inicio + 'T00:00:00')
+                                    const fin = new Date(d)
+                                    fin.setDate(fin.getDate() + 6)
+                                    return (
+                                      <tr key={i} className="border-t border-teal-50">
+                                        <td className="px-3 py-2">{d.getDate()}/{d.getMonth()+1} - {fin.getDate()}/{fin.getMonth()+1}</td>
+                                        <td className="px-3 py-2 text-center font-medium">{s.tours}</td>
+                                        <td className="px-3 py-2 text-right">${Number(s.bono_por_tour).toFixed(2)}</td>
+                                        <td className="px-3 py-2 text-right">${fmt(s.bono_tours_sem)}</td>
+                                        <td className="px-3 py-2 text-right">${fmt(s.bono_semanal)}</td>
+                                        <td className="px-3 py-2 text-right font-medium text-teal-700">${fmt(s.total_semana)}</td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Resumen de comisiones */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                          <div className="bg-teal-50 rounded-lg p-2 border border-teal-100">
+                            <p className="text-teal-600">Com. venta recurrente</p>
+                            <p className="font-semibold">${fmt(emp.comision_venta_recurrente)}</p>
+                          </div>
+                          <div className="bg-indigo-50 rounded-lg p-2 border border-indigo-100">
+                            <p className="text-indigo-600">Com. abonos cartera</p>
+                            <p className="font-semibold">${fmt(emp.comision_abonos_cartera)}</p>
+                          </div>
+                          <div className="bg-purple-50 rounded-lg p-2 border border-purple-100">
+                            <p className="text-purple-600">Com. reactivaciones</p>
+                            <p className="font-semibold">${fmt(emp.comision_reactivaciones)}</p>
+                          </div>
+                          <div className="bg-amber-50 rounded-lg p-2 border border-amber-100">
+                            <p className="text-amber-600">Arrastre TMK</p>
+                            <p className="font-semibold">${fmt(emp.comision_arrastre_tmk)}</p>
+                          </div>
+                        </div>
+
+                        {/* Totales finales */}
+                        <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3 text-xs">
+                          <div className="flex gap-4">
+                            <div><span className="text-gray-500">IESS:</span> <span className="font-medium text-red-600">-${fmt(emp.aporte_iess)}</span></div>
+                            <div><span className="text-gray-500">Anticipo:</span> <span className="font-medium text-red-600">-${fmt(emp.anticipo)}</span></div>
+                            <div><span className="text-gray-500">Otras deduc.:</span> <span className="font-medium text-red-600">-${fmt(emp.otras_deducciones)}</span></div>
+                            <div><span className="text-gray-500">Otros ing.:</span> <span className="font-medium text-green-600">+${fmt(emp.otros_ingresos)}</span></div>
+                          </div>
+                          <div className="bg-teal-600 text-white px-4 py-2 rounded-lg font-bold text-sm">
+                            NETO: ${fmt(emp.neto_a_pagar)}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal de Notificación (Preview + Enviar placeholder) ─────────────────────
+function ModalNotificar({ registro, onClose }) {
+  const [enviando, setEnviando] = useState(false)
+  const [resultado, setResultado] = useState(null)
+  const [error, setError] = useState('')
+
+  const mensaje = `Hola ${registro.usuario_nombre}, tu liquidacion del periodo ${registro.mes} es de $${fmt(registro.neto_a_pagar)}. Genera tu factura por este valor.`
+
+  async function handleEnviar() {
+    setEnviando(true)
+    setError('')
+    try {
+      const res = await notificarNomina(registro.id)
+      setResultado(res)
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al enviar notificación')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h3 className="font-bold text-gray-800">Notificar liquidacion</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+
+        <div className="px-6 py-4 space-y-4">
+          {!resultado ? (
+            <>
+              <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Para:</span>
+                  <span className="font-medium text-gray-800">{registro.usuario_nombre}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Asunto:</span>
+                  <span className="font-medium text-gray-800">Liquidacion {registro.mes} - SANAVIT</span>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-2">Preview del mensaje:</p>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-gray-700">
+                  {mensaje}
+                </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
+                <strong>Nota:</strong> El envio de email aun no esta configurado. Al hacer clic en "Enviar" se registrara la intención pero el correo no se enviara realmente hasta que se configure SMTP.
+              </div>
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">{error}</div>
+              )}
+
+              <button
+                onClick={handleEnviar}
+                disabled={enviando}
+                className="w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium"
+              >
+                {enviando ? 'Enviando...' : 'Enviar notificacion'}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="text-center py-4">
+                <div className="text-4xl mb-3">&#9989;</div>
+                <p className="font-medium text-gray-800">{resultado.message}</p>
+              </div>
+
+              {resultado.preview && (
+                <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1">
+                  <p><span className="text-gray-500">Destinatario:</span> {resultado.preview.destinatario}</p>
+                  <p><span className="text-gray-500">Email:</span> {resultado.preview.email}</p>
+                  <p><span className="text-gray-500">Asunto:</span> {resultado.preview.asunto}</p>
+                  <p><span className="text-gray-500">Mensaje:</span> {resultado.preview.mensaje}</p>
+                </div>
+              )}
+
+              <button
+                onClick={onClose}
+                className="w-full border border-gray-300 text-gray-700 hover:bg-gray-50 py-2 rounded-lg text-sm font-medium"
+              >
+                Cerrar
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -786,6 +1361,8 @@ export default function NominaPage() {
   const [calculando,  setCalculando]  = useState(false)
   const [error,       setError]       = useState('')
   const [detalle,     setDetalle]     = useState(null)
+  const [showValidacion, setShowValidacion] = useState(false)
+  const [notificarReg,   setNotificarReg]   = useState(null)
 
   useEffect(() => {
     getSalas().then(d => setSalas(Array.isArray(d) ? d : [])).catch(() => {})
@@ -970,13 +1547,23 @@ export default function NominaPage() {
               </div>
             )}
             {esAdmin && (
-              <button
-                onClick={handleCalcular}
-                disabled={calculando}
-                className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
-              >
-                {calculando ? 'Calculando...' : 'Calcular mes'}
-              </button>
+              <>
+                <button
+                  onClick={handleCalcular}
+                  disabled={calculando}
+                  className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                >
+                  {calculando ? 'Calculando...' : 'Calcular mes'}
+                </button>
+                {registros.length > 0 && (
+                  <button
+                    onClick={() => setShowValidacion(true)}
+                    className="border border-indigo-300 text-indigo-700 hover:bg-indigo-50 px-4 py-2 rounded-lg text-sm font-medium"
+                  >
+                    Reporte de Validacion
+                  </button>
+                )}
+              </>
             )}
             {registros.length > 0 && esAdmin && (
               <>
@@ -1062,12 +1649,23 @@ export default function NominaPage() {
                       <td className="px-4 py-3 text-right font-semibold text-teal-700">${fmt(r.neto_a_pagar)}</td>
                       <td className="px-4 py-3"><Badge estado={r.estado} /></td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => setDetalle(r)}
-                          className="text-xs border border-teal-200 text-teal-700 hover:bg-teal-50 px-3 py-1.5 rounded-lg"
-                        >
-                          Ver detalle
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setDetalle(r)}
+                            className="text-xs border border-teal-200 text-teal-700 hover:bg-teal-50 px-3 py-1.5 rounded-lg"
+                          >
+                            Ver detalle
+                          </button>
+                          {esAdmin && ['aprobada', 'pagada'].includes(r.estado) && (
+                            <button
+                              onClick={() => setNotificarReg(r)}
+                              className="text-xs border border-amber-200 text-amber-700 hover:bg-amber-50 px-2.5 py-1.5 rounded-lg"
+                              title="Notificar liquidación al empleado"
+                            >
+                              Notificar
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1083,6 +1681,23 @@ export default function NominaPage() {
               onClose={() => setDetalle(null)}
               onUpdate={handleUpdateRegistro}
               esAdmin={esAdmin}
+            />
+          )}
+
+          {/* Modal Reporte Validación */}
+          {showValidacion && (
+            <ModalReporteValidacion
+              mes={mes}
+              salaId={salaId}
+              onClose={() => setShowValidacion(false)}
+            />
+          )}
+
+          {/* Modal Notificar */}
+          {notificarReg && (
+            <ModalNotificar
+              registro={notificarReg}
+              onClose={() => setNotificarReg(null)}
             />
           )}
         </>

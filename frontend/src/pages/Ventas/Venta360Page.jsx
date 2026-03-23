@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { getVenta360, updateEstadoVenta, updateNotasVenta, despacharProducto, anularVenta } from '../../api/ventas'
+import { getVenta360, updateEstadoVenta, updateNotasVenta, despacharProducto, anularVenta, condonarIntereses } from '../../api/ventas'
 import { createRecibo, anularRecibo } from '../../api/recibos'
 import { getFormasPago } from '../../api/admin'
 import { useToast } from '../../context/ToastContext'
@@ -173,6 +173,8 @@ export default function Venta360Page() {
   const [cambiandoEstado, setCambiandoEstado] = useState(false)
   // ── Despacho de productos ─────────────────────────────────
   const [despachando, setDespachando] = useState(new Set())
+  // ── Condonar intereses ──────────────────────────────────
+  const [condonando, setCondonando] = useState(false)
 
   const cargar = async () => {
     setLoading(true); setError('')
@@ -294,6 +296,22 @@ export default function Venta360Page() {
     }
   }
 
+  async function handleCondonarIntereses() {
+    const motivo = window.prompt('Motivo de la condonacion (opcional):', 'Pago anticipado')
+    if (motivo === null) return // canceló el prompt
+    if (!window.confirm('¿Confirmas condonar los intereses de todas las cuotas pendientes? Los montos se recalcularán sin intereses.')) return
+    setCondonando(true)
+    try {
+      const result = await condonarIntereses(id, motivo || 'Pago anticipado')
+      addToast(`Intereses condonados: $${Number(result.total_interes_condonado).toLocaleString('es-EC', { minimumFractionDigits: 2 })} en ${result.cuotas_afectadas} cuota(s)`)
+      cargar()
+    } catch (err) {
+      addToast(err.response?.data?.error || 'Error al condonar intereses', 'error')
+    } finally {
+      setCondonando(false)
+    }
+  }
+
   if (loading) return <div className="p-6"><Spinner /></div>
   if (error) return (
     <div className="p-6">
@@ -320,6 +338,12 @@ export default function Venta360Page() {
             className="border border-gray-300 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50 text-sm flex items-center gap-1.5"
           >
             🖨️ Imprimir contrato
+          </button>
+          <button
+            onClick={() => navigate(`/ventas/${id}/acta-entrega`)}
+            className="border border-teal-400 text-teal-700 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5"
+          >
+            📄 Acta de Entrega
           </button>
           {/* Botón Caída en Mesa — para hostess/confirmador/consultor solo contratos de hoy */}
           {['hostess','confirmador','consultor','admin','director'].includes(usuario?.rol) &&
@@ -703,8 +727,21 @@ export default function Venta360Page() {
                 </tbody>
               </table>
               {cuotas.some(q => parseFloat(q.monto_interes || 0) > 0) && (
-                <div className="px-4 py-3 bg-amber-50 border-t border-amber-200 text-xs text-amber-700">
-                  <strong>Nota:</strong> Las cuotas resaltadas incluyen interes del {contrato.tasa_interes || 1.5}% mensual (aplicado a partir de la 4ta cuota).
+                <div className="px-4 py-3 bg-amber-50 border-t border-amber-200 text-xs text-amber-700 flex items-center justify-between flex-wrap gap-2">
+                  <span>
+                    <strong>Nota:</strong> Las cuotas resaltadas incluyen interes del {contrato.tasa_interes || 1.5}% mensual (aplicado a partir de la 4ta cuota).
+                  </span>
+                  {['admin','director','asesor_cartera','sac'].includes(usuario?.rol) &&
+                   contrato.estado === 'activo' &&
+                   cuotas.some(q => q.estado !== 'pagado' && parseFloat(q.monto_interes || 0) > 0) && (
+                    <button
+                      disabled={condonando}
+                      onClick={handleCondonarIntereses}
+                      className="bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap"
+                    >
+                      {condonando ? 'Procesando...' : 'Condonar intereses (pago anticipado)'}
+                    </button>
+                  )}
                 </div>
               )}
               </div>

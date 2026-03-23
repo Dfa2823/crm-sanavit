@@ -7,3 +7,4 @@ export const updateEstadoVenta = (id, data) => client.patch(`/api/ventas/${id}/e
 export const updateNotasVenta = (id, texto) => client.patch(`/api/ventas/${id}/notas`, { texto }).then(r => r.data);
 export const despacharProducto = (id) => client.patch(`/api/ventas/productos/${id}/despachar`).then(r => r.data);
 export const anularVenta = (id, motivo) => client.patch(`/api/ventas/${id}/anular`, { motivo }).then(r => r.data);
+export const condonarIntereses = (id, motivo) => client.patch(`/api/ventas/${id}/condonar-intereses`, { motivo }).then(r => r.data);
