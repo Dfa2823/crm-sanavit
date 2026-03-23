@@ -55,6 +55,8 @@ const MENU_POR_ROL = {
     { label: 'Recepción', path: '/sala/recepcion', icon: '🏥' },
     { label: 'Leads TMK', path: '/mercadeo/captura', icon: '📞' },
     { label: 'Supervisor CC', path: '/mercadeo/supervisor', icon: '🎯' },
+    { label: 'Calendario', path: '/mercadeo/calendario', icon: '📅' },
+    { label: 'Panel Consultor', path: '/consultor', icon: '👨‍⚕️' },
     { label: 'Cartera', path: '/cartera', icon: '💳' },
     { label: 'Ventas', path: '/ventas', icon: '💼' },
     { label: 'Reportes', path: '/reportes', icon: '📈' },
@@ -67,6 +69,7 @@ const MENU_POR_ROL = {
     { label: 'Importar Base', path: '/importar', icon: '📥' },
     { label: 'Nómina', path: '/nomina', icon: '💵' },
     { label: 'Metas', path: '/metas', icon: '🎯' },
+    { label: 'Administración', path: '/admin', icon: '⚙️' },
   ],
   supervisor_cc: [
     { label: 'Mi Equipo TMK', path: '/mercadeo/supervisor', icon: '🎯' },

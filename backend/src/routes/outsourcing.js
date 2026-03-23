@@ -2,6 +2,11 @@ const express = require('express');
 const pool = require('../db');
 const router = express.Router();
 
+// Auto-migrate: agregar outsourcing_empresa_id a leads si no existe
+(async () => { try { await pool.query(`
+  ALTER TABLE leads ADD COLUMN IF NOT EXISTS outsourcing_empresa_id INTEGER REFERENCES outsourcing_empresas(id)
+`); } catch(e) { /* ya existe */ } })();
+
 // GET /api/outsourcing/empresas — listar todas las empresas
 router.get('/empresas', async (req, res) => {
   try {

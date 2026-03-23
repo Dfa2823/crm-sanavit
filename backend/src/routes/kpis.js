@@ -177,12 +177,12 @@ router.get('/tendencia', auth, async (req, res) => {
         COUNT(*)                                  AS total_contratos,
         COALESCE(SUM(monto_total), 0)             AS monto_total
       FROM contratos
-      WHERE fecha_contrato >= NOW() - INTERVAL '${n} weeks'
+      WHERE fecha_contrato >= NOW() - make_interval(weeks => $2)
         AND ($1::integer IS NULL OR sala_id = $1)
         AND estado NOT IN ('cancelado')
       GROUP BY 1
       ORDER BY 1 ASC
-    `, [salaId || null]);
+    `, [salaId || null, n]);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -245,7 +245,7 @@ router.get('/hoy', auth, async (req, res) => {
          WHERE fecha = CURRENT_DATE
            AND ($1::integer IS NULL OR sala_id = $1)
            AND calificacion = 'TOUR') AS tours_hoy,
-        (SELECT COALESCE(SUM(r.monto), 0)
+        (SELECT COALESCE(SUM(r.valor), 0)
          FROM recibos r
          JOIN contratos c ON r.contrato_id = c.id
          WHERE DATE(r.fecha_pago) = CURRENT_DATE

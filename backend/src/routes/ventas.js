@@ -193,11 +193,20 @@ router.post('/', auth, async (req, res) => {
     persona_id, sala_id, consultor_id, visita_sala_id,
     tipo_plan, descripcion_plan,
     monto_total, cuota_inicial = 0, forma_pago_inicial_id,
-    valor_financiado, n_cuotas = 1, dia_pago = 1, fecha_primer_pago,
+    valor_financiado, n_cuotas = 1, fecha_primer_pago,
     outsourcing_empresa_id, segunda_venta = false, sac_asesor_id, observaciones,
     firma_cliente,
     productos = []   // array de { producto_id, cantidad, precio_unitario }
   } = req.body;
+
+  // Auto-calcular dia_pago: día 1 del mes siguiente a la fecha del contrato
+  // Si se envía fecha_primer_pago, usar su día; si no, día 1 del mes siguiente
+  const dia_pago = (() => {
+    if (fecha_primer_pago) {
+      return new Date(fecha_primer_pago).getDate();
+    }
+    return 1; // primer día del mes siguiente por defecto
+  })();
 
   if (!persona_id || !monto_total) {
     return res.status(400).json({ error: 'persona_id y monto_total son requeridos' });

@@ -92,32 +92,19 @@ router.get('/resumen', async (req, res) => {
         AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $2
     `, [userId, mesFiltro]);
 
-    // Tours del mes (citas con estado 'tour' o 'completada' del consultor)
+    // Tours del mes (visitas calificadas como TOUR para este consultor)
     let toursMes = 0;
     try {
       const toursRes = await pool.query(`
         SELECT COUNT(*) AS tours
-        FROM citas ci
-        WHERE ci.consultor_id = $1
-          AND TO_CHAR(ci.fecha, 'YYYY-MM') = $2
-          AND ci.estado IN ('tour', 'completada', 'cerrada')
+        FROM visitas_sala vs
+        WHERE vs.consultor_id = $1
+          AND TO_CHAR(vs.fecha, 'YYYY-MM') = $2
+          AND vs.calificacion = 'TOUR'
       `, [userId, mesFiltro]);
       toursMes = parseInt(toursRes.rows[0]?.tours || 0, 10);
     } catch (e) {
-      // Si la tabla citas no tiene consultor_id, buscar desde contratos
-      try {
-        const toursRes = await pool.query(`
-          SELECT COUNT(*) AS tours
-          FROM citas ci
-          JOIN contratos c ON c.persona_id = ci.persona_id
-          WHERE c.consultor_id = $1
-            AND TO_CHAR(ci.fecha, 'YYYY-MM') = $2
-            AND ci.estado IN ('tour', 'completada', 'cerrada')
-        `, [userId, mesFiltro]);
-        toursMes = parseInt(toursRes.rows[0]?.tours || 0, 10);
-      } catch (e2) {
-        toursMes = 0;
-      }
+      toursMes = 0;
     }
 
     // Comisiones: pendientes (bloqueadas) y aprobadas (desbloqueadas)

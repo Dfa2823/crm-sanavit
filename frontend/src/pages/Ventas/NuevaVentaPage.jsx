@@ -245,7 +245,6 @@ export default function NuevaVentaPage() {
   }
 
   const ciudadesEcuador = ['Quito', 'Guayaquil', 'Manta', 'Cuenca', 'Ambato', 'Loja', 'Ibarra', 'Esmeraldas']
-  const diasPago = Array.from({ length: 28 }, (_, i) => i + 1)
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
