@@ -98,7 +98,7 @@ export default function AppLayout() {
   if (!title) title = 'CRM Sanavit Ecuador'
 
   return (
-    <div className="flex min-h-screen bg-gray-50 dark:bg-slate-900">
+    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-slate-900">
       {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
 
       <Sidebar
@@ -108,7 +108,7 @@ export default function AppLayout() {
         onCloseMobile={() => setMobileOpen(false)}
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Topbar con badge de alerta integrado */}
         <div className="relative">
           <Topbar
@@ -137,7 +137,7 @@ export default function AppLayout() {
           </div>
         </div>
 
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">
+        <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
           <Outlet />
         </main>
       </div>
