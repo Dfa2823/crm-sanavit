@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { getTMKStats, getResumenDia, getRankingMensual } from '../../api/supervisor'
+import {
+  getTMKStats, getResumenDia, getRankingMensual,
+  getAsignaciones, crearAsignacion, eliminarAsignacion,
+  getConfirmadores, getTmksDisponibles,
+} from '../../api/supervisor'
 import { apiUsuarios } from '../../api/usuarios'
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -82,6 +86,237 @@ function TipBar({ label, cantidad, max }) {
   )
 }
 
+// ── Sección Asignaciones TMK ↔ Confirmador ──────────────────
+
+function AsignacionesTMKSection({ salaId }) {
+  const [confirmadores, setConfirmadores] = useState([])
+  const [tmks, setTmks] = useState([])
+  const [asignaciones, setAsignaciones] = useState({ asignaciones: [], por_confirmador: [] })
+  const [selectedConf, setSelectedConf] = useState('')
+  const [selectedTmks, setSelectedTmks] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState(null)
+  const [successMsg, setSuccessMsg] = useState(null)
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const params = salaId ? { sala_id: salaId } : {}
+      const [confData, tmkData, asigData] = await Promise.all([
+        getConfirmadores(params),
+        getTmksDisponibles(params),
+        getAsignaciones(params),
+      ])
+      setConfirmadores(confData)
+      setTmks(tmkData)
+      setAsignaciones(asigData)
+    } catch (err) {
+      console.error(err)
+      setError('No se pudieron cargar las asignaciones.')
+    } finally {
+      setLoading(false)
+    }
+  }, [salaId])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  const toggleTmk = (tmkId) => {
+    setSelectedTmks(prev =>
+      prev.includes(tmkId) ? prev.filter(id => id !== tmkId) : [...prev, tmkId]
+    )
+  }
+
+  const guardarAsignacion = async () => {
+    if (!selectedConf || selectedTmks.length === 0) return
+    setGuardando(true)
+    setError(null)
+    setSuccessMsg(null)
+    try {
+      await crearAsignacion({ tmk_ids: selectedTmks, confirmador_id: parseInt(selectedConf) })
+      setSuccessMsg(`${selectedTmks.length} TMK(s) asignados correctamente`)
+      setSelectedTmks([])
+      setSelectedConf('')
+      await cargar()
+      setTimeout(() => setSuccessMsg(null), 3000)
+    } catch (err) {
+      console.error(err)
+      setError(err.response?.data?.error || 'Error al guardar asignaciones')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const desasignar = async (tmkId, tmkNombre) => {
+    if (!window.confirm(`Desasignar a ${tmkNombre} de su confirmador?`)) return
+    try {
+      await eliminarAsignacion(tmkId)
+      await cargar()
+    } catch (err) {
+      console.error(err)
+      setError('Error al desasignar TMK')
+    }
+  }
+
+  // TMKs que NO tienen confirmador asignado
+  const tmksSinAsignar = tmks.filter(t => !t.confirmador_id)
+
+  if (loading) return <Spinner />
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">{error}</div>
+      )}
+      {successMsg && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-green-700 text-sm">{successMsg}</div>
+      )}
+
+      {/* ── Formulario de asignación ── */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+        <h3 className="text-sm font-bold text-gray-700 mb-4">Asignar TMKs a un Confirmador</h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Selector de confirmador */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+              Confirmador
+            </label>
+            <select
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              value={selectedConf}
+              onChange={e => setSelectedConf(e.target.value)}
+            >
+              <option value="">Seleccionar confirmador...</option>
+              {confirmadores.map(c => (
+                <option key={c.id} value={c.id}>{c.nombre} ({c.sala_nombre})</option>
+              ))}
+            </select>
+          </div>
+
+          {/* TMKs sin asignar con checkboxes */}
+          <div className="md:col-span-2">
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+              TMKs sin asignar ({tmksSinAsignar.length})
+            </label>
+            {tmksSinAsignar.length === 0 ? (
+              <p className="text-sm text-gray-400 py-2">Todos los TMKs ya tienen confirmador asignado.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto border border-gray-100 rounded-lg p-2">
+                {tmksSinAsignar.map(t => (
+                  <label key={t.id} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 rounded px-2 py-1">
+                    <input
+                      type="checkbox"
+                      checked={selectedTmks.includes(t.id)}
+                      onChange={() => toggleTmk(t.id)}
+                      className="rounded text-teal-600 focus:ring-teal-400"
+                    />
+                    {t.nombre}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={guardarAsignacion}
+            disabled={guardando || !selectedConf || selectedTmks.length === 0}
+            className="bg-teal-600 text-white px-5 py-2 rounded-lg hover:bg-teal-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {guardando ? 'Guardando...' : `Asignar ${selectedTmks.length} TMK(s)`}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Resumen de asignaciones actuales ── */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100">
+          <h3 className="text-sm font-bold text-gray-700">Asignaciones actuales</h3>
+        </div>
+
+        {asignaciones.por_confirmador.length === 0 ? (
+          <div className="py-10 text-center text-gray-400">
+            <p className="font-medium">Sin asignaciones configuradas</p>
+            <p className="text-sm mt-1">Asigna TMKs a confirmadores usando el formulario de arriba</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {asignaciones.por_confirmador.map(grupo => (
+              <div key={grupo.confirmador_id} className="px-5 py-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-bold text-teal-700">{grupo.confirmador_nombre}</span>
+                  <span className="text-xs bg-teal-50 text-teal-600 font-semibold px-2 py-0.5 rounded-full">
+                    {grupo.tmks.length} TMK{grupo.tmks.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {grupo.tmks.map(tmk => (
+                    <span
+                      key={tmk.id}
+                      className="inline-flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700"
+                    >
+                      {tmk.nombre}
+                      <button
+                        onClick={() => desasignar(tmk.id, tmk.nombre)}
+                        className="text-gray-400 hover:text-red-500 text-xs font-bold ml-1"
+                        title="Desasignar"
+                      >
+                        x
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Tabla completa: todos los TMKs y su asignación ── */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100">
+          <h3 className="text-sm font-bold text-gray-700">Todos los TMKs</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">TMK</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Sala</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Confirmador asignado</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {tmks.map(t => (
+                <tr key={t.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium text-gray-800">{t.nombre}</td>
+                  <td className="px-4 py-3 text-gray-500">{t.sala_nombre}</td>
+                  <td className="px-4 py-3 text-gray-700">{t.confirmador_nombre || '---'}</td>
+                  <td className="px-4 py-3 text-center">
+                    {t.confirmador_id ? (
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                        Asignado
+                      </span>
+                    ) : (
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">
+                        Sin asignar
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Componente principal ─────────────────────────────────────
 
 export default function SupervisorDashboard() {
@@ -89,6 +324,7 @@ export default function SupervisorDashboard() {
 
   const puedeVerTodasSalas = ['admin', 'director'].includes(usuario?.rol)
 
+  const [tabActiva, setTabActiva] = useState('dashboard')
   const [fecha, setFecha] = useState(hoyISO())
   const [mes, setMes] = useState(mesActualISO())
   const [salaId, setSalaId] = useState(
@@ -188,35 +424,68 @@ export default function SupervisorDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
 
-      {/* ── Header / Filtros ──────────────────────────────── */}
+      {/* ── Header con Tabs ──────────────────────────────── */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-          <div>
-            <h1 className="text-xl font-bold text-gray-800">Dashboard Supervisor CC</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Métricas del call center en tiempo real</p>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h1 className="text-xl font-bold text-gray-800">Dashboard Supervisor CC</h1>
+              <p className="text-sm text-gray-500 mt-0.5">Metricas del call center en tiempo real</p>
+            </div>
+
+            {/* Selector de sala (solo admin/director) */}
+            {puedeVerTodasSalas && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Sala
+                </label>
+                <select
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  value={salaId}
+                  onChange={e => setSalaId(e.target.value)}
+                >
+                  <option value="">Todas las salas</option>
+                  {salas.map(s => (
+                    <option key={s.id} value={String(s.id)}>{s.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
-          <div className="flex-1" />
-
-          {/* Selector de sala (solo admin/director) */}
-          {puedeVerTodasSalas && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Sala
-              </label>
-              <select
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
-                value={salaId}
-                onChange={e => setSalaId(e.target.value)}
+          {/* Tabs */}
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+            {[
+              { key: 'dashboard', label: 'Metricas' },
+              { key: 'asignaciones', label: 'Asignaciones TMK / Confirmador' },
+            ].map(t => (
+              <button
+                key={t.key}
+                onClick={() => setTabActiva(t.key)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  tabActiva === t.key
+                    ? 'bg-white text-teal-700 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
               >
-                <option value="">Todas las salas</option>
-                {salas.map(s => (
-                  <option key={s.id} value={String(s.id)}>{s.nombre}</option>
-                ))}
-              </select>
-            </div>
-          )}
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
+      {/* ── Tab: Asignaciones ─────────────────────────────── */}
+      {tabActiva === 'asignaciones' && (
+        <AsignacionesTMKSection salaId={salaId || null} />
+      )}
+
+      {/* ── Tab: Dashboard Metricas ──────────────────────── */}
+      {tabActiva === 'dashboard' && (<>
+
+      {/* ── Filtros del dashboard ──────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
           {/* Selector de fecha */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -230,7 +499,9 @@ export default function SupervisorDashboard() {
             />
           </div>
 
-          {/* Botón actualizar */}
+          <div className="flex-1" />
+
+          {/* Boton actualizar */}
           <button
             onClick={actualizarTodo}
             disabled={loadingResumen || loadingTmks || loadingRanking}
@@ -535,6 +806,8 @@ export default function SupervisorDashboard() {
           </div>
         </div>
       </div>
+
+      </>)}
 
     </div>
   )

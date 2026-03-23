@@ -573,13 +573,55 @@ function PendientesVista() {
   )
 }
 
-// ─── Página principal ────────────────────────────────────────────────────────
+// ─── Indicador de citas asignadas ───────────────────────────────────────────
+
+function IndicadorCitasAsignadas() {
+  const { usuario } = useAuth()
+  const [stats, setStats] = useState(null)
+
+  useEffect(() => {
+    if (usuario?.rol !== 'confirmador') return
+    const hoy = new Date().toISOString().split('T')[0]
+    apiLeads.citasCalendario({ inicio: hoy, fin: hoy })
+      .then(data => {
+        const total = data.length
+        const confirmadas = data.filter(c => c.estado === 'confirmada').length
+        const tentativas = data.filter(c => c.estado === 'tentativa').length
+        setStats({ total, confirmadas, tentativas })
+      })
+      .catch(() => {})
+  }, [usuario])
+
+  if (!stats || usuario?.rol !== 'confirmador') return null
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4 flex-wrap">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-bold text-gray-700">Tus citas de hoy:</span>
+      </div>
+      <span className="inline-flex items-center gap-1 text-xs font-semibold bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full">
+        {stats.confirmadas} confirmadas
+      </span>
+      <span className="inline-flex items-center gap-1 text-xs font-semibold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full">
+        {stats.tentativas} tentativas
+      </span>
+      <span className="inline-flex items-center gap-1 text-xs font-semibold bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
+        {stats.total} total asignadas
+      </span>
+    </div>
+  )
+}
+
+// ─── Pagina principal ────────────────────────────────────────────────────────
 
 export default function CalendarioConfirmador() {
   const [tab, setTab] = useState('calendario')
 
   return (
     <div className="space-y-4">
+      {/* Indicador de citas asignadas */}
+      <IndicadorCitasAsignadas />
+
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
         {[

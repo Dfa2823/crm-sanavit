@@ -28,6 +28,14 @@ router.get('/premanifiesto', auth, async (req, res) => {
     if (rol === 'outsourcing') {
       whereExtra = ` AND l.outsourcing_id = $${idx}`;
       params.push(userId);
+      idx++;
+    }
+
+    // Confirmador solo ve sus citas asignadas (o las sin asignar)
+    if (rol === 'confirmador') {
+      whereExtra += ` AND (l.confirmador_id = $${idx} OR l.confirmador_id IS NULL)`;
+      params.push(userId);
+      idx++;
     }
 
     const baseQuery = `

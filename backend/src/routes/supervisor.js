@@ -4,6 +4,32 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
+// ── Auto-migrate: tabla asignacion_tmk_confirmador ─────────
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS asignacion_tmk_confirmador (
+        id SERIAL PRIMARY KEY,
+        tmk_id INTEGER NOT NULL REFERENCES usuarios(id),
+        confirmador_id INTEGER NOT NULL REFERENCES usuarios(id),
+        sala_id INTEGER REFERENCES salas(id),
+        activo BOOLEAN DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(tmk_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_asig_tmk ON asignacion_tmk_confirmador(tmk_id) WHERE activo = true
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_asig_conf ON asignacion_tmk_confirmador(confirmador_id) WHERE activo = true
+    `);
+    console.log('  ✓ asignacion_tmk_confirmador table ready');
+  } catch (err) {
+    console.error('Error auto-migrate asignacion_tmk_confirmador:', err.message);
+  }
+})();
+
 // Middleware: solo roles autorizados
 function soloSupervisor(req, res, next) {
   const rolesPermitidos = ['admin', 'director', 'supervisor_cc'];
@@ -263,6 +289,205 @@ router.get('/ranking', auth, soloSupervisor, async (req, res) => {
   } catch (err) {
     console.error('Error en GET /api/supervisor/ranking:', err);
     res.status(500).json({ error: 'Error al obtener ranking mensual' });
+  }
+});
+
+// ── GET /api/supervisor/asignaciones ──────────────────────
+// Lista todas las asignaciones TMK ↔ Confirmador
+router.get('/asignaciones', auth, soloSupervisor, async (req, res) => {
+  const { sala_id } = req.query;
+  const { sala_id: userSalaId, rol } = req.user;
+
+  const salaFiltro = sala_id
+    ? parseInt(sala_id, 10)
+    : !['admin', 'director'].includes(rol)
+      ? userSalaId
+      : null;
+
+  try {
+    const result = await pool.query(`
+      SELECT
+        a.id,
+        a.tmk_id,
+        a.confirmador_id,
+        a.sala_id,
+        a.activo,
+        a.created_at,
+        tmk.nombre AS tmk_nombre,
+        tmk.username AS tmk_username,
+        conf.nombre AS confirmador_nombre,
+        conf.username AS confirmador_username,
+        COALESCE(s.nombre, 'Sin sala') AS sala_nombre
+      FROM asignacion_tmk_confirmador a
+      JOIN usuarios tmk ON a.tmk_id = tmk.id
+      JOIN usuarios conf ON a.confirmador_id = conf.id
+      LEFT JOIN salas s ON a.sala_id = s.id
+      WHERE a.activo = true
+        AND ($1::integer IS NULL OR a.sala_id = $1)
+      ORDER BY conf.nombre, tmk.nombre
+    `, [salaFiltro || null]);
+
+    // Agrupar por confirmador para facilitar la vista
+    const porConfirmador = {};
+    for (const row of result.rows) {
+      if (!porConfirmador[row.confirmador_id]) {
+        porConfirmador[row.confirmador_id] = {
+          confirmador_id: row.confirmador_id,
+          confirmador_nombre: row.confirmador_nombre,
+          tmks: [],
+        };
+      }
+      porConfirmador[row.confirmador_id].tmks.push({
+        id: row.tmk_id,
+        nombre: row.tmk_nombre,
+        asignacion_id: row.id,
+      });
+    }
+
+    res.json({
+      asignaciones: result.rows,
+      por_confirmador: Object.values(porConfirmador),
+    });
+  } catch (err) {
+    console.error('Error en GET /api/supervisor/asignaciones:', err);
+    res.status(500).json({ error: 'Error al obtener asignaciones' });
+  }
+});
+
+// ── POST /api/supervisor/asignaciones ─────────────────────
+// Asignar TMK(s) a un confirmador. Body: { tmk_ids: [4,5], confirmador_id: 6 }
+router.post('/asignaciones', auth, soloSupervisor, async (req, res) => {
+  const { tmk_ids, confirmador_id } = req.body;
+
+  if (!tmk_ids || !Array.isArray(tmk_ids) || tmk_ids.length === 0 || !confirmador_id) {
+    return res.status(400).json({ error: 'tmk_ids (array) y confirmador_id son requeridos' });
+  }
+
+  try {
+    // Verificar que el confirmador existe y tiene rol confirmador
+    const confCheck = await pool.query(`
+      SELECT u.id, u.sala_id FROM usuarios u
+      JOIN roles r ON u.rol_id = r.id
+      WHERE u.id = $1 AND r.nombre = 'confirmador' AND u.activo = true
+    `, [confirmador_id]);
+    if (confCheck.rows.length === 0) {
+      return res.status(400).json({ error: 'El confirmador_id no corresponde a un confirmador activo' });
+    }
+
+    const salaId = confCheck.rows[0].sala_id;
+    const resultados = [];
+
+    for (const tmkId of tmk_ids) {
+      // Upsert: si ya existe la asignación para ese TMK, actualizar
+      const result = await pool.query(`
+        INSERT INTO asignacion_tmk_confirmador (tmk_id, confirmador_id, sala_id, activo)
+        VALUES ($1, $2, $3, true)
+        ON CONFLICT (tmk_id)
+        DO UPDATE SET confirmador_id = $2, sala_id = $3, activo = true, created_at = NOW()
+        RETURNING *
+      `, [tmkId, confirmador_id, salaId]);
+      resultados.push(result.rows[0]);
+    }
+
+    res.status(201).json({
+      message: `${resultados.length} TMK(s) asignados al confirmador`,
+      asignaciones: resultados,
+    });
+  } catch (err) {
+    console.error('Error en POST /api/supervisor/asignaciones:', err);
+    res.status(500).json({ error: 'Error al crear asignaciones' });
+  }
+});
+
+// ── DELETE /api/supervisor/asignaciones/:tmk_id ───────────
+// Desasignar un TMK de su confirmador
+router.delete('/asignaciones/:tmk_id', auth, soloSupervisor, async (req, res) => {
+  const { tmk_id } = req.params;
+
+  try {
+    const result = await pool.query(`
+      UPDATE asignacion_tmk_confirmador
+      SET activo = false
+      WHERE tmk_id = $1 AND activo = true
+      RETURNING *
+    `, [tmk_id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No se encontró asignación activa para ese TMK' });
+    }
+
+    res.json({ message: 'TMK desasignado correctamente', asignacion: result.rows[0] });
+  } catch (err) {
+    console.error('Error en DELETE /api/supervisor/asignaciones:', err);
+    res.status(500).json({ error: 'Error al desasignar TMK' });
+  }
+});
+
+// ── GET /api/supervisor/confirmadores ─────────────────────
+// Lista confirmadores activos (para el dropdown de asignaciones)
+router.get('/confirmadores', auth, soloSupervisor, async (req, res) => {
+  const { sala_id } = req.query;
+  const { sala_id: userSalaId, rol } = req.user;
+
+  const salaFiltro = sala_id
+    ? parseInt(sala_id, 10)
+    : !['admin', 'director'].includes(rol)
+      ? userSalaId
+      : null;
+
+  try {
+    const result = await pool.query(`
+      SELECT u.id, u.nombre, u.username, COALESCE(s.nombre, 'Sin sala') AS sala_nombre
+      FROM usuarios u
+      JOIN roles r ON u.rol_id = r.id
+      LEFT JOIN salas s ON u.sala_id = s.id
+      WHERE r.nombre = 'confirmador'
+        AND u.activo = true
+        AND ($1::integer IS NULL OR u.sala_id = $1)
+      ORDER BY u.nombre
+    `, [salaFiltro || null]);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error en GET /api/supervisor/confirmadores:', err);
+    res.status(500).json({ error: 'Error al obtener confirmadores' });
+  }
+});
+
+// ── GET /api/supervisor/tmks-disponibles ──────────────────
+// Lista TMKs activos con info de si ya están asignados
+router.get('/tmks-disponibles', auth, soloSupervisor, async (req, res) => {
+  const { sala_id } = req.query;
+  const { sala_id: userSalaId, rol } = req.user;
+
+  const salaFiltro = sala_id
+    ? parseInt(sala_id, 10)
+    : !['admin', 'director'].includes(rol)
+      ? userSalaId
+      : null;
+
+  try {
+    const result = await pool.query(`
+      SELECT
+        u.id, u.nombre, u.username,
+        COALESCE(s.nombre, 'Sin sala') AS sala_nombre,
+        a.confirmador_id,
+        conf.nombre AS confirmador_nombre
+      FROM usuarios u
+      JOIN roles r ON u.rol_id = r.id
+      LEFT JOIN salas s ON u.sala_id = s.id
+      LEFT JOIN asignacion_tmk_confirmador a ON a.tmk_id = u.id AND a.activo = true
+      LEFT JOIN usuarios conf ON a.confirmador_id = conf.id
+      WHERE r.nombre = 'tmk'
+        AND u.activo = true
+        AND ($1::integer IS NULL OR u.sala_id = $1)
+      ORDER BY u.nombre
+    `, [salaFiltro || null]);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error en GET /api/supervisor/tmks-disponibles:', err);
+    res.status(500).json({ error: 'Error al obtener TMKs disponibles' });
   }
 });
 

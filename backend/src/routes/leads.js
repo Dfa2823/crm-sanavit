@@ -130,9 +130,10 @@ router.get('/configuracion', auth, async (req, res) => {
 
 // GET /api/leads/citas?inicio=YYYY-MM-DD&fin=YYYY-MM-DD&sala_id=X
 // Citas para el calendario visual (leads con fecha_cita en el rango)
+// Confirmador solo ve SUS citas asignadas (o las sin asignar como fallback)
 router.get('/citas', auth, async (req, res) => {
   const { inicio, fin, sala_id } = req.query;
-  const { sala_id: userSalaId, rol } = req.user;
+  const { sala_id: userSalaId, rol, id: userId } = req.user;
   const salaId = sala_id || (['admin','director','supervisor_cc','confirmador'].includes(rol) ? null : userSalaId);
 
   const now = new Date();
@@ -142,13 +143,22 @@ router.get('/citas', auth, async (req, res) => {
   const finFinal    = fin    || `${y}-${m}-${lastDay}`;
 
   try {
+    // Filtro de confirmador: solo para rol confirmador
+    let confirmadorFilter = '';
+    const params = [inicioFinal, finFinal, salaId || null];
+    if (rol === 'confirmador') {
+      confirmadorFilter = ` AND (l.confirmador_id = $4 OR l.confirmador_id IS NULL)`;
+      params.push(userId);
+    }
+
     const result = await pool.query(`
       ${buildLeadSelect()}
       WHERE l.fecha_cita BETWEEN $1::date AND ($2::date + INTERVAL '1 day')
         AND l.estado IN ('confirmada','tentativa','tour','no_tour')
         AND ($3::integer IS NULL OR l.sala_id = $3)
+        ${confirmadorFilter}
       ORDER BY l.fecha_cita ASC
-    `, [inicioFinal, finFinal, salaId || null]);
+    `, params);
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -157,19 +167,28 @@ router.get('/citas', auth, async (req, res) => {
 });
 
 // GET /api/leads/calendario — pendientes "Volver a llamar" para el Confirmador
+// Confirmador solo ve SUS pendientes asignados (o los sin asignar como fallback)
 router.get('/calendario', auth, async (req, res) => {
   const { sala_id } = req.query;
-  const { sala_id: userSalaId } = req.user;
+  const { sala_id: userSalaId, rol, id: userId } = req.user;
 
   try {
     const salaFiltro = sala_id || userSalaId;
     const params = [salaFiltro];
+
+    // Filtro de confirmador: solo para rol confirmador
+    let confirmadorFilter = '';
+    if (rol === 'confirmador') {
+      confirmadorFilter = ` AND (l.confirmador_id = $2 OR l.confirmador_id IS NULL)`;
+      params.push(userId);
+    }
 
     const result = await pool.query(`
       ${buildLeadSelect()}
       WHERE l.estado = 'pendiente'
         AND l.fecha_rellamar IS NOT NULL
         AND ($1::integer IS NULL OR l.sala_id = $1)
+        ${confirmadorFilter}
       ORDER BY l.fecha_rellamar ASC
     `, params);
 
@@ -228,17 +247,30 @@ router.post('/', auth, async (req, res) => {
     let estado = 'pendiente';
     if (tip.requiere_fecha_cita) estado = 'confirmada';
 
+    // Auto-asignar confirmador_id si el TMK tiene asignación
+    const tmkIdFinal = rol === 'tmk' ? userId : (req.body.tmk_id || userId);
+    let confirmadorId = null;
+    if (tip.requiere_fecha_cita) {
+      const asigRes = await pool.query(
+        'SELECT confirmador_id FROM asignacion_tmk_confirmador WHERE tmk_id = $1 AND activo = true',
+        [tmkIdFinal]
+      );
+      if (asigRes.rows.length > 0) {
+        confirmadorId = asigRes.rows[0].confirmador_id;
+      }
+    }
+
     const result = await pool.query(`
       INSERT INTO leads (
         persona_id, sala_id, tmk_id, fuente_id, tipificacion_id,
-        patologia, fecha_cita, fecha_rellamar, estado, observacion, outsourcing_id
+        patologia, fecha_cita, fecha_rellamar, estado, observacion, outsourcing_id, confirmador_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING id
     `, [
       persona_id,
       sala_id,
-      rol === 'tmk' ? userId : (req.body.tmk_id || userId),
+      tmkIdFinal,
       fuente_id,
       tipificacion_id,
       patologia,
@@ -247,6 +279,7 @@ router.post('/', auth, async (req, res) => {
       estado,
       observacion,
       outsourcing_id || null,
+      confirmadorId,
     ]);
 
     const newLead = await pool.query(`
@@ -274,6 +307,30 @@ router.patch('/:id', auth, async (req, res) => {
   }
 
   try {
+    // Auto-asignar confirmador_id cuando el estado cambia a 'confirmada' o 'tentativa'
+    // y no se envió confirmador_id explícitamente
+    let autoConfirmadorId = confirmador_id;
+    if (
+      (estado === 'confirmada' || estado === 'tentativa') &&
+      confirmador_id === undefined
+    ) {
+      // Buscar el TMK del lead para resolver su confirmador asignado
+      const leadActual = await pool.query('SELECT tmk_id, confirmador_id FROM leads WHERE id = $1', [req.params.id]);
+      if (leadActual.rows.length > 0) {
+        const tmkDelLead = tmk_id || leadActual.rows[0].tmk_id;
+        // Solo auto-asignar si no tiene confirmador ya
+        if (!leadActual.rows[0].confirmador_id && tmkDelLead) {
+          const asigRes = await pool.query(
+            'SELECT confirmador_id FROM asignacion_tmk_confirmador WHERE tmk_id = $1 AND activo = true',
+            [tmkDelLead]
+          );
+          if (asigRes.rows.length > 0) {
+            autoConfirmadorId = asigRes.rows[0].confirmador_id;
+          }
+        }
+      }
+    }
+
     const updates = [];
     const params = [];
     let idx = 1;
@@ -281,7 +338,7 @@ router.patch('/:id', auth, async (req, res) => {
     if (estado !== undefined)           { updates.push(`estado = $${idx++}`);           params.push(estado); }
     if (fecha_cita !== undefined)       { updates.push(`fecha_cita = $${idx++}`);       params.push(fecha_cita); }
     if (fecha_rellamar !== undefined)   { updates.push(`fecha_rellamar = $${idx++}`);   params.push(fecha_rellamar); }
-    if (confirmador_id !== undefined)   { updates.push(`confirmador_id = $${idx++}`);   params.push(confirmador_id); }
+    if (autoConfirmadorId !== undefined) { updates.push(`confirmador_id = $${idx++}`);  params.push(autoConfirmadorId); }
     if (observacion !== undefined)      { updates.push(`observacion = $${idx++}`);      params.push(observacion); }
     if (tmk_id !== undefined)           { updates.push(`tmk_id = $${idx++}`);           params.push(tmk_id); }
     if (tipificacion_id !== undefined)  { updates.push(`tipificacion_id = $${idx++}`);  params.push(tipificacion_id); }
