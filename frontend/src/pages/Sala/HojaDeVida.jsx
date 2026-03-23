@@ -62,15 +62,22 @@ export default function HojaDeVida() {
       const data = await client.get(`/api/personas/${id}/historia`).then(r => r.data)
       setHistoria(data)
       setForm({
-        tipo_documento:        data.persona.tipo_documento        || '',
-        num_documento:         data.persona.num_documento         || '',
-        estado_civil:          data.persona.estado_civil          || '',
-        genero:                data.persona.genero                || '',
-        direccion:             data.persona.direccion             || '',
-        email:                 data.persona.email                 || '',
+        nombres:               data.persona.nombres               || '',
+        apellidos:             data.persona.apellidos              || '',
+        telefono:              data.persona.telefono               || '',
+        telefono2:             data.persona.telefono2              || '',
+        ciudad:                data.persona.ciudad                 || '',
+        edad:                  data.persona.edad                   || '',
+        patologia:             data.persona.patologia              || '',
+        email:                 data.persona.email                  || '',
+        tipo_documento:        data.persona.tipo_documento         || '',
+        num_documento:         data.persona.num_documento          || '',
+        estado_civil:          data.persona.estado_civil           || '',
+        genero:                data.persona.genero                 || '',
+        direccion:             data.persona.direccion              || '',
         fecha_nacimiento:      data.persona.fecha_nacimiento?.split('T')[0] || '',
-        situacion_laboral:     data.persona.situacion_laboral     || '',
-        tipo_seguridad_social: data.persona.tipo_seguridad_social || '',
+        situacion_laboral:     data.persona.situacion_laboral      || '',
+        tipo_seguridad_social: data.persona.tipo_seguridad_social  || '',
       })
     } catch (err) {
       console.error(err)
@@ -126,7 +133,7 @@ export default function HojaDeVida() {
   }
 
   const { persona, leads, visitas, contratos, tickets } = historia
-  const puedeEditar = ['admin', 'director', 'hostess', 'consultor'].includes(usuario?.rol)
+  const puedeEditar = ['admin', 'director', 'hostess', 'consultor', 'tmk', 'confirmador', 'sac'].includes(usuario?.rol)
 
   const TABS = [
     { key: 'datos',     label: '👤 Datos Personales' },
@@ -201,51 +208,93 @@ export default function HojaDeVida() {
         {tab === 'datos' && (
           <div className="p-6">
 
-            {/* Sección A: Info del lead */}
-            <div className="mb-6">
+            {/* Sección: Info solo lectura (TMK, Fuente) */}
+            <div className="mb-6 p-4 bg-gray-50 rounded-xl">
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                Información del Lead
+                Asignación (solo lectura)
               </h3>
               <div className="grid grid-cols-2 gap-6">
-                <Campo label="Nombres y apellidos" valor={`${persona.nombres} ${persona.apellidos}`} />
-                <Campo label="Teléfono" valor={persona.telefono} />
-                <Campo label="Ciudad" valor={persona.ciudad} />
-                <Campo label="Edad" valor={persona.edad ? `${persona.edad} años` : '—'} />
-                <Campo label="Patología" valor={persona.patologia || '—'} />
                 <Campo label="Fuente del último lead" valor={leads[0]?.fuente_nombre || '—'} />
-                <Campo label="Tipificación" valor={leads[0]?.tipificacion_nombre || '—'} />
                 <Campo label="TMK que llamó" valor={leads[0]?.tmk_nombre || '—'} />
+                <Campo label="Tipificación" valor={leads[0]?.tipificacion_nombre || '—'} />
               </div>
             </div>
 
-            {/* Sección B: Datos del contrato */}
+            {/* Sección: Datos Personales (editables) */}
             <div>
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                  Datos del Contrato
+                  Datos Personales
                 </h3>
                 {puedeEditar && !editando && (
                   <button onClick={() => setEditando(true)} className="btn-secondary btn-sm">
-                    ✏️ Editar
+                    Editar
                   </button>
                 )}
               </div>
 
               {!editando ? (
                 <div className="grid grid-cols-2 gap-6">
-                  <Campo label="Tipo de documento"  valor={persona.tipo_documento        || '—'} />
-                  <Campo label="N° de documento"    valor={persona.num_documento          || '—'} />
-                  <Campo label="Estado civil"        valor={persona.estado_civil           || '—'} />
-                  <Campo label="Género"              valor={persona.genero                 || '—'} />
-                  <Campo label="Email"               valor={persona.email                  || '—'} />
-                  <Campo label="Fecha de nacimiento" valor={persona.fecha_nacimiento?.split('T')[0] || '—'} />
-                  <Campo label="Situación laboral"   valor={persona.situacion_laboral      || '—'} />
-                  <Campo label="Seguridad social"    valor={persona.tipo_seguridad_social  || '—'} />
-                  <Campo label="Dirección"           valor={persona.direccion              || '—'} span />
+                  <Campo label="Nombres"             valor={persona.nombres               || '—'} />
+                  <Campo label="Apellidos"            valor={persona.apellidos              || '—'} />
+                  <Campo label="Teléfono"             valor={persona.telefono               || '—'} />
+                  <Campo label="Teléfono 2"           valor={persona.telefono2              || '—'} />
+                  <Campo label="Ciudad"               valor={persona.ciudad                 || '—'} />
+                  <Campo label="Edad"                 valor={persona.edad ? `${persona.edad} años` : '—'} />
+                  <Campo label="Patología"            valor={persona.patologia              || '—'} />
+                  <Campo label="Email"                valor={persona.email                  || '—'} />
+                  <Campo label="Tipo de documento"    valor={persona.tipo_documento         || '—'} />
+                  <Campo label="N° de documento"      valor={persona.num_documento          || '—'} />
+                  <Campo label="Género"               valor={persona.genero                 || '—'} />
+                  <Campo label="Estado civil"         valor={persona.estado_civil            || '—'} />
+                  <Campo label="Fecha de nacimiento"  valor={persona.fecha_nacimiento?.split('T')[0] || '—'} />
+                  <Campo label="Situación laboral"    valor={persona.situacion_laboral       || '—'} />
+                  <Campo label="Seguridad social"     valor={persona.tipo_seguridad_social   || '—'} />
+                  <Campo label="Dirección"            valor={persona.direccion               || '—'} span />
                 </div>
               ) : (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="label">Nombres</label>
+                      <input className="input" value={form.nombres}
+                        onChange={e => setForm(f => ({ ...f, nombres: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label">Apellidos</label>
+                      <input className="input" value={form.apellidos}
+                        onChange={e => setForm(f => ({ ...f, apellidos: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label">Teléfono</label>
+                      <input className="input" value={form.telefono}
+                        onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label">Teléfono 2</label>
+                      <input className="input" value={form.telefono2}
+                        onChange={e => setForm(f => ({ ...f, telefono2: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label">Ciudad</label>
+                      <input className="input" value={form.ciudad}
+                        onChange={e => setForm(f => ({ ...f, ciudad: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label">Edad</label>
+                      <input type="number" className="input" value={form.edad}
+                        onChange={e => setForm(f => ({ ...f, edad: e.target.value }))} />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="label">Patología</label>
+                      <input className="input" value={form.patologia}
+                        onChange={e => setForm(f => ({ ...f, patologia: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label">Email</label>
+                      <input type="email" className="input" value={form.email}
+                        onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+                    </div>
                     <div>
                       <label className="label">Tipo de documento</label>
                       <select className="input" value={form.tipo_documento}
@@ -260,14 +309,6 @@ export default function HojaDeVida() {
                         onChange={e => setForm(f => ({ ...f, num_documento: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="label">Estado civil</label>
-                      <select className="input" value={form.estado_civil}
-                        onChange={e => setForm(f => ({ ...f, estado_civil: e.target.value }))}>
-                        <option value="">Seleccionar...</option>
-                        {ESTADO_CIVIL.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </div>
-                    <div>
                       <label className="label">Género</label>
                       <select className="input" value={form.genero}
                         onChange={e => setForm(f => ({ ...f, genero: e.target.value }))}>
@@ -276,9 +317,12 @@ export default function HojaDeVida() {
                       </select>
                     </div>
                     <div>
-                      <label className="label">Email</label>
-                      <input type="email" className="input" value={form.email}
-                        onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+                      <label className="label">Estado civil</label>
+                      <select className="input" value={form.estado_civil}
+                        onChange={e => setForm(f => ({ ...f, estado_civil: e.target.value }))}>
+                        <option value="">Seleccionar...</option>
+                        {ESTADO_CIVIL.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
                     </div>
                     <div>
                       <label className="label">Fecha de nacimiento</label>
@@ -322,10 +366,10 @@ export default function HojaDeVida() {
               {!editando && (
                 <div className="mt-6 p-4 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl text-center">
                   <p className="text-gray-500 text-sm">
-                    📄 La generación del contrato SQT/SQM estará disponible en la siguiente versión.
+                    La generacion del contrato SQT/SQM estara disponible en la siguiente version.
                   </p>
                   <button className="btn-secondary btn-sm mt-3 opacity-50 cursor-not-allowed" disabled>
-                    Generar contrato (próximamente)
+                    Generar contrato (proximamente)
                   </button>
                 </div>
               )}

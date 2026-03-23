@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { apiLeads } from '../../api/leads'
 import { apiPersonas } from '../../api/personas'
+import client from '../../api/client'
 import CapturarLead from './CapturarLead'
 
 const ESTADO_BADGE = {
@@ -36,6 +37,9 @@ function LeadDetailDrawer({ leadId, tipificaciones, onClose, onActualizado }) {
   const [guardando, setGuardando] = useState(false)
   const [obsNueva, setObsNueva] = useState('')
   const [tipObs, setTipObs] = useState('')
+  const [editandoPersona, setEditandoPersona] = useState(false)
+  const [formPersona, setFormPersona] = useState({})
+  const [guardandoPersona, setGuardandoPersona] = useState(false)
 
   useEffect(() => {
     if (!leadId) return
@@ -46,6 +50,17 @@ function LeadDetailDrawer({ leadId, tipificaciones, onClose, onActualizado }) {
     ]).then(([leadData, hist]) => {
       setLead(leadData)
       setHistorial(hist)
+      setEditandoPersona(false)
+      setFormPersona({
+        nombres:   leadData.nombres   || '',
+        apellidos: leadData.apellidos  || '',
+        telefono:  leadData.telefono   || '',
+        telefono2: leadData.telefono2  || '',
+        ciudad:    leadData.ciudad     || '',
+        edad:      leadData.edad       || '',
+        email:     leadData.email      || '',
+        patologia: leadData.patologia  || '',
+      })
       setForm({
         estado: leadData.estado || '',
         tipificacion_id: leadData.tipificacion_id || '',
@@ -82,6 +97,23 @@ function LeadDetailDrawer({ leadId, tipificaciones, onClose, onActualizado }) {
       console.error(err)
     } finally {
       setGuardando(false)
+    }
+  }
+
+  async function guardarDatosPersona() {
+    if (!lead?.persona_id) return
+    setGuardandoPersona(true)
+    try {
+      await client.patch(`/api/personas/${lead.persona_id}`, formPersona)
+      // Actualizar lead local con los nuevos datos
+      const updated = { ...lead, ...formPersona }
+      setLead(updated)
+      onActualizado(updated)
+      setEditandoPersona(false)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setGuardandoPersona(false)
     }
   }
 
@@ -156,15 +188,77 @@ function LeadDetailDrawer({ leadId, tipificaciones, onClose, onActualizado }) {
             </div>
           ) : tab === 'detalle' ? (
             <div className="space-y-4">
-              {/* Info readonly */}
+              {/* Datos del cliente — editables */}
               <div className="p-4 bg-blue-50 rounded-xl space-y-2">
-                <h3 className="font-semibold text-blue-800 text-sm">Datos del cliente</h3>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                  <div><span className="text-gray-500">Nombre:</span> <span className="font-medium">{lead.nombres} {lead.apellidos}</span></div>
-                  <div><span className="text-gray-500">Tel:</span> <span className="font-mono">{lead.telefono}</span></div>
-                  <div><span className="text-gray-500">Ciudad:</span> {lead.ciudad || '-'}</div>
-                  <div><span className="text-gray-500">Email:</span> {lead.email || '-'}</div>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-blue-800 text-sm">Datos del cliente</h3>
+                  {!editandoPersona ? (
+                    <button onClick={() => setEditandoPersona(true)} className="text-xs text-blue-600 font-medium hover:underline">
+                      Editar
+                    </button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditandoPersona(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancelar</button>
+                      <button onClick={guardarDatosPersona} disabled={guardandoPersona} className="text-xs text-white bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-lg font-medium">
+                        {guardandoPersona ? 'Guardando...' : 'Guardar'}
+                      </button>
+                    </div>
+                  )}
                 </div>
+                {!editandoPersona ? (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                    <div><span className="text-gray-500">Nombre:</span> <span className="font-medium">{lead.nombres} {lead.apellidos}</span></div>
+                    <div><span className="text-gray-500">Tel:</span> <span className="font-mono">{lead.telefono}</span></div>
+                    <div><span className="text-gray-500">Tel 2:</span> <span className="font-mono">{lead.telefono2 || '-'}</span></div>
+                    <div><span className="text-gray-500">Ciudad:</span> {lead.ciudad || '-'}</div>
+                    <div><span className="text-gray-500">Email:</span> {lead.email || '-'}</div>
+                    <div><span className="text-gray-500">Edad:</span> {lead.edad || '-'}</div>
+                    <div className="col-span-2"><span className="text-gray-500">Patologia:</span> {lead.patologia || '-'}</div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 mt-1">
+                    <div>
+                      <label className="text-xs text-gray-500">Nombres</label>
+                      <input className="input text-sm" value={formPersona.nombres}
+                        onChange={e => setFormPersona(f => ({ ...f, nombres: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Apellidos</label>
+                      <input className="input text-sm" value={formPersona.apellidos}
+                        onChange={e => setFormPersona(f => ({ ...f, apellidos: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Telefono</label>
+                      <input className="input text-sm" value={formPersona.telefono}
+                        onChange={e => setFormPersona(f => ({ ...f, telefono: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Telefono 2</label>
+                      <input className="input text-sm" value={formPersona.telefono2}
+                        onChange={e => setFormPersona(f => ({ ...f, telefono2: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Ciudad</label>
+                      <input className="input text-sm" value={formPersona.ciudad}
+                        onChange={e => setFormPersona(f => ({ ...f, ciudad: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Edad</label>
+                      <input type="number" className="input text-sm" value={formPersona.edad}
+                        onChange={e => setFormPersona(f => ({ ...f, edad: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Email</label>
+                      <input type="email" className="input text-sm" value={formPersona.email}
+                        onChange={e => setFormPersona(f => ({ ...f, email: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Patologia</label>
+                      <input className="input text-sm" value={formPersona.patologia}
+                        onChange={e => setFormPersona(f => ({ ...f, patologia: e.target.value }))} />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Info readonly: TMK + Fuente (no editables) */}

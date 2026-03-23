@@ -126,9 +126,9 @@ router.post('/', auth, async (req, res) => {
 
 // PATCH /api/personas/:id — actualizar datos
 router.patch('/:id', auth, async (req, res) => {
-  const fields = ['nombres','apellidos','telefono','email','ciudad','edad',
+  const fields = ['nombres','apellidos','telefono','telefono2','email','ciudad','edad',
                   'tipo_documento','num_documento','fecha_nacimiento','genero',
-                  'estado_civil','direccion','situacion_laboral','tipo_seguridad_social'];
+                  'patologia','estado_civil','direccion','situacion_laboral','tipo_seguridad_social'];
 
   const updates = [];
   const values = [];
