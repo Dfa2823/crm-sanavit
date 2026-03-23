@@ -415,6 +415,34 @@ function PendientesVista() {
   const [formConfirmar, setFormConfirmar] = useState({ fecha_cita: '', hora_cita: '' })
   const [formReagendar, setFormReagendar] = useState({ fecha_cita: '', hora_cita: '' })
   const [guardando, setGuardando]   = useState(false)
+  const [formDatos, setFormDatos]   = useState({})
+  const [editDatos, setEditDatos]   = useState(false)
+  const [drawerPend, setDrawerPend] = useState(null)
+
+  function initFormDatos(lead) {
+    setFormDatos({
+      nombres: lead.nombres || '', apellidos: lead.apellidos || '',
+      telefono: lead.telefono || '', ciudad: lead.ciudad || '',
+      patologia: lead.patologia || '', edad: lead.edad || '',
+    })
+    setEditDatos(false)
+  }
+
+  async function guardarDatosCliente() {
+    if (!modal?.lead?.persona_id) return
+    try {
+      await client.patch(`/api/personas/${modal.lead.persona_id}`, formDatos)
+      addToast('Datos del cliente actualizados')
+      setEditDatos(false)
+      // actualizar el lead local
+      modal.lead.nombres = formDatos.nombres
+      modal.lead.apellidos = formDatos.apellidos
+      modal.lead.telefono = formDatos.telefono
+      modal.lead.ciudad = formDatos.ciudad
+      modal.lead.patologia = formDatos.patologia
+      modal.lead.edad = formDatos.edad
+    } catch { addToast('Error al guardar datos', 'error') }
+  }
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -512,8 +540,10 @@ function PendientesVista() {
                   return (
                     <tr key={lead.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-800">{lead.nombres} {lead.apellidos}</p>
-                        <p className="text-xs text-gray-400">{lead.ciudad}</p>
+                        <button onClick={() => setDrawerPend(lead)} className="text-left hover:text-teal-600">
+                          <p className="font-medium text-gray-800 hover:text-teal-600">{lead.nombres} {lead.apellidos}</p>
+                          <p className="text-xs text-gray-400">{lead.ciudad}</p>
+                        </button>
                       </td>
                       <td className="px-4 py-3">
                         <a href={`tel:${lead.telefono}`} className="font-mono text-sm text-blue-600 hover:underline">
@@ -529,7 +559,7 @@ function PendientesVista() {
                       <td className="px-4 py-3">
                         <div className="flex gap-2">
                           <button
-                            onClick={() => { setModal({ tipo: 'confirmar', lead }); setFormConfirmar({ fecha_cita: '', hora_cita: '' }) }}
+                            onClick={() => { setModal({ tipo: 'confirmar', lead }); setFormConfirmar({ fecha_cita: '', hora_cita: '' }); initFormDatos(lead) }}
                             className="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium whitespace-nowrap"
                           >
                             Confirmar cita
@@ -539,6 +569,7 @@ function PendientesVista() {
                               const f = lead.fecha_cita ? new Date(lead.fecha_cita).toISOString().split('T')[0] : ''
                               const h = lead.fecha_cita ? new Date(lead.fecha_cita).toTimeString().slice(0,5) : ''
                               setFormReagendar({ fecha_cita: f, hora_cita: h })
+                              initFormDatos(lead)
                               setModal({ tipo: 'reagendar', lead })
                             }}
                             className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg font-medium whitespace-nowrap"
@@ -558,10 +589,42 @@ function PendientesVista() {
 
       {/* Modal Confirmar cita */}
       {modal?.tipo === 'confirmar' && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 my-4">
             <h3 className="font-bold text-gray-800 text-lg mb-1">Confirmar cita</h3>
             <p className="text-sm text-gray-500 mb-4">{modal.lead.nombres} {modal.lead.apellidos} — {modal.lead.telefono}</p>
+
+            {/* Datos del cliente — verificar/corregir */}
+            <div className="border border-gray-100 rounded-xl p-4 mb-4 bg-gray-50/50">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase">Verificar datos del cliente</p>
+                {!editDatos ? (
+                  <button onClick={() => setEditDatos(true)} className="text-xs text-teal-600 hover:underline font-medium">✏️ Corregir</button>
+                ) : (
+                  <button onClick={guardarDatosCliente} className="text-xs text-green-600 hover:underline font-medium">💾 Guardar cambios</button>
+                )}
+              </div>
+              {editDatos ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {[{k:'nombres',l:'Nombres'},{k:'apellidos',l:'Apellidos'},{k:'telefono',l:'Teléfono'},{k:'ciudad',l:'Ciudad'},{k:'edad',l:'Edad'},{k:'patologia',l:'Patología'}].map(({k,l})=>(
+                    <div key={k} className={k==='patologia'?'col-span-2':''}>
+                      <label className="text-xs text-gray-500">{l}</label>
+                      <input value={formDatos[k]||''} onChange={e=>setFormDatos(p=>({...p,[k]:e.target.value}))}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2 text-sm">
+                  <div><span className="text-xs text-gray-400">Nombre</span><p className="text-gray-700 font-medium">{formDatos.nombres} {formDatos.apellidos}</p></div>
+                  <div><span className="text-xs text-gray-400">Teléfono</span><p className="text-gray-700">{formDatos.telefono||'—'}</p></div>
+                  <div><span className="text-xs text-gray-400">Ciudad</span><p className="text-gray-700">{formDatos.ciudad||'—'}</p></div>
+                  <div><span className="text-xs text-gray-400">Edad</span><p className="text-gray-700">{formDatos.edad||'—'}</p></div>
+                  <div className="col-span-2"><span className="text-xs text-gray-400">Patología</span><p className="text-gray-700">{formDatos.patologia||'—'}</p></div>
+                </div>
+              )}
+            </div>
+
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Fecha de la cita *</label>
@@ -590,10 +653,42 @@ function PendientesVista() {
 
       {/* Modal Reagendar cita */}
       {modal?.tipo === 'reagendar' && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 my-4">
             <h3 className="font-bold text-gray-800 text-lg mb-1">Cambiar fecha y hora de cita</h3>
             <p className="text-sm text-gray-500 mb-4">{modal.lead.nombres} {modal.lead.apellidos} — {modal.lead.telefono}</p>
+
+            {/* Datos del cliente — verificar/corregir */}
+            <div className="border border-gray-100 rounded-xl p-4 mb-4 bg-gray-50/50">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase">Verificar datos del cliente</p>
+                {!editDatos ? (
+                  <button onClick={() => setEditDatos(true)} className="text-xs text-teal-600 hover:underline font-medium">✏️ Corregir</button>
+                ) : (
+                  <button onClick={guardarDatosCliente} className="text-xs text-green-600 hover:underline font-medium">💾 Guardar cambios</button>
+                )}
+              </div>
+              {editDatos ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {[{k:'nombres',l:'Nombres'},{k:'apellidos',l:'Apellidos'},{k:'telefono',l:'Teléfono'},{k:'ciudad',l:'Ciudad'},{k:'edad',l:'Edad'},{k:'patologia',l:'Patología'}].map(({k,l})=>(
+                    <div key={k} className={k==='patologia'?'col-span-2':''}>
+                      <label className="text-xs text-gray-500">{l}</label>
+                      <input value={formDatos[k]||''} onChange={e=>setFormDatos(p=>({...p,[k]:e.target.value}))}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2 text-sm">
+                  <div><span className="text-xs text-gray-400">Nombre</span><p className="text-gray-700 font-medium">{formDatos.nombres} {formDatos.apellidos}</p></div>
+                  <div><span className="text-xs text-gray-400">Teléfono</span><p className="text-gray-700">{formDatos.telefono||'—'}</p></div>
+                  <div><span className="text-xs text-gray-400">Ciudad</span><p className="text-gray-700">{formDatos.ciudad||'—'}</p></div>
+                  <div><span className="text-xs text-gray-400">Edad</span><p className="text-gray-700">{formDatos.edad||'—'}</p></div>
+                  <div className="col-span-2"><span className="text-xs text-gray-400">Patología</span><p className="text-gray-700">{formDatos.patologia||'—'}</p></div>
+                </div>
+              )}
+            </div>
+
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 mb-4">
               Al cambiar la fecha/hora, la cita volvera a estado "Tentativa" y debera ser confirmada nuevamente.
             </div>
@@ -621,6 +716,15 @@ function PendientesVista() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Drawer detalle al hacer clic en nombre */}
+      {drawerPend && (
+        <DrawerCita
+          lead={drawerPend}
+          onClose={() => setDrawerPend(null)}
+          onActualizar={() => { setDrawerPend(null); cargar() }}
+        />
       )}
     </>
   )
