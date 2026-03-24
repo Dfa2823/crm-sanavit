@@ -34,15 +34,6 @@ export default function LoginPage() {
     }
   }
 
-  // Acceso rápido para la demo
-  const DEMO_USERS = [
-    { label: 'Director', user: 'director' },
-    { label: 'TMK', user: 'tmk01' },
-    { label: 'Confirmador', user: 'confirmador01' },
-    { label: 'Hostess', user: 'hostess01' },
-    { label: 'Admin', user: 'admin' },
-  ]
-
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
 
@@ -304,25 +295,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          {/* Demo quick access */}
-          <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
-            <p className="text-xs text-gray-400 dark:text-gray-500 text-center mb-3 font-medium uppercase tracking-wider">
-              Demo — Acceso rápido
-            </p>
-            <div className="flex flex-wrap gap-2 justify-center">
-              {DEMO_USERS.map(({ label, user }) => (
-                <button
-                  key={user}
-                  type="button"
-                  onClick={() => setForm({ username: user, password: 'sanavit123' })}
-                  className="px-3.5 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-teal-50 dark:hover:bg-teal-900/30 text-gray-600 dark:text-gray-400 hover:text-teal-700 dark:hover:text-teal-300 rounded-full text-xs font-medium transition-colors border border-transparent hover:border-teal-200 dark:hover:border-teal-800"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Version footer */}
           <p className="text-center text-gray-400 dark:text-gray-600 text-xs mt-8 tracking-wide">
