@@ -431,7 +431,7 @@ router.get('/calidad', auth, async (req, res) => {
 
     const result = await pool.query(`
       SELECT c.id, c.numero_contrato, c.fecha_contrato, c.monto_total, c.estado,
-             p.nombres, p.apellidos, p.telefono,
+             p.id AS persona_id, p.nombres, p.apellidos, p.telefono,
              s.nombre AS sala_nombre, u.nombre AS consultor_nombre,
              CURRENT_DATE - c.fecha_contrato::date AS dias_desde_venta
       FROM contratos c

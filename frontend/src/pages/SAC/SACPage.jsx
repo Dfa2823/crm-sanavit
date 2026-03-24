@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import {
   getTickets, createTicket, updateTicket, getSACStats,
@@ -96,6 +97,7 @@ function Modal({ title, onClose, children }) {
 // TAB 1 — CONTROL DE CALIDAD
 // ═══════════════════════════════════════════════════════════
 function TabControlCalidad() {
+  const navigate = useNavigate()
   const [contratos, setContratos] = useState([])
   const [loading, setLoading]     = useState(true)
   const [modalData, setModalData] = useState(null)  // contrato seleccionado para activar
@@ -166,12 +168,22 @@ function TabControlCalidad() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-center">
-                  <button
-                    onClick={() => { setModalData(c); setObservacion('') }}
-                    className="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-xs font-medium"
-                  >
-                    Activar Venta
-                  </button>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => navigate(`/sala/cliente/${c.persona_id}`)}
+                      className="border border-gray-300 text-gray-600 px-2 py-1.5 rounded-lg hover:bg-gray-100 text-xs font-medium flex items-center gap-1"
+                      title="Ver Hoja de Vida"
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      HdV
+                    </button>
+                    <button
+                      onClick={() => { setModalData(c); setObservacion('') }}
+                      className="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-xs font-medium"
+                    >
+                      Activar Venta
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -857,6 +869,7 @@ function TabPQR({ usuario }) {
 // TAB 3 — FIDELIZACION
 // ═══════════════════════════════════════════════════════════
 function TabFidelizacion() {
+  const navigate = useNavigate()
   const [clientes, setClientes]     = useState([])
   const [loading, setLoading]       = useState(true)
   const [modalData, setModalData]   = useState(null)
@@ -927,10 +940,20 @@ function TabFidelizacion() {
                 </td>
                 <td className="px-4 py-3 text-right font-semibold text-gray-800">${Number(c.monto_total || 0).toFixed(2)}</td>
                 <td className="px-4 py-3 text-center">
-                  <button onClick={() => { setModalData(c); setFechaCita('') }}
-                    className="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 text-xs font-medium">
-                    Agendar Re-visita
-                  </button>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => navigate(`/sala/cliente/${c.persona_id}`)}
+                      className="border border-gray-300 text-gray-600 px-2 py-1.5 rounded-lg hover:bg-gray-100 text-xs font-medium flex items-center gap-1"
+                      title="Ver Hoja de Vida"
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      HdV
+                    </button>
+                    <button onClick={() => { setModalData(c); setFechaCita('') }}
+                      className="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 text-xs font-medium">
+                      Agendar Re-visita
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

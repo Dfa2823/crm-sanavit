@@ -165,6 +165,9 @@ export default function Venta360Page() {
   })
   const [guardandoPago, setGuardandoPago] = useState(false)
   const [errorPago, setErrorPago]         = useState('')
+  const [comprobante, setComprobante]     = useState(null)
+  const [comprobanteNombre, setComprobanteNombre] = useState('')
+  const comprobanteRef = useRef()
   // ── Notas del contrato ─────────────────────────────────────
   const [notasEdit, setNotasEdit]     = useState('')
   const [guardandoNotas, setGuardandoNotas] = useState(false)
@@ -196,6 +199,16 @@ export default function Venta360Page() {
     }
   }, [data])
 
+  function handleComprobanteChange(e) {
+    const file = e.target.files[0]
+    if (!file) { setComprobante(null); setComprobanteNombre(''); return }
+    if (file.size > 5 * 1024 * 1024) { setErrorPago('El comprobante no puede superar 5MB'); return }
+    setComprobanteNombre(file.name)
+    const reader = new FileReader()
+    reader.onload = () => setComprobante(reader.result)
+    reader.readAsDataURL(file)
+  }
+
   async function handleGuardarPago(e) {
     e.preventDefault()
     setErrorPago('')
@@ -212,10 +225,13 @@ export default function Venta360Page() {
         referencia_pago: pago.referencia_pago || undefined,
         observacion: pago.observacion || undefined,
         sala_id: data.contrato.sala_id,
+        comprobante: comprobante || undefined,
       })
       addToast(`Pago de $${Number(pago.valor).toLocaleString('es-EC', { minimumFractionDigits: 2 })} registrado`)
       setMostrarPago(false)
       setPago({ cuota_id: '', valor: '', forma_pago_id: '', fecha_pago: new Date().toISOString().split('T')[0], referencia_pago: '', observacion: '' })
+      setComprobante(null); setComprobanteNombre('')
+      if (comprobanteRef.current) comprobanteRef.current.value = ''
       cargar()
     } catch (err) {
       setErrorPago(err.response?.data?.error || 'Error al registrar el pago')
@@ -283,11 +299,26 @@ export default function Venta360Page() {
   }
 
   async function handleDespachar(productoId) {
-    if (!window.confirm('¿Confirmar despacho de este producto? Esta acción no se puede deshacer.')) return
+    const prod = productos.find(p => p.id === productoId)
+    const cantidadTotal = parseInt(prod?.cantidad) || 1
+    const yaDespachado = parseInt(prod?.cantidad_despachada) || 0
+    const pendiente = cantidadTotal - yaDespachado
+
+    let cantDespachar = pendiente
+    if (pendiente > 1) {
+      const input = window.prompt(`¿Cuantas unidades va a despachar? (pendientes: ${pendiente})`, String(pendiente))
+      if (input === null) return
+      cantDespachar = parseInt(input)
+      if (isNaN(cantDespachar) || cantDespachar <= 0) { addToast('Cantidad invalida', 'error'); return }
+      if (cantDespachar > pendiente) { addToast(`Solo quedan ${pendiente} unidades por despachar`, 'error'); return }
+    } else {
+      if (!window.confirm('¿Confirmar despacho de este producto?')) return
+    }
+
     setDespachando(prev => new Set(prev).add(productoId))
     try {
-      await despacharProducto(productoId)
-      addToast('Producto despachado correctamente')
+      await despacharProducto(productoId, cantDespachar)
+      addToast(`${cantDespachar} unidad(es) despachada(s) correctamente`)
       cargar()
     } catch (err) {
       addToast(err.response?.data?.error || 'Error al registrar el despacho', 'error')
@@ -641,19 +672,35 @@ export default function Venta360Page() {
                       <td className="px-4 py-3 text-right text-gray-600">{fmt(p.precio_unitario)}</td>
                       <td className="px-4 py-3 text-right font-medium">{fmt(p.valor_total)}</td>
                       <td className="px-4 py-3 text-center">
-                        {p.despacho_estado === 'despachado' ? (
-                          <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">✅ Despachado</span>
-                        ) : ['admin', 'director', 'inventario'].includes(usuario?.rol) ? (
-                          <button
-                            disabled={despachando.has(p.id)}
-                            onClick={() => handleDespachar(p.id)}
-                            className="text-xs px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-full disabled:opacity-60 font-medium"
-                          >
-                            {despachando.has(p.id) ? '...' : '📦 Despachar'}
-                          </button>
-                        ) : (
-                          <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">⏳ Pendiente</span>
-                        )}
+                        {(() => {
+                          const cantTotal = parseInt(p.cantidad) || 1
+                          const cantDesp = parseInt(p.cantidad_despachada) || 0
+                          const pendiente = cantTotal - cantDesp
+                          if (p.despacho_estado === 'despachado' || pendiente <= 0) {
+                            return <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">✅ Despachado ({cantDesp}/{cantTotal})</span>
+                          }
+                          if (p.despacho_estado === 'parcial') {
+                            return (
+                              <div className="flex flex-col items-center gap-1">
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Parcial {cantDesp}/{cantTotal}</span>
+                                {['admin', 'director', 'inventario'].includes(usuario?.rol) && (
+                                  <button disabled={despachando.has(p.id)} onClick={() => handleDespachar(p.id)}
+                                    className="text-xs px-2 py-0.5 bg-teal-600 hover:bg-teal-700 text-white rounded-full disabled:opacity-60 font-medium">
+                                    {despachando.has(p.id) ? '...' : `📦 Despachar (${pendiente})`}
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          }
+                          return ['admin', 'director', 'inventario'].includes(usuario?.rol) ? (
+                            <button disabled={despachando.has(p.id)} onClick={() => handleDespachar(p.id)}
+                              className="text-xs px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-full disabled:opacity-60 font-medium">
+                              {despachando.has(p.id) ? '...' : `📦 Despachar${cantTotal > 1 ? ` (${cantTotal})` : ''}`}
+                            </button>
+                          ) : (
+                            <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">⏳ Pendiente</span>
+                          )
+                        })()}
                       </td>
                     </tr>
                   ))}
@@ -926,6 +973,25 @@ export default function Venta360Page() {
                   placeholder="Notas sobre el pago..."
                   value={pago.observacion}
                   onChange={e => setPago(p => ({ ...p, observacion: e.target.value }))} />
+              </div>
+
+              {/* Comprobante de pago */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Comprobante de pago <span className="font-normal text-gray-400">(PDF o imagen, max 5MB)</span></label>
+                <div className="flex items-center gap-2">
+                  <label className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer border transition-colors
+                    ${comprobante ? 'bg-green-50 border-green-300 text-green-700' : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'}`}>
+                    {comprobante ? '✅ Archivo adjunto' : '📎 Adjuntar comprobante'}
+                    <input ref={comprobanteRef} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png" onChange={handleComprobanteChange} />
+                  </label>
+                  {comprobanteNombre && (
+                    <span className="text-xs text-gray-500 truncate max-w-[180px]">{comprobanteNombre}</span>
+                  )}
+                  {comprobante && (
+                    <button type="button" onClick={() => { setComprobante(null); setComprobanteNombre(''); if (comprobanteRef.current) comprobanteRef.current.value = '' }}
+                      className="text-red-400 hover:text-red-600 text-xs">Quitar</button>
+                  )}
+                </div>
               </div>
 
               {errorPago && (

@@ -147,15 +147,30 @@ export default function HojaDeVida() {
   })
 
   async function handleDespachar(vpId) {
-    if (!confirm('Confirmar despacho de este producto?')) return
+    const prod = productos.find(p => p.id === vpId)
+    const cantidadTotal = parseInt(prod?.cantidad) || 1
+    const yaDespachado = parseInt(prod?.cantidad_despachada) || 0
+    const pendiente = cantidadTotal - yaDespachado
+
+    let cantDespachar = pendiente
+    if (pendiente > 1) {
+      const input = window.prompt(`¿Cuantas unidades va a despachar? (pendientes: ${pendiente})`, String(pendiente))
+      if (input === null) return
+      cantDespachar = parseInt(input)
+      if (isNaN(cantDespachar) || cantDespachar <= 0) { addToast('Cantidad invalida', 'error'); return }
+      if (cantDespachar > pendiente) { addToast(`Solo quedan ${pendiente} unidades por despachar`, 'error'); return }
+    } else {
+      if (!confirm('Confirmar despacho de este producto?')) return
+    }
+
     setDespachando(vpId)
     try {
-      await client.patch(`/api/ventas/productos/${vpId}/despachar`)
-      addToast('Producto despachado correctamente')
+      await client.patch(`/api/ventas/productos/${vpId}/despachar`, { cantidad_despachada: cantDespachar })
+      addToast(`${cantDespachar} unidad(es) despachada(s) correctamente`)
       cargar()
     } catch (err) {
       console.error(err)
-      addToast('Error al despachar producto')
+      addToast(err.response?.data?.error || 'Error al despachar producto', 'error')
     } finally {
       setDespachando(null)
     }
@@ -582,13 +597,17 @@ export default function HojaDeVida() {
                           </div>
                           <div className="space-y-1.5">
                             {prods.map(p => {
-                              const estaDespachado = p.despacho_estado === 'despachado'
+                              const cantTotal = parseInt(p.cantidad) || 1
+                              const cantDesp = parseInt(p.cantidad_despachada) || 0
+                              const pendiente = cantTotal - cantDesp
+                              const estaDespachado = p.despacho_estado === 'despachado' || pendiente <= 0
+                              const esParcial = p.despacho_estado === 'parcial' && pendiente > 0
                               return (
                                 <div key={p.id} className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
-                                  estaDespachado ? 'bg-green-50' : 'bg-yellow-50'
+                                  estaDespachado ? 'bg-green-50' : esParcial ? 'bg-blue-50' : 'bg-yellow-50'
                                 }`}>
                                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    <span className="flex-shrink-0">{estaDespachado ? '\u2705' : '\u23F3'}</span>
+                                    <span className="flex-shrink-0">{estaDespachado ? '\u2705' : esParcial ? '\u{1F4E6}' : '\u23F3'}</span>
                                     <div className="min-w-0">
                                       <span className="font-medium text-gray-800 truncate block">
                                         {p.producto_nombre}
@@ -597,7 +616,9 @@ export default function HojaDeVida() {
                                         <span className="text-xs text-gray-400">{p.codigo}</span>
                                       )}
                                     </div>
-                                    <span className="text-xs text-gray-500 flex-shrink-0">x{p.cantidad}</span>
+                                    <span className="text-xs text-gray-500 flex-shrink-0">
+                                      {cantTotal > 1 ? `${cantDesp}/${cantTotal}` : `x${cantTotal}`}
+                                    </span>
                                   </div>
                                   {!estaDespachado && puedeDespachar && (
                                     <button
@@ -605,7 +626,7 @@ export default function HojaDeVida() {
                                       disabled={despachando === p.id}
                                       className="ml-2 px-3 py-1 text-xs font-medium rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-colors flex-shrink-0"
                                     >
-                                      {despachando === p.id ? 'Despachando...' : 'Despachar'}
+                                      {despachando === p.id ? 'Despachando...' : `Despachar${pendiente > 1 ? ` (${pendiente})` : ''}`}
                                     </button>
                                   )}
                                   {estaDespachado && (

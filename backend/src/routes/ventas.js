@@ -39,6 +39,10 @@ async function initMigrations() {
       ALTER TABLE recibos ADD COLUMN IF NOT EXISTS soporte_url TEXT;
       ALTER TABLE recibos ADD COLUMN IF NOT EXISTS soporte_nombre VARCHAR(255);
     `);
+    // Despacho parcial: cantidad_despachada en venta_productos
+    await pool.query(`
+      ALTER TABLE venta_productos ADD COLUMN IF NOT EXISTS cantidad_despachada INTEGER DEFAULT 0;
+    `);
     // Intereses en contratos y cuotas
     await pool.query(`
       ALTER TABLE contratos ADD COLUMN IF NOT EXISTS tasa_interes NUMERIC(5,2) DEFAULT 0;
@@ -549,18 +553,39 @@ router.patch('/:id/estado', auth, async (req, res) => {
   }
 });
 
-// PATCH /api/ventas/productos/:id/despachar — marcar línea de producto como despachada
+// PATCH /api/ventas/productos/:id/despachar — marcar línea de producto como despachada (parcial o total)
 router.patch('/productos/:id/despachar', auth, async (req, res) => {
   const { rol } = req.user;
   if (!['admin', 'director', 'inventario', 'hostess'].includes(rol)) {
     return res.status(403).json({ error: 'Sin permiso para registrar despachos' });
   }
   try {
+    const { cantidad_despachada } = req.body;
+
+    // Obtener el item actual
+    const item = await pool.query('SELECT * FROM venta_productos WHERE id = $1', [req.params.id]);
+    if (item.rows.length === 0) return res.status(404).json({ error: 'Ítem no encontrado' });
+
+    const vp = item.rows[0];
+    const cantidadTotal = parseInt(vp.cantidad) || 1;
+    const yaDespachadoPrev = parseInt(vp.cantidad_despachada) || 0;
+
+    // Si se envía cantidad_despachada, sumar al acumulado; si no, despachar todo
+    const cantDespachar = cantidad_despachada !== undefined ? parseInt(cantidad_despachada) : (cantidadTotal - yaDespachadoPrev);
+
+    if (cantDespachar <= 0) return res.status(400).json({ error: 'La cantidad a despachar debe ser mayor a 0' });
+    if (yaDespachadoPrev + cantDespachar > cantidadTotal) {
+      return res.status(400).json({ error: `Solo quedan ${cantidadTotal - yaDespachadoPrev} unidades por despachar` });
+    }
+
+    const nuevaCantDespachada = yaDespachadoPrev + cantDespachar;
+    const nuevoEstado = nuevaCantDespachada >= cantidadTotal ? 'despachado' : 'parcial';
+
     const result = await pool.query(
-      `UPDATE venta_productos SET despacho_estado = 'despachado' WHERE id = $1 RETURNING *`,
-      [req.params.id]
+      `UPDATE venta_productos SET cantidad_despachada = $1, despacho_estado = $2 WHERE id = $3 RETURNING *`,
+      [nuevaCantDespachada, nuevoEstado, req.params.id]
     );
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Ítem no encontrado' });
+
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
