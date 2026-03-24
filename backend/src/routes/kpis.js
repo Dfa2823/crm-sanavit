@@ -438,16 +438,16 @@ router.get('/analytics', auth, async (req, res) => {
       return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
     }
 
-    // ── Cobros proyectados ──
+    // ── Cobros proyectados (cuotas pendientes próximas) ──
     const cobrosRes = await pool.query(`
       SELECT
-        COUNT(*) FILTER (WHERE r.fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days') AS cuotas_7,
-        COALESCE(SUM(r.valor) FILTER (WHERE r.fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'), 0) AS monto_7,
-        COUNT(*) FILTER (WHERE r.fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days') AS cuotas_30,
-        COALESCE(SUM(r.valor) FILTER (WHERE r.fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'), 0) AS monto_30
-      FROM recibos r
-      JOIN contratos c ON r.contrato_id = c.id
-      WHERE r.estado IN ('pendiente','activo')
+        COUNT(*) FILTER (WHERE cu.fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days') AS cuotas_7,
+        COALESCE(SUM(cu.monto_esperado - cu.monto_pagado) FILTER (WHERE cu.fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'), 0) AS monto_7,
+        COUNT(*) FILTER (WHERE cu.fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days') AS cuotas_30,
+        COALESCE(SUM(cu.monto_esperado - cu.monto_pagado) FILTER (WHERE cu.fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'), 0) AS monto_30
+      FROM cuotas cu
+      JOIN contratos c ON cu.contrato_id = c.id
+      WHERE cu.estado IN ('pendiente','vencido','parcial')
         AND ($1::integer IS NULL OR c.sala_id = $1)
     `, [salaParam]);
 
