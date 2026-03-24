@@ -293,16 +293,9 @@ function LeadDetailDrawer({ leadId, tipificaciones, onClose, onActualizado }) {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="label">Estado</label>
-                    <select
-                      className="input"
-                      value={form.estado}
-                      disabled={!editando}
-                      onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}
-                    >
-                      {Object.entries(ESTADO_LABEL).map(([k, v]) => (
-                        <option key={k} value={k}>{v}</option>
-                      ))}
-                    </select>
+                    <div className="input bg-gray-50 text-gray-600 cursor-not-allowed">
+                      {ESTADO_LABEL[form.estado] || form.estado || '—'}
+                    </div>
                   </div>
                   <div>
                     <label className="label">Tipificacion</label>
