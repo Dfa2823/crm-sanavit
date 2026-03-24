@@ -364,13 +364,18 @@ function Section({ title, subtitle, badge, children }) {
 }
 
 function LiveDot({ segsDesde }) {
+  let texto = ''
+  if (segsDesde !== null) {
+    if (segsDesde < 5)        texto = 'justo ahora'
+    else if (segsDesde < 60)  texto = `hace ${segsDesde}s`
+    else if (segsDesde < 3600) texto = `hace ${Math.floor(segsDesde / 60)} min`
+    else                       texto = `hace ${Math.floor(segsDesde / 3600)}h`
+  }
   return (
     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 rounded-full border border-emerald-100">
       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
       <span className="text-xs font-medium text-emerald-700">En vivo</span>
-      {segsDesde !== null && (
-        <span className="text-xs text-emerald-500/70">hace {segsDesde}s</span>
-      )}
+      {texto && <span className="text-xs text-emerald-500/70">{texto}</span>}
     </span>
   )
 }

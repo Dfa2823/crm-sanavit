@@ -2,11 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { getComisiones, getComisionDetalle } from '../../api/comisiones'
 import { getSalas } from '../../api/admin'
-
-function fmt(v) {
-  if (v === null || v === undefined) return '—'
-  return `$${parseFloat(v).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
+import { fmt } from '../../utils/formatCurrency'
 
 function Spinner() {
   return (

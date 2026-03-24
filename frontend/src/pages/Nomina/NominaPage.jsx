@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { getNomina, calcularNomina, updateNomina, getReporteNomina, getReporteValidacion, notificarNomina, getAsistenciaDia, registrarAsistenciaBulk, getResumenMensual, suspenderComisionNomina, reactivarComisionNomina } from '../../api/nomina'
 import { getSalas } from '../../api/admin'
 import { useAuth } from '../../context/AuthContext'
-
-const fmt = (n) => Number(n || 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+import { fmtSinSigno as fmt } from '../../utils/formatCurrency'
 
 const ESTADO_COLORS = {
   borrador:  'bg-gray-100 text-gray-600',

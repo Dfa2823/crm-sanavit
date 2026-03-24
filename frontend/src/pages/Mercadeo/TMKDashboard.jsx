@@ -5,6 +5,7 @@ import { apiLeads } from '../../api/leads'
 import { apiPersonas } from '../../api/personas'
 import client from '../../api/client'
 import CapturarLead from './CapturarLead'
+import LastUpdated from '../../components/UI/LastUpdated'
 
 const ESTADO_BADGE = {
   pendiente:   'badge-gray',
@@ -433,6 +434,7 @@ export default function TMKDashboard() {
   const [fechaRellamar, setFechaRellamar] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('todos')
   const [leadDetalle, setLeadDetalle] = useState(null) // lead.id para drawer detalle
+  const [lastUpdated, setLastUpdated] = useState(null)
 
   const hoy = new Date().toISOString().split('T')[0]
 
@@ -443,6 +445,7 @@ export default function TMKDashboard() {
       if (usuario.rol === 'tmk') params.tmk_id = usuario.id
       const res = await apiLeads.listar(params)
       setLeads(Array.isArray(res) ? res : res.data || [])
+      setLastUpdated(new Date())
     } catch (err) {
       console.error(err)
     } finally {
@@ -606,6 +609,7 @@ export default function TMKDashboard() {
         >
           + Nuevo Lead
         </button>
+        <LastUpdated timestamp={lastUpdated} />
       </div>
 
       {/* Tabla de leads */}
@@ -678,7 +682,7 @@ export default function TMKDashboard() {
                           rel="noopener noreferrer"
                           onClick={e => e.stopPropagation()}
                           className="ml-1.5 text-green-500 hover:text-green-600"
-                          title="Abrir WhatsApp"
+                          title="Enviar WhatsApp al cliente"
                         >WA</a>
                       )}
                     </td>
@@ -767,7 +771,7 @@ export default function TMKDashboard() {
                             navigate(`/sala/cliente/${lead.persona_id}`)
                           }}
                           className="text-blue-500 hover:text-blue-700 text-xs font-medium"
-                          title="Hoja de vida"
+                          title="Ver hoja de vida del cliente"
                         >
                           HdV
                         </button>

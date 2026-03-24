@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import Breadcrumb from '../../components/UI/Breadcrumb'
 import { getVenta360, updateEstadoVenta, updateNotasVenta, despacharProducto, anularVenta, condonarIntereses } from '../../api/ventas'
 import { createRecibo, anularRecibo } from '../../api/recibos'
 import { getFormasPago } from '../../api/admin'
@@ -120,10 +121,7 @@ function TabDocumentos({ contratoId }) {
   )
 }
 
-function fmt(val) {
-  if (val === null || val === undefined) return '—'
-  return `$${Number(val).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
+import { fmt } from '../../utils/formatCurrency'
 
 function Spinner() {
   return (
@@ -356,6 +354,12 @@ export default function Venta360Page() {
   return (
     <>
     <div className="p-6 space-y-6">
+      {/* Breadcrumb */}
+      <Breadcrumb items={[
+        { label: 'Ventas', to: '/ventas' },
+        { label: `Contrato ${contrato.numero_contrato || ''}` },
+      ]} />
+
       {/* Header */}
       <div className="flex items-center gap-4">
         <button onClick={() => navigate(-1)} className="text-gray-400 hover:text-gray-600 text-lg">←</button>

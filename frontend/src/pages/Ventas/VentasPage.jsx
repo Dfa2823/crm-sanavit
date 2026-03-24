@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getVentas } from '../../api/ventas'
 import { getSalas } from '../../api/admin'
 import { useAuth } from '../../context/AuthContext'
+import { fmt } from '../../utils/formatCurrency'
 
 const ESTADO_CONFIG = {
   activo:     { label: 'Activo',     cls: 'badge-green' },
@@ -15,11 +16,6 @@ const ESTADO_CONFIG = {
 function BadgeEstado({ estado }) {
   const cfg = ESTADO_CONFIG[estado] || { label: estado || '—', cls: 'badge-gray' }
   return <span className={`badge ${cfg.cls}`}>{cfg.label}</span>
-}
-
-function fmt(val) {
-  if (val === null || val === undefined) return '—'
-  return `$${Number(val).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 function Spinner() {
@@ -234,6 +230,7 @@ export default function VentasPage() {
                           <button
                             onClick={e => { e.stopPropagation(); navigate(`/ventas/${v.id}`) }}
                             className="text-teal-600 hover:text-teal-800 text-xs font-medium"
+                            title="Ver detalle del contrato"
                           >
                             Ver →
                           </button>

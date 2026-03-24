@@ -4,11 +4,9 @@ import { getCartera, getCarteraResumen, getTipificaciones, registrarGestion, get
 import { getSalas, getFormasPago } from '../../api/admin'
 import { createRecibo } from '../../api/recibos'
 
+import { fmt } from '../../utils/formatCurrency'
+
 // ─────────────────── Helpers ─────────────────────────────────────────────────
-function fmt(val) {
-  if (val === null || val === undefined) return '—'
-  return `$${Number(val).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
 
 function fmtFecha(val) {
   if (!val) return '—'

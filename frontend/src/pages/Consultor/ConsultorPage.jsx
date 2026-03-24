@@ -2,11 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { getMisClientes, getResumen, getComisiones } from '../../api/consultor'
-
-function fmt(val) {
-  if (!val && val !== 0) return '$0.00'
-  return `$${Number(val).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
+import { fmt } from '../../utils/formatCurrency'
 
 function Spinner() {
   return (
@@ -263,6 +259,7 @@ export default function ConsultorPage() {
                               <button
                                 onClick={() => navigate(`/ventas/${c.id}`)}
                                 className="text-teal-600 hover:text-teal-800 text-xs font-medium"
+                                title="Ver detalle del contrato"
                               >
                                 Ver
                               </button>
@@ -272,7 +269,7 @@ export default function ConsultorPage() {
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-green-500 hover:text-green-700 text-xs"
-                                  title="WhatsApp"
+                                  title="Enviar WhatsApp al cliente"
                                 >
                                   WA
                                 </a>

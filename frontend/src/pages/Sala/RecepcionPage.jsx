@@ -5,6 +5,7 @@ import { apiPersonas } from '../../api/personas'
 import { apiUsuarios } from '../../api/usuarios'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
+import LastUpdated from '../../components/UI/LastUpdated'
 
 function exportarManifiestoPDF(citas, hoyStr) {
   if (!citas.length) return
@@ -123,6 +124,7 @@ export default function RecepcionPage() {
     acompanante: '',
   })
   const [guardando, setGuardando] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState(null)
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -133,6 +135,7 @@ export default function RecepcionPage() {
       ])
       setCitas(citasHoy)
       setConsultores(listaCons)
+      setLastUpdated(new Date())
     } finally {
       setLoading(false)
     }
@@ -245,6 +248,7 @@ export default function RecepcionPage() {
           <div>
             <h2 className="font-semibold text-gray-700">Citas de hoy</h2>
             <p className="text-xs text-gray-400 capitalize">{hoyStr}</p>
+            <LastUpdated timestamp={lastUpdated} />
           </div>
           <div className="flex gap-2">
             <button onClick={cargar} className="btn-secondary btn-sm">🔄 Actualizar</button>
@@ -339,6 +343,7 @@ export default function RecepcionPage() {
                               })
                             }}
                             className="btn-primary btn-sm whitespace-nowrap"
+                            title="Calificar cita del cliente"
                           >
                             Calificar
                           </button>
@@ -354,6 +359,7 @@ export default function RecepcionPage() {
                               })
                             }}
                             className="btn btn-secondary btn-sm whitespace-nowrap"
+                            title="Editar calificacion de cita"
                           >
                             Editar
                           </button>
@@ -361,6 +367,7 @@ export default function RecepcionPage() {
                         <button
                           onClick={() => navigate(`/sala/cliente/${cita.persona_id}`)}
                           className="btn-secondary btn-sm"
+                          title="Ver hoja de vida del cliente"
                         >
                           Ver →
                         </button>

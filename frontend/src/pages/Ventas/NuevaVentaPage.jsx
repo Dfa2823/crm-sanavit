@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import Breadcrumb from '../../components/UI/Breadcrumb'
 import { createVenta } from '../../api/ventas'
 import { apiPersonas } from '../../api/personas'
 import { getProductos } from '../../api/productos'
@@ -8,12 +9,8 @@ import { getSalas, getFormasPago } from '../../api/admin'
 import { apiUsuarios } from '../../api/usuarios'
 import { getEmpresas } from '../../api/outsourcing'
 import client from '../../api/client'
+import { fmt } from '../../utils/formatCurrency'
 // Firma digital eliminada — en Ecuador se firma con tinta azul
-
-function fmt(val) {
-  if (!val && val !== 0) return '$0.00'
-  return `$${Number(val).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
 
 export default function NuevaVentaPage() {
   const { usuario } = useAuth()
@@ -62,6 +59,35 @@ export default function NuevaVentaPage() {
   // ── Estado UI ─────────────────────────────────────────────
   const [guardando, setGuardando] = useState(false)
   const [error, setError]         = useState('')
+
+  // ── Detectar cambios sin guardar ────────────────────────
+  const tieneCAmbios = useCallback(() => {
+    return !!(
+      personaEncontrada ||
+      nuevaPersona.nombres || nuevaPersona.apellidos ||
+      carrito.length > 0 ||
+      plan.monto_total ||
+      contrato.observaciones
+    )
+  }, [personaEncontrada, nuevaPersona, carrito, plan.monto_total, contrato.observaciones])
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (tieneCAmbios()) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [tieneCAmbios])
+
+  function navegarConConfirmacion(ruta) {
+    if (tieneCAmbios()) {
+      if (!window.confirm('¿Seguro que deseas salir? Los datos no guardados se perderán.')) return
+    }
+    navigate(ruta)
+  }
 
   // ── Cargar config al montar ───────────────────────────────
   useEffect(() => {
@@ -257,9 +283,18 @@ export default function NuevaVentaPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
+      {/* Breadcrumb */}
+      <Breadcrumb
+        items={[
+          { label: 'Ventas', to: '/ventas' },
+          { label: 'Nueva Venta' },
+        ]}
+        onNavigate={navegarConConfirmacion}
+      />
+
       {/* Header */}
       <div className="flex items-center gap-4">
-        <button onClick={() => navigate('/ventas')} className="text-gray-400 hover:text-gray-600 text-lg">←</button>
+        <button onClick={() => navegarConConfirmacion('/ventas')} className="text-gray-400 hover:text-gray-600 text-lg">←</button>
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Nueva Venta</h1>
           <p className="text-sm text-gray-500">Registrar nuevo contrato</p>
