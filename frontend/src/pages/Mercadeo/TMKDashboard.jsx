@@ -78,8 +78,7 @@ function LeadDetailDrawer({ leadId, tipificaciones, onClose, onActualizado }) {
     setGuardando(true)
     try {
       const payload = {}
-      // Solo enviar campos que cambiaron (excepto tmk_id y fuente_id que son readonly)
-      if (form.estado !== (lead.estado || '')) payload.estado = form.estado
+      // Solo enviar campos que cambiaron (estado, tmk_id y fuente_id son readonly para TMK)
       if (String(form.tipificacion_id) !== String(lead.tipificacion_id || '')) payload.tipificacion_id = form.tipificacion_id || null
       if (form.patologia !== (lead.patologia || '')) payload.patologia = form.patologia
       if (form.fecha_cita !== (lead.fecha_cita ? lead.fecha_cita.slice(0, 16) : '')) payload.fecha_cita = form.fecha_cita || null
