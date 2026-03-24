@@ -4,7 +4,8 @@ import { useAuth } from '../../context/AuthContext'
 import { createVenta } from '../../api/ventas'
 import { apiPersonas } from '../../api/personas'
 import { getProductos } from '../../api/productos'
-import { getSalas, getUsuarios, getFormasPago } from '../../api/admin'
+import { getSalas, getFormasPago } from '../../api/admin'
+import { apiUsuarios } from '../../api/usuarios'
 import { getEmpresas } from '../../api/outsourcing'
 import client from '../../api/client'
 // Firma digital eliminada — en Ecuador se firma con tinta azul
@@ -69,7 +70,7 @@ export default function NuevaVentaPage() {
       setSalas(Array.isArray(s) ? s : [])
       if (usuario?.sala_id) setContrato(c => ({ ...c, sala_id: String(usuario.sala_id) }))
     }).catch(() => {})
-    getUsuarios().then(u => setUsuarios(Array.isArray(u) ? u : [])).catch(() => {})
+    apiUsuarios.listar().then(u => setUsuarios(Array.isArray(u) ? u : [])).catch(() => {})
     getFormasPago().then(fp => setFormasPago(Array.isArray(fp) ? fp.filter(f => f.activo) : [])).catch(() => {})
     getEmpresas().then(emp => setEmpresas(Array.isArray(emp) ? emp : [])).catch(() => {})
     getProductos().then(prod => setCatalogo(Array.isArray(prod) ? prod.filter(p => p.activo) : [])).catch(() => {})

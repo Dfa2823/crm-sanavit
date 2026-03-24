@@ -441,9 +441,10 @@ router.patch('/:id', auth, async (req, res) => {
   }
 
   try {
-    // Si se cambió la tipificación a una que requiere cita y no se envió estado,
-    // auto-cambiar estado a 'tentativa' para que caiga al confirmador
-    let estadoFinal = estado;
+    // TMK y outsourcing NO pueden cambiar el estado directamente
+    // Solo pueden: tipificacion, observacion, fecha_rellamar, patologia
+    const rolesNoEstado = ['tmk', 'outsourcing'];
+    let estadoFinal = rolesNoEstado.includes(req.user.rol) ? undefined : estado;
     if (tipificacion_id !== undefined && estado === undefined) {
       const tipCheck = await pool.query('SELECT requiere_fecha_cita FROM tipificaciones WHERE id = $1', [tipificacion_id]);
       if (tipCheck.rows.length > 0 && tipCheck.rows[0].requiere_fecha_cita) {
