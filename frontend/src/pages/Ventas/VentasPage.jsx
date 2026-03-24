@@ -64,7 +64,7 @@ export default function VentasPage() {
         getVentas({ sala_id: salaId || undefined, estado: estado || undefined }),
         getSalas(),
       ])
-      setVentas(Array.isArray(dataVentas) ? dataVentas : [])
+      setVentas(Array.isArray(dataVentas) ? dataVentas : dataVentas?.data || [])
       setSalas(Array.isArray(dataSalas) ? dataSalas : [])
     } catch (err) {
       setError('Error al cargar ventas: ' + (err.response?.data?.error || err.message))

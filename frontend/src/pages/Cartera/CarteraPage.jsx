@@ -740,7 +740,7 @@ export default function CarteraPage() {
         getSalas(),
         getTipificaciones(),
       ])
-      setCuotas(Array.isArray(dataCuotas) ? dataCuotas : [])
+      setCuotas(Array.isArray(dataCuotas) ? dataCuotas : dataCuotas?.data || [])
       setResumen(dataResumen || null)
       setSalas(Array.isArray(dataSalas) ? dataSalas : [])
       setTipificaciones(Array.isArray(dataTipif) ? dataTipif : [])

@@ -449,8 +449,8 @@ export default function TMKDashboard() {
     try {
       const params = {}
       if (usuario.rol === 'tmk') params.tmk_id = usuario.id
-      const data = await apiLeads.listar(params)
-      setLeads(data)
+      const res = await apiLeads.listar(params)
+      setLeads(Array.isArray(res) ? res : res.data || [])
     } catch (err) {
       console.error(err)
     } finally {
