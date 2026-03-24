@@ -433,18 +433,18 @@ router.get('/calidad', auth, async (req, res) => {
       SELECT c.id, c.numero_contrato, c.fecha_contrato, c.monto_total, c.estado,
              p.id AS persona_id, p.nombres, p.apellidos, p.telefono,
              s.nombre AS sala_nombre, u.nombre AS consultor_nombre,
-             CURRENT_DATE - c.fecha_contrato::date AS dias_desde_venta
+             CURRENT_DATE - c.fecha_contrato::date AS dias_desde_venta,
+             sa.observacion AS sac_observacion,
+             sa.created_at AS sac_activado_en,
+             CASE WHEN sa.id IS NOT NULL THEN true ELSE false END AS activado
       FROM contratos c
       JOIN personas p ON c.persona_id = p.id
       LEFT JOIN salas s ON c.sala_id = s.id
       LEFT JOIN usuarios u ON c.consultor_id = u.id
+      LEFT JOIN sac_activaciones sa ON sa.contrato_id = c.id
       WHERE c.fecha_contrato >= CURRENT_DATE - INTERVAL '15 days'
-        AND NOT EXISTS (
-          SELECT 1 FROM sac_activaciones sa
-          WHERE sa.contrato_id = c.id
-        )
         ${salaFilter}
-      ORDER BY c.fecha_contrato DESC
+      ORDER BY sa.id IS NULL DESC, c.fecha_contrato DESC
       LIMIT 100
     `, params);
 
@@ -586,18 +586,22 @@ router.get('/fidelizacion', auth, async (req, res) => {
 router.post('/fidelizacion/:contrato_id/agendar', auth, async (req, res) => {
   const contratoId = req.params.contrato_id;
   const { id: userId, sala_id: userSalaId } = req.user;
-  const { fecha_cita } = req.body;
+  const { fecha_cita, observacion } = req.body;
   try {
     // Obtener persona_id del contrato
     const cRes = await pool.query('SELECT persona_id FROM contratos WHERE id = $1', [contratoId]);
     if (cRes.rows.length === 0) return res.status(404).json({ error: 'Contrato no encontrado' });
     const personaId = cRes.rows[0].persona_id;
 
+    const obsText = observacion?.trim()
+      ? `Re-visita SAC: ${observacion.trim()}`
+      : 'Re-visita generada desde modulo de fidelizacion SAC';
+
     const result = await pool.query(`
       INSERT INTO leads (persona_id, sala_id, tmk_id, fuente_id, tipificacion_id, estado, fecha_cita, observacion)
-      VALUES ($1, $2, $3, 1, 2, 'confirmada', $4, 'Re-visita generada desde modulo de fidelizacion SAC')
+      VALUES ($1, $2, $3, 1, 2, 'confirmada', $4, $5)
       RETURNING id
-    `, [personaId, userSalaId || 1, userId, fecha_cita || null]);
+    `, [personaId, userSalaId || 1, userId, fecha_cita || null, obsText]);
 
     res.json({ ok: true, lead_id: result.rows[0].id });
   } catch (err) {

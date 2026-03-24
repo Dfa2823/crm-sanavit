@@ -292,7 +292,7 @@ router.get('/hoy', auth, async (req, res) => {
          WHERE created_at >= CURRENT_DATE AND created_at < (CURRENT_DATE + INTERVAL '1 day')
            AND ($1::integer IS NULL OR sala_id = $1)) AS leads_hoy,
         (SELECT COUNT(*) FROM leads
-         WHERE fecha_cita >= (CURRENT_DATE + INTERVAL '1 day') AND fecha_cita < (CURRENT_DATE + INTERVAL '2 days')
+         WHERE (fecha_cita AT TIME ZONE 'America/Guayaquil')::date = CURRENT_DATE + 1
            AND ($1::integer IS NULL OR sala_id = $1)
            AND estado IN ('confirmada','tentativa')) AS citas_manana,
         (SELECT COUNT(*) FROM visitas_sala

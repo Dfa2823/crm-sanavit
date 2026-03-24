@@ -80,10 +80,12 @@ export default function NuevaVentaPage() {
     if (!personaEncontrada?.id) return
     client.get(`/api/personas/${personaEncontrada.id}/historia`).then(r => {
       const visitas = r.data?.visitas || []
-      // Buscar la visita calificada más reciente (TOUR o NO_TOUR) con consultor
+      // Buscar la visita más reciente con consultor asignado
+      // Primero intentar con calificación (TOUR o NO_TOUR), luego cualquiera con consultor
       const calificada = visitas.find(v => v.consultor_id && v.calificacion)
-      if (calificada?.consultor_id) {
-        setContrato(c => ({ ...c, consultor_id: String(calificada.consultor_id) }))
+      const conConsultor = calificada || visitas.find(v => v.consultor_id)
+      if (conConsultor?.consultor_id) {
+        setContrato(c => ({ ...c, consultor_id: String(conConsultor.consultor_id) }))
       }
     }).catch(() => {})
   }, [personaEncontrada?.id])

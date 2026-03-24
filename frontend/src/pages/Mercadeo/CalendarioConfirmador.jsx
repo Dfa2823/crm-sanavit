@@ -579,7 +579,6 @@ function PendientesVista() {
       addToast('Cita confirmada y añadida al pre-manifiesto')
       setModal(null)
       cargar()
-      fetchCitas()
     } catch (err) { console.error(err) }
     finally { setGuardando(false) }
   }
@@ -595,7 +594,6 @@ function PendientesVista() {
       addToast('Cita reagendada — requiere nueva confirmación')
       setModal(null)
       cargar()
-      fetchCitas()
     } catch (err) { console.error(err) }
     finally { setGuardando(false) }
   }

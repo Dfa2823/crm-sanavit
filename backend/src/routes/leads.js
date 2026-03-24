@@ -167,8 +167,8 @@ router.get('/', auth, async (req, res) => {
     // Filtro de fecha (por fecha_cita o created_at) — usa rango para aprovechar índice
     if (fecha) {
       where.push(`(
-        (l.fecha_cita >= $${idx}::date AND l.fecha_cita < $${idx}::date + INTERVAL '1 day')
-        OR (l.created_at >= $${idx}::date AND l.created_at < $${idx}::date + INTERVAL '1 day')
+        (l.fecha_cita AT TIME ZONE 'America/Guayaquil')::date = $${idx}::date
+        OR (l.created_at AT TIME ZONE 'America/Guayaquil')::date = $${idx}::date
       )`);
       params.push(fecha);
       idx++;
@@ -241,7 +241,7 @@ router.get('/citas', auth, async (req, res) => {
     const result = await pool.query(`
       ${buildLeadSelect()}
       WHERE (l.fecha_cita AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1::date AND $2::date
-        AND l.estado IN ('confirmada','tentativa','tour','no_tour')
+        AND l.estado IN ('pendiente','confirmada','tentativa','tour','no_tour')
         AND ($3::integer IS NULL OR l.sala_id = $3)
         ${confirmadorFilter}
       ORDER BY l.fecha_cita ASC

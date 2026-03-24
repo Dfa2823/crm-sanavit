@@ -398,7 +398,7 @@ router.post('/', auth, async (req, res) => {
     // Generar plan de cuotas si hay financiación
     const montoFinanciado = parseFloat(valor_financiado || 0);
     const TASA_INTERES_DEFAULT = 1.5; // % mensual
-    if (n_cuotas > 1 && montoFinanciado > 0) {
+    if (n_cuotas >= 1 && montoFinanciado > 0) {
       const valorCuota = montoFinanciado / n_cuotas;
       const aplicaInteres = n_cuotas >= 4;
       const tasaInteres = aplicaInteres ? TASA_INTERES_DEFAULT : 0;

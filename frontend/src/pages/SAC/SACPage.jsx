@@ -150,6 +150,7 @@ function TabControlCalidad() {
               <th className="text-left">Contrato #</th>
               <th className="text-left">Fecha Venta</th>
               <th className="text-center">Dias desde venta</th>
+              <th className="text-left">Observacion</th>
               <th className="text-center">Accion</th>
             </tr>
           </thead>
@@ -167,6 +168,12 @@ function TabControlCalidad() {
                     {c.dias_desde_venta}d
                   </span>
                 </td>
+                <td className="px-4 py-3 text-gray-500 text-xs max-w-[200px] truncate" title={c.sac_observacion || ''}>
+                  {c.activado
+                    ? <span className="text-green-600">{c.sac_observacion || 'Activada'}</span>
+                    : <span className="text-gray-300 italic">--</span>
+                  }
+                </td>
                 <td className="px-4 py-3 text-center">
                   <div className="flex items-center justify-center gap-2">
                     <button
@@ -177,12 +184,16 @@ function TabControlCalidad() {
                       <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                       HdV
                     </button>
-                    <button
-                      onClick={() => { setModalData(c); setObservacion('') }}
-                      className="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-xs font-medium"
-                    >
-                      Activar Venta
-                    </button>
+                    {c.activado ? (
+                      <span className="bg-green-100 text-green-700 px-3 py-1.5 rounded-lg text-xs font-medium">Activada</span>
+                    ) : (
+                      <button
+                        onClick={() => { setModalData(c); setObservacion('') }}
+                        className="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-xs font-medium"
+                      >
+                        Activar Venta
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -874,6 +885,7 @@ function TabFidelizacion() {
   const [loading, setLoading]       = useState(true)
   const [modalData, setModalData]   = useState(null)
   const [fechaCita, setFechaCita]   = useState('')
+  const [observacion, setObservacion] = useState('')
   const [guardando, setGuardando]   = useState(false)
 
   useEffect(() => {
@@ -887,10 +899,11 @@ function TabFidelizacion() {
     if (!modalData || !fechaCita) return
     setGuardando(true)
     try {
-      await agendarRevisita(modalData.id, { fecha_cita: fechaCita })
+      await agendarRevisita(modalData.id, { fecha_cita: fechaCita, observacion: observacion.trim() || undefined })
       setClientes(prev => prev.filter(c => c.id !== modalData.id))
       setModalData(null)
       setFechaCita('')
+      setObservacion('')
     } catch (err) {
       console.error(err)
     } finally {
@@ -949,7 +962,7 @@ function TabFidelizacion() {
                       <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                       HdV
                     </button>
-                    <button onClick={() => { setModalData(c); setFechaCita('') }}
+                    <button onClick={() => { setModalData(c); setFechaCita(''); setObservacion('') }}
                       className="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 text-xs font-medium">
                       Agendar Re-visita
                     </button>
@@ -978,6 +991,16 @@ function TabFidelizacion() {
                 onChange={e => setFechaCita(e.target.value)}
                 min={new Date().toISOString().split('T')[0]}
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Observacion</label>
+              <textarea
+                value={observacion}
+                onChange={e => setObservacion(e.target.value)}
+                rows={3}
+                placeholder="Observacion sobre la re-visita..."
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
               />
             </div>
             <div className="flex gap-3">
