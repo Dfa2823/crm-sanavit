@@ -51,48 +51,90 @@ const router = express.Router();
     const rolOficiosVarios = await getRolId('oficios_varios');
     const rolJefeSala      = await getRolId('jefe_sala');
     const rolBusinessMgr   = await getRolId('business_manager');
+    const rolSac           = await getRolId('sac');
+    const rolCartera       = await getRolId('cartera') || await getRolId('asesor_cartera');
+    const rolAsistente     = await getRolId('asistente');
 
     const usuariosReales = [
-      // TMK (sala 1)
-      { nombre: 'Victoria Sanchez',    username: 'victoria.sanchez',    rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Angie Quishpe',       username: 'angie.quishpe',       rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Angelica Cabezas',    username: 'angelica.cabezas',    rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Ximena Vera',         username: 'ximena.vera',         rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Joselyn Veloz',       username: 'joselyn.veloz',       rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Adriana Mosquera',    username: 'adriana.mosquera',    rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Alejandra Baquerizo', username: 'alejandra.baquerizo', rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Heidy Ramirez',       username: 'heidy.ramirez',       rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Pamela Torres',       username: 'pamela.torres',       rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Danny Loor',          username: 'danny.loor',          rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Keyla Romero',        username: 'keyla.romero',        rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Josue Vasconez',      username: 'josue.vasconez',      rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Alejandro Montufar', username: 'alejandro.montufar', rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Jose Acosta',         username: 'jose.acosta',         rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Pablo Estrella',      username: 'pablo.estrella',      rol_id: rolTmk,          sala_id: 1 },
-      { nombre: 'Dayana Delgado',      username: 'dayana.delgado',      rol_id: rolTmk,          sala_id: 1 },
-      // CONSULTOR (sala 1)
-      { nombre: 'Carlos Villacis',     username: 'carlos.villacis',     rol_id: rolConsultor,    sala_id: 1 },
-      { nombre: 'Wilmer Paredes',      username: 'wilmer.paredes',      rol_id: rolConsultor,    sala_id: 1 },
-      { nombre: 'Samia Mosquera',      username: 'samia.mosquera',      rol_id: rolConsultor,    sala_id: 1 },
-      { nombre: 'Darwin Chafla',       username: 'darwin.chafla',       rol_id: rolConsultor,    sala_id: 1 },
-      { nombre: 'Patricia Bravo',      username: 'patricia.bravo',      rol_id: rolConsultor,    sala_id: 1 },
-      // OUTSOURCING
-      { nombre: 'Sergio Arias',        username: 'sergio.arias',        rol_id: rolOutsourcing,  sala_id: 1 },
-      { nombre: 'Santiago Barona',     username: 'santiago.barona',     rol_id: rolOutsourcing,  sala_id: 1 },
-      // CONFIRMADOR
-      { nombre: 'Talia Pucuna',        username: 'talia.pucuna',        rol_id: rolConfirmador,  sala_id: 1 },
-      // HOSTESS
-      { nombre: 'Elizabeth Perez',     username: 'elizabeth.perez',     rol_id: rolHostess,      sala_id: 1 },
-      // SUPERVISOR
-      { nombre: 'Joffrey Gutierrez',  username: 'joffrey.gutierrez',  rol_id: rolSupervisor,   sala_id: 1 },
-      // MEDICO
-      { nombre: 'Maricela Zapata',     username: 'maricela.zapata',     rol_id: rolMedico,       sala_id: 1 },
-      // OFICIOS VARIOS
-      { nombre: 'Jose Tipan',          username: 'jose.tipan',          rol_id: rolOficiosVarios, sala_id: 1 },
-      // JEFE SALA
-      { nombre: 'Juan Gutierrez',      username: 'juan.gutierrez',      rol_id: rolJefeSala,     sala_id: 1 },
-      // BUSINESS MANAGER / ASISTENTE
-      { nombre: 'Lizethe Valdes',      username: 'lizethe.valdes',      rol_id: rolBusinessMgr,  sala_id: 1 },
+      // ── TMK (sala 1) ──────────────────────────────────────────
+      { nombre: 'Victoria Sanchez',              username: 'victoria.sanchez',    rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Angie Quishpe',                 username: 'angie.quishpe',       rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Angelica Cabezas',              username: 'angelica.cabezas',    rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Ximena Vera',                   username: 'ximena.vera',         rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Joselyn Veloz',                 username: 'joselyn.veloz',       rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Adriana Mosquera',              username: 'adriana.mosquera',    rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Alejandra Baquerizo',           username: 'alejandra.baquerizo', rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Heidy Ramirez',                 username: 'heidy.ramirez',       rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Pamela Torres',                 username: 'pamela.torres',       rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Danny Loor',                    username: 'danny.loor',          rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Keyla Romero',                  username: 'keyla.romero',        rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Josue Vasconez',                username: 'josue.vasconez',      rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Alejandro Montufar',            username: 'alejandro.montufar', rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Jose Acosta',                   username: 'jose.acosta',         rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Pablo Estrella',                username: 'pablo.estrella',      rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Dayana Delgado',                username: 'dayana.delgado',      rol_id: rolTmk,          sala_id: 1 },
+      // Nuevos TMK (USUARIOS.xlsx - Mar 2026)
+      { nombre: 'Waleska Valentina Diaz',        username: 'waleska.diaz',        rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Angela Rebeca Corella Garcia',  username: 'angela.corella',      rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Jhon Denver Beltran Granda',    username: 'jhon.beltran',        rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Bertha Viviana Espinoza Loor',  username: 'bertha.espinoza',     rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Marilyn Martinez',              username: 'marilyn.martinez',    rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Camila Yamileth Lara Vilana',   username: 'camila.lara',         rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Luis Fernando Quinde Cuasatar', username: 'luis.quinde',         rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Dayana Anabel Coro Hernandez',  username: 'dayana.coro',         rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Alia Ganchala',                 username: 'alia.ganchala',       rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Katherine Lizeth Mariscal Pilamunga', username: 'katherine.mariscal', rol_id: rolTmk,    sala_id: 1 },
+      { nombre: 'Josselyn Elizabeth Coello Villamar',  username: 'josselyn.coello',    rol_id: rolTmk,    sala_id: 1 },
+      { nombre: 'Sharon Celina Toro Merino',     username: 'sharon.toro',         rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Diana Alexandra Calderon Pinchao', username: 'diana.calderon',   rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Ana Lucia Neacato Morales',     username: 'ana.neacato',         rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Andres Javier Ayala Ruiz',      username: 'andres.ayala',        rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Jaqueline Dolores Silva Aguilar', username: 'jaqueline.silva',   rol_id: rolTmk,          sala_id: 1 },
+      { nombre: 'Sonia Yimabel Vernaza',         username: 'sonia.vernaza',       rol_id: rolTmk,          sala_id: 1 },
+      // ── CONSULTOR (sala 1) ─────────────────────────────────────
+      { nombre: 'Carlos Villacis',               username: 'carlos.villacis',     rol_id: rolConsultor,    sala_id: 1 },
+      { nombre: 'Wilmer Paredes',                username: 'wilmer.paredes',      rol_id: rolConsultor,    sala_id: 1 },
+      { nombre: 'Samia Mosquera',                username: 'samia.mosquera',      rol_id: rolConsultor,    sala_id: 1 },
+      { nombre: 'Darwin Chafla',                 username: 'darwin.chafla',       rol_id: rolConsultor,    sala_id: 1 },
+      { nombre: 'Patricia Bravo',                username: 'patricia.bravo',      rol_id: rolConsultor,    sala_id: 1 },
+      // Nuevos consultores (USUARIOS.xlsx - Mar 2026)
+      { nombre: 'Jhony Cardenas Guaricela',      username: 'jhony.cardenas',      rol_id: rolConsultor,    sala_id: 1 },
+      { nombre: 'Leslie Daniela Romo Lopez',     username: 'leslie.romo',         rol_id: rolConsultor,    sala_id: 1 },
+      { nombre: 'Fatima Fernanda Bravo Ponce',   username: 'fatima.bravo',        rol_id: rolConsultor,    sala_id: 1 },
+      { nombre: 'Jhanny Clarita Moreno Olvera',  username: 'jhanny.moreno',       rol_id: rolConsultor,    sala_id: 1 },
+      { nombre: 'Ximena Piedad Vallejo Olalla',  username: 'ximena.vallejo',      rol_id: rolConsultor,    sala_id: 1 },
+      { nombre: 'Limber Mosquera Saa',           username: 'limber.mosquera',     rol_id: rolConsultor,    sala_id: 1 },
+      // ── OUTSOURCING ────────────────────────────────────────────
+      { nombre: 'Sergio Arias',                  username: 'sergio.arias',        rol_id: rolOutsourcing,  sala_id: 1 },
+      { nombre: 'Santiago Barona',               username: 'santiago.barona',     rol_id: rolOutsourcing,  sala_id: 1 },
+      { nombre: 'Sneider Caamano',               username: 'sneider.caamano',     rol_id: rolOutsourcing,  sala_id: 1 },
+      // ── CONFIRMADOR ────────────────────────────────────────────
+      { nombre: 'Talia Pucuna',                  username: 'talia.pucuna',        rol_id: rolConfirmador,  sala_id: 1 },
+      { nombre: 'Monica Tandazo',                username: 'monica.tandazo',      rol_id: rolConfirmador,  sala_id: 1 },
+      { nombre: 'Eddie Antonio Vasquez Marchan', username: 'eddie.vasquez',       rol_id: rolConfirmador,  sala_id: 1 },
+      // ── HOSTESS ────────────────────────────────────────────────
+      { nombre: 'Elizabeth Perez',               username: 'elizabeth.perez',     rol_id: rolHostess,      sala_id: 1 },
+      { nombre: 'Katherine Paola Orbe De La Torre', username: 'katherine.orbe',   rol_id: rolHostess,      sala_id: 1 },
+      // ── SUPERVISOR ─────────────────────────────────────────────
+      { nombre: 'Joffrey Gutierrez',             username: 'joffrey.gutierrez',  rol_id: rolSupervisor,   sala_id: 1 },
+      { nombre: 'Jofren Arias',                  username: 'jofren.arias',       rol_id: rolSupervisor,   sala_id: 1 },
+      // ── MEDICO ─────────────────────────────────────────────────
+      { nombre: 'Maricela Zapata',               username: 'maricela.zapata',     rol_id: rolMedico,       sala_id: 1 },
+      { nombre: 'Yarihany Martinez',             username: 'yarihany.martinez',   rol_id: rolMedico,       sala_id: 1 },
+      // ── OFICIOS VARIOS ─────────────────────────────────────────
+      { nombre: 'Jose Tipan',                    username: 'jose.tipan',          rol_id: rolOficiosVarios, sala_id: 1 },
+      { nombre: 'Wendy Del Pilar Morales Perugachi', username: 'wendy.morales',   rol_id: rolOficiosVarios, sala_id: 1 },
+      // ── JEFE SALA ──────────────────────────────────────────────
+      { nombre: 'Juan Gutierrez',                username: 'juan.gutierrez',      rol_id: rolJefeSala,     sala_id: 1 },
+      { nombre: 'Marianela Pena Angarita',       username: 'marianela.pena',      rol_id: rolJefeSala,     sala_id: 1 },
+      // ── SAC ────────────────────────────────────────────────────
+      { nombre: 'David Neptali Valarezo Gavilanes', username: 'david.valarezo',   rol_id: rolSac,          sala_id: 1 },
+      // ── CARTERA ────────────────────────────────────────────────
+      { nombre: 'Thalia Daniela Chillagano',     username: 'thalia.chillagano',   rol_id: rolCartera,      sala_id: 1 },
+      // ── ASISTENTE OPERATIVA ────────────────────────────────────
+      { nombre: 'Isabella Vargas Valdes',        username: 'isabella.vargas',     rol_id: rolAsistente,    sala_id: 1 },
+      // ── BUSINESS MANAGER ───────────────────────────────────────
+      { nombre: 'Lizethe Valdes',                username: 'lizethe.valdes',      rol_id: rolBusinessMgr,  sala_id: 1 },
     ];
 
     for (const u of usuariosReales) {

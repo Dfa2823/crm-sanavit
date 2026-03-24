@@ -2,35 +2,18 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getVenta360 } from '../../api/ventas'
 
-function formatFecha(iso) {
-  if (!iso) return '—'
+function formatFechaLarga(iso) {
+  if (!iso) return '______________'
   const s = typeof iso === 'string' ? iso.split('T')[0] : iso
-  const [y, m, d] = s.split('-')
-  return `${d}/${m}/${y}`
-}
-
-function formatMes(iso) {
-  if (!iso) return '—'
-  const s = typeof iso === 'string' ? iso.split('T')[0] : iso
-  return new Date(s + 'T12:00:00').toLocaleDateString('es-EC', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
+  const date = new Date(s + 'T12:00:00')
+  const dias = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
+  const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+  return `${dias[date.getDay()]}, ${date.getDate()} de ${meses[date.getMonth()]} del ${date.getFullYear()}`
 }
 
 function formatMoney(n) {
   const num = Number(n || 0)
   return `$${num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`
-}
-
-function estadoLabel(estado) {
-  switch (estado) {
-    case 'pagado':   return 'Pagado'
-    case 'parcial':  return 'Parcial'
-    case 'vencido':  return 'Vencido'
-    default:         return 'Pendiente'
-  }
 }
 
 export default function ActaEntregaPrint() {
@@ -67,9 +50,13 @@ export default function ActaEntregaPrint() {
       ? (contrato.monto_total || 0) / contrato.n_cuotas
       : 0
 
+  const fechaContrato = formatFechaLarga(contrato.fecha_contrato)
+
+  // Build product names string for inline text
+  const productNames = (productos || []).map(p => p.producto_nombre || p.nombre || 'Producto').join(' / ')
+
   return (
     <>
-      {/* Estilos de impresion */}
       <style>{`
         @media print {
           .no-print { display: none !important; }
@@ -86,9 +73,18 @@ export default function ActaEntregaPrint() {
           size: A4 portrait;
           margin: 10mm 14mm;
         }
+        .acta-body p {
+          margin-bottom: 0.4rem;
+          text-align: justify;
+        }
+        .acta-section-title {
+          font-weight: 700;
+          margin-top: 0.7rem;
+          margin-bottom: 0.3rem;
+        }
       `}</style>
 
-      {/* Botones flotantes — solo en pantalla */}
+      {/* Botones flotantes */}
       <div className="no-print fixed top-4 right-4 flex gap-2 z-50">
         <button
           onClick={() => navigate(-1)}
@@ -105,246 +101,207 @@ export default function ActaEntregaPrint() {
       </div>
 
       {/* Documento */}
-      <div className="print-page max-w-4xl mx-auto my-10 bg-white shadow-xl rounded-xl px-16 py-12 text-gray-900 text-sm leading-relaxed">
+      <div className="print-page max-w-4xl mx-auto my-10 bg-white shadow-xl rounded-xl px-14 py-10 text-gray-900 leading-relaxed" style={{ fontSize: '10.5px' }}>
 
         {/* Encabezado */}
-        <div className="text-center mb-6 pb-5 border-b-2 border-teal-700">
-          <h1 className="text-2xl font-bold tracking-widest uppercase text-teal-800">
-            Sanavit Ecuador
+        <div className="text-center mb-5 pb-4 border-b-2 border-teal-700">
+          <h1 className="text-xl font-bold tracking-widest uppercase text-teal-800">
+            JMGUTIERREZ S.A.S.
           </h1>
-          <p className="text-xs text-gray-500 mt-0.5 tracking-wide">
-            Sistema de Salud y Bienestar
-          </p>
-          <div className="mt-4">
-            <h2 className="text-lg font-bold uppercase tracking-widest text-gray-800">
-              Acta de Entrega
+          <p className="text-xs text-gray-500 mt-0.5">RUC: 1793198158001 &nbsp;|&nbsp; Marca: <strong>SANAVIT</strong></p>
+          <div className="mt-3">
+            <h2 className="text-base font-bold uppercase tracking-widest text-gray-800">
+              ACTA DE ENTREGA-RECEPCION
             </h2>
-            <p className="text-xs text-gray-500 mt-1 uppercase tracking-wider">
-              Recepcion de Productos y Servicios a Credito Directo
-            </p>
-            <p className="text-base font-bold text-teal-700 mt-2 font-mono">
-              Contrato N° {contrato.numero_contrato || '—'}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              Fecha de emision: {new Date().toLocaleDateString('es-EC', { day: 'numeric', month: 'long', year: 'numeric' })}
-              &nbsp;&nbsp;|&nbsp;&nbsp; Sala: {contrato.sala_nombre || '—'}
+            <p className="text-sm font-bold text-teal-700 mt-1 font-mono">
+              Contrato N.° {contrato.numero_contrato || '\u2014'}
             </p>
           </div>
         </div>
 
-        {/* Seccion 1: Datos del Cliente */}
-        <section className="mb-6">
-          <h3 className="font-bold text-xs uppercase tracking-widest border-b border-teal-600 pb-1 mb-3 text-teal-700">
-            1. Datos del Cliente
-          </h3>
-          <div className="grid grid-cols-2 gap-x-10 gap-y-1.5 text-sm">
-            {[
-              ['Nombre completo',   nombreCompleto || '—'],
-              ['Cedula / Documento', contrato.num_documento || '—'],
-              ['Telefono',          contrato.telefono || '—'],
-              ['Email',             contrato.email || '—'],
-              ['Ciudad',            contrato.ciudad || '—'],
-              ['Direccion',         contrato.direccion || '—'],
-            ].map(([label, value]) => (
-              <div key={label} className="flex gap-2">
-                <span className="text-gray-500 min-w-[140px] shrink-0">{label}:</span>
-                <span className="font-medium text-gray-800 break-all">{value}</span>
-              </div>
-            ))}
-          </div>
-        </section>
+        {/* Cuerpo del acta */}
+        <div className="acta-body">
 
-        {/* Seccion 2: Datos de la Sala */}
-        <section className="mb-6">
-          <h3 className="font-bold text-xs uppercase tracking-widest border-b border-teal-600 pb-1 mb-3 text-teal-700">
-            2. Datos de la Sala
-          </h3>
-          <div className="grid grid-cols-2 gap-x-10 gap-y-1.5 text-sm">
-            {[
-              ['Sala',              contrato.sala_nombre || '—'],
-              ['Consultor',         contrato.consultor_nombre || '—'],
-              ['Fecha del contrato', formatMes(contrato.fecha_contrato)],
-              ['Plan contratado',   contrato.tipo_plan || '—'],
-            ].map(([label, value]) => (
-              <div key={label} className="flex gap-2">
-                <span className="text-gray-500 min-w-[140px] shrink-0">{label}:</span>
-                <span className="font-medium text-gray-800 break-all">{value}</span>
-              </div>
-            ))}
-          </div>
-        </section>
+          {/* Parrafo introductorio */}
+          <p>
+            En la ciudad de <strong>{contrato.ciudad || 'Quito'}</strong> el dia <strong>{fechaContrato}</strong>, las
+            partes suscriben la presente: por una parte la compania <strong>JM GUTIERREZ S.A.S.</strong> con numero de
+            RUC <strong>1793198158001</strong>, con nombre comercial <strong>SANAVIT</strong> la cual tiene como objeto
+            social la venta al por menor de productos naturistas en establecimientos especializados, y por otra parte
+            el/la Sr/ra <strong>{nombreCompleto || '________________________'}</strong> portador(a)
+            de {contrato.tipo_documento || 'Cedula de identidad'} No. <strong>{contrato.num_documento || '________________'}</strong> quienes
+            libre y voluntariamente llevan a cabo la entrega-recepcion del siguiente producto a base de ingredientes
+            naturales, bajo solicitud del cliente <strong>{nombreCompleto || '________________________'}</strong> con
+            cedula: {contrato.tipo_documento || 'Cedula de identidad'} No. <strong>{contrato.num_documento || '________________'}</strong>.
+          </p>
 
-        {/* Seccion 3: Productos / Servicios Entregados */}
-        <section className="mb-6">
-          <h3 className="font-bold text-xs uppercase tracking-widest border-b border-teal-600 pb-1 mb-3 text-teal-700">
-            3. Productos y Servicios Entregados
-          </h3>
-          <table className="w-full text-sm border-collapse">
+          <p>
+            La compania <strong>JM GUTIERREZ S.A.S.</strong> duenos de la marca <strong>SANAVIT</strong> declara que:
+          </p>
+          <ul className="list-disc ml-5 space-y-0.5 mb-2">
+            <li>Ofrece y vende productos al mercado en sus establecimientos y redes oficiales de la compania. Es propietario y/o comercializador legitimo de todos los productos ofertados en su establecimiento.</li>
+            <li>Los Productos han sido disenados y fabricados con los mas altos estandares de calidad, su sello de seguridad es el reconocimiento de que el producto ha sido fabricado bajo un sistema de calidad, y que cumple con todos los propositos ofrecidos y estan libres de defectos en materiales y su fabricacion.</li>
+            <li>Unicamente los asesores comerciales de SANAVIT estan autorizados para la venta y distribucion de nuestros productos.</li>
+          </ul>
+
+          <p>
+            <strong>SANAVIT</strong> declara entregar al cliente final el
+            producto <strong>{productNames || '________________________'}</strong> (de uso naturista) mencionado
+            anteriormente en las condiciones explicadas, pactadas y detalladas con informacion clara veraz y oportuna.
+          </p>
+
+          {/* 1. Datos del producto */}
+          <p className="acta-section-title">1. Datos del/los producto(s) y servicio adquirido(s):</p>
+          <table className="w-full border-collapse mb-3" style={{ fontSize: '10px' }}>
             <thead>
               <tr className="bg-teal-50">
-                <th className="border border-gray-300 px-3 py-1.5 text-center font-semibold text-gray-700 w-10">#</th>
-                <th className="border border-gray-300 px-3 py-1.5 text-left font-semibold text-gray-700">Descripcion</th>
-                <th className="border border-gray-300 px-3 py-1.5 text-center font-semibold text-gray-700 w-16">Cant.</th>
-                <th className="border border-gray-300 px-3 py-1.5 text-right font-semibold text-gray-700">Precio Unit.</th>
-                <th className="border border-gray-300 px-3 py-1.5 text-right font-semibold text-gray-700">Subtotal</th>
+                <th className="border border-gray-400 px-2 py-1 text-center font-semibold w-10">#</th>
+                <th className="border border-gray-400 px-2 py-1 text-left font-semibold">Descripcion</th>
+                <th className="border border-gray-400 px-2 py-1 text-center font-semibold w-14">Cant.</th>
+                <th className="border border-gray-400 px-2 py-1 text-right font-semibold">Precio Unit.</th>
+                <th className="border border-gray-400 px-2 py-1 text-right font-semibold">Subtotal</th>
               </tr>
             </thead>
             <tbody>
               {(productos || []).length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="border border-gray-300 px-3 py-2 text-center text-gray-400 italic">
+                  <td colSpan={5} className="border border-gray-400 px-2 py-1.5 text-center text-gray-400 italic">
                     Sin productos registrados
                   </td>
                 </tr>
               ) : (
                 (productos || []).map((p, i) => (
                   <tr key={p.id || i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
-                    <td className="border border-gray-300 px-3 py-1.5 text-center text-gray-600">
-                      {i + 1}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-1.5 text-gray-800">
-                      {p.producto_nombre || p.nombre || '—'}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-1.5 text-center">
-                      {p.cantidad || 1}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-1.5 text-right">
-                      {formatMoney(p.precio_unitario)}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-1.5 text-right">
-                      {formatMoney(p.valor_total || p.subtotal || (p.precio_unitario * (p.cantidad || 1)))}
-                    </td>
+                    <td className="border border-gray-400 px-2 py-1 text-center">{i + 1}</td>
+                    <td className="border border-gray-400 px-2 py-1">{p.producto_nombre || p.nombre || '\u2014'}</td>
+                    <td className="border border-gray-400 px-2 py-1 text-center">{p.cantidad || 1}</td>
+                    <td className="border border-gray-400 px-2 py-1 text-right">{formatMoney(p.precio_unitario)}</td>
+                    <td className="border border-gray-400 px-2 py-1 text-right">{formatMoney(p.valor_total || p.subtotal || (p.precio_unitario * (p.cantidad || 1)))}</td>
                   </tr>
                 ))
               )}
               <tr className="bg-teal-50 font-bold">
-                <td colSpan={4} className="border border-gray-300 px-3 py-1.5 text-right text-gray-700">
-                  TOTAL DEL CONTRATO
-                </td>
-                <td className="border border-gray-300 px-3 py-1.5 text-right text-gray-900">
-                  {formatMoney(contrato.monto_total)}
-                </td>
+                <td colSpan={4} className="border border-gray-400 px-2 py-1 text-right">TOTAL DEL CONTRATO</td>
+                <td className="border border-gray-400 px-2 py-1 text-right">{formatMoney(contrato.monto_total)}</td>
               </tr>
             </tbody>
           </table>
-        </section>
 
-        {/* Seccion 4: Condiciones de Credito Directo */}
-        <section className="mb-6">
-          <h3 className="font-bold text-xs uppercase tracking-widest border-b border-teal-600 pb-1 mb-3 text-teal-700">
-            4. Condiciones de Credito Directo
-          </h3>
-          <div className="flex flex-wrap gap-6 mb-3 text-sm">
-            <span><strong>Monto total:</strong> {formatMoney(contrato.monto_total)}</span>
-            {contrato.cuota_inicial > 0 && (
-              <span><strong>Cuota inicial:</strong> {formatMoney(contrato.cuota_inicial)}</span>
-            )}
-            <span><strong>N° de cuotas:</strong> {contrato.n_cuotas || '—'}</span>
-            <span><strong>Valor por cuota:</strong> {formatMoney(valorCuota)}</span>
-            {contrato.dia_pago && (
-              <span><strong>Dia de pago:</strong> dia {contrato.dia_pago} de cada mes</span>
-            )}
-          </div>
+          {/* Condiciones de credito */}
           {(cuotas || []).length > 0 && (
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-teal-50">
-                  <th className="border border-gray-300 px-3 py-1 text-center font-semibold text-gray-700">N°</th>
-                  <th className="border border-gray-300 px-3 py-1 text-center font-semibold text-gray-700">Fecha de vencimiento</th>
-                  <th className="border border-gray-300 px-3 py-1 text-right font-semibold text-gray-700">Monto</th>
-                  <th className="border border-gray-300 px-3 py-1 text-center font-semibold text-gray-700">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(cuotas || []).slice(0, 18).map((c, i) => (
-                  <tr key={c.id || i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
-                    <td className="border border-gray-300 px-3 py-1 text-center text-gray-600">
-                      {c.numero_cuota || i + 1}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-1 text-center text-gray-600">
-                      {formatFecha(c.fecha_vencimiento)}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-1 text-right">
-                      {formatMoney(c.monto_esperado)}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-1 text-center capitalize text-gray-600">
-                      {estadoLabel(c.estado)}
-                    </td>
-                  </tr>
-                ))}
-                {(cuotas || []).length > 18 && (
-                  <tr>
-                    <td colSpan={4} className="border border-gray-300 px-3 py-1.5 text-center text-gray-400 italic text-xs">
-                      ... y {cuotas.length - 18} cuotas adicionales
-                    </td>
-                  </tr>
+            <div className="mb-3 p-2 border border-gray-300 rounded bg-gray-50" style={{ fontSize: '10px' }}>
+              <p className="font-bold mb-1">Condiciones de credito directo:</p>
+              <div className="flex flex-wrap gap-4">
+                <span><strong>Monto total:</strong> {formatMoney(contrato.monto_total)}</span>
+                {contrato.cuota_inicial > 0 && (
+                  <span><strong>Cuota inicial:</strong> {formatMoney(contrato.cuota_inicial)}</span>
                 )}
-              </tbody>
-            </table>
+                <span><strong>N.° de cuotas:</strong> {contrato.n_cuotas || '\u2014'}</span>
+                <span><strong>Valor por cuota:</strong> {formatMoney(valorCuota)}</span>
+                {contrato.dia_pago && (
+                  <span><strong>Dia de pago:</strong> dia {contrato.dia_pago} de cada mes</span>
+                )}
+              </div>
+            </div>
           )}
-          {(cuotas || []).length === 0 && (
-            <p className="text-gray-400 italic text-xs">Sin plan de cuotas registrado.</p>
-          )}
-        </section>
 
-        {/* Seccion 5: Declaracion del Cliente */}
-        <section className="mb-6">
-          <h3 className="font-bold text-xs uppercase tracking-widest border-b border-teal-600 pb-1 mb-3 text-teal-700">
-            5. Declaracion del Cliente
-          </h3>
-          <div className="text-xs text-gray-600 space-y-2 leading-relaxed border border-gray-200 rounded-lg p-4 bg-gray-50">
+          {/* 2. Politica de Calidad */}
+          <p className="acta-section-title">2. Politica de Calidad:</p>
+          <p>
+            <strong>SANAVIT</strong> garantiza la calidad de este producto fabricado y/o distribuido a su nombre y certifica
+            que cumplen con altos estandares de calidad para su uso. El cliente que adquiera este producto encontrara que el
+            mismo es satisfactorio en todos los sentidos.
+          </p>
+          <p>
+            Sin embargo, si por alguna razon no esta conforme con algun producto de SANAVIT, porque el producto se encuentra
+            danado (danos causados por el servicio de paqueteria) o el producto que se entrego no era el solicitado en la
+            solicitud de compra puede devolverlo en un plazo de <strong>3 dias</strong> a partir de la fecha de recepcion de
+            la compra y recibir un reembolso total o un cambio de producto. En caso de haber notado el dano del producto
+            despues de haberlo recibido, es necesario que guarde los productos y se asegure de que se mantengan en el mismo
+            estado en que fueron entregados, conservando su embalaje, etiquetado y sello de garantia y seguridad intacto.
+            No se realizara ningun cambio, devolucion o reembolso en productos abiertos, consumidos total o parcialmente.
+          </p>
+          <p>
+            Para hacer valida la devolucion o reembolso, debera informar al equipo de soporte al cliente el mismo dia de la
+            recepcion del articulo y enviar fotografias y/o videos que muestren la inconformidad con el producto al siguiente
+            correo <strong>servicio.cliente@jmgecuador.com</strong>.
+          </p>
+          <p>
+            Si la devolucion cumple con lo anterior y es aprobada, se proporcionara el proceso a seguir para hacer efectivo
+            el reembolso. Se procedera a realizar el reembolso del importe cobrado dentro de un plazo de 30 dias a partir
+            de la fecha de recepcion de la notificacion.
+          </p>
+
+          {/* 3. Declaracion del cliente */}
+          <p className="acta-section-title">3. Declaracion del cliente:</p>
+          <div className="border border-gray-300 rounded p-3 bg-gray-50 mb-3">
             <p>
-              Yo, <strong>{nombreCompleto || '________________'}</strong>, con documento de identidad
-              N° <strong>{contrato.num_documento || '________________'}</strong>, declaro que he recibido a mi entera
-              satisfaccion los productos y/o servicios detallados en la seccion 3 del presente documento.
-            </p>
-            <p>
-              Acepto recibir los productos y servicios descritos bajo las condiciones de credito directo establecidas
-              en la seccion 4, comprometiendome al pago puntual de las cuotas segun el calendario acordado.
-            </p>
-            <p>
-              Confirmo que he sido informado(a) de las condiciones, plazos y obligaciones derivadas de este contrato
-              de credito directo. En caso de incumplimiento, acepto las consecuencias previstas en el contrato de
-              afiliacion N° <strong>{contrato.numero_contrato || '—'}</strong>.
-            </p>
-            <p>
-              El presente documento constituye constancia legal de la entrega y recepcion conforme de los bienes
-              y servicios contratados con SANAVIT ECUADOR, y se rige por la legislacion vigente en la
-              Republica del Ecuador.
+              El cliente declara recibir el producto en optimas condiciones de calidad. Declara que conoce los componentes,
+              indicaciones de uso y consumo, almacenamiento y demas especificaciones del producto adquirido. Declara que
+              solicito adquirir el producto y que recibio explicacion por parte de SANAVIT con informacion clara veraz y
+              oportuna previo a la firma de este documento.
             </p>
           </div>
-        </section>
 
-        {/* Seccion 6: Firmas */}
+          {/* 4. Politica de uso de datos personales */}
+          <p className="acta-section-title">4. Politica de uso de datos personales:</p>
+          <p>
+            <strong>JM GUTIERREZ S.A.S</strong> como compania dedicada a la venta al por menor de productos naturistas en
+            establecimientos especializados, cree firmemente en la transparencia y en el respeto de los derechos y las
+            libertades fundamentales de las personas en el adecuado tratamiento de sus datos personales.
+          </p>
+          <p>La compania como responsable del tratamiento podra tratar sus datos personales con las siguientes finalidades:</p>
+          <ul className="list-disc ml-5 space-y-0.5 mb-2" style={{ fontSize: '9.5px' }}>
+            <li>Gestion de la reserva de invitaciones para la presentacion de productos y/o servicios de la compania.</li>
+            <li>Atender sus solicitudes especiales y preferencias asociadas a la reserva y/o compra de los productos.</li>
+            <li>Envio de la confirmacion de la compra garantizada.</li>
+            <li>Analizar los datos sobre las preferencias personales para hacer que su uso y consumo sean optimos.</li>
+            <li>Gestion de las solicitudes de informacion y contacto a traves de los canales dispuestos para ello.</li>
+            <li>Envio de comunicaciones comerciales para informarle sobre novedades, ofertas, eventos y productos o servicios de su interes.</li>
+            <li>Conocer la opinion de los clientes a traves de encuestas de satisfaccion.</li>
+          </ul>
+          <p>
+            Los terminos y condiciones de la presente acta tienen un caracter vinculante y, por lo tanto, los usuarios y
+            clientes aceptan el uso de sus datos para que se efectue la compra de los productos ofertados por la compania,
+            y su uso implica la aceptacion incondicional de tales terminos y condiciones.
+          </p>
+          <p className="font-semibold mt-2">
+            Al firmar este documento mediante el recibido conforme EL CLIENTE acepta que entiende y esta de acuerdo con lo
+            expuesto en el mismo y ademas que esta de acuerdo con el acto comercial, ya que, fue libre, voluntario y
+            solicitado por EL CLIENTE mismo.
+          </p>
+
+        </div>
+
+        {/* Firmas */}
         <section className="mt-8">
-          <h3 className="font-bold text-xs uppercase tracking-widest border-b border-teal-600 pb-1 mb-10 text-teal-700">
-            6. Firmas de Conformidad
-          </h3>
-          <div className="grid grid-cols-2 gap-20 text-sm text-center">
+          <div className="grid grid-cols-2 gap-16 text-center" style={{ fontSize: '10.5px' }}>
             {/* Cliente */}
             <div>
-              <div className="border-b-2 border-gray-700 mb-3 h-14" />
-              <p className="font-semibold text-gray-800">{nombreCompleto || '—'}</p>
+              <p className="text-gray-600 font-semibold uppercase text-xs tracking-wide mb-1">Firma del Cliente</p>
+              <div className="border-b-2 border-gray-700 mb-2 h-14" />
+              <p className="font-semibold text-gray-800">{nombreCompleto || '\u2014'}</p>
               <p className="text-gray-500 text-xs mt-0.5">
-                {contrato.tipo_documento || 'Cedula'}: {contrato.num_documento || '—'}
+                {contrato.tipo_documento || 'Cedula de identidad'} No. {contrato.num_documento || '\u2014'}
               </p>
-              <p className="text-gray-600 font-semibold mt-2 uppercase text-xs tracking-wide">El Cliente</p>
+              <p className="text-xs text-gray-500 mt-0.5">EL CLIENTE</p>
             </div>
             {/* Representante */}
             <div>
-              <div className="border-b-2 border-gray-700 mb-3 h-14" />
-              <p className="font-semibold text-gray-800">{contrato.consultor_nombre || 'Representante'}</p>
+              <p className="text-gray-600 font-semibold uppercase text-xs tracking-wide mb-1">Por la Compania</p>
+              <div className="border-b-2 border-gray-700 mb-2 h-14" />
+              <p className="font-semibold text-gray-800">{contrato.consultor_nombre || 'Representante SANAVIT'}</p>
               <p className="text-gray-500 text-xs mt-0.5">
-                Consultor — {contrato.sala_nombre || 'Sanavit Ecuador'}
+                {contrato.sala_nombre || 'SANAVIT Ecuador'}
               </p>
-              <p className="text-gray-600 font-semibold mt-2 uppercase text-xs tracking-wide">Representante Sanavit</p>
+              <p className="text-xs text-gray-500 mt-0.5">SANAVIT - JM GUTIERREZ S.A.S.</p>
             </div>
           </div>
 
           {/* Pie de pagina */}
-          <p className="text-center text-xs text-gray-400 mt-10 border-t border-gray-200 pt-4">
-            Acta de Entrega generada el {new Date().toLocaleDateString('es-EC', { day: 'numeric', month: 'long', year: 'numeric' })}
-            &nbsp;&middot;&nbsp; SANAVIT ECUADOR &nbsp;&middot;&nbsp; {contrato.sala_nombre || 'Ecuador'}
+          <p className="text-center text-xs text-gray-400 mt-8 border-t border-gray-200 pt-3">
+            Acta de Entrega-Recepcion generada el {new Date().toLocaleDateString('es-EC', { day: 'numeric', month: 'long', year: 'numeric' })}
+            &nbsp;&middot;&nbsp; JM GUTIERREZ S.A.S. &nbsp;&middot;&nbsp; SANAVIT &nbsp;&middot;&nbsp; RUC 1793198158001
           </p>
         </section>
 
