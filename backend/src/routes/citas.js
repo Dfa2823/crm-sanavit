@@ -52,7 +52,7 @@ router.get('/premanifiesto', auth, async (req, res) => {
       LEFT JOIN fuentes f ON l.fuente_id = f.id
       LEFT JOIN usuarios u ON l.tmk_id = u.id
       LEFT JOIN usuarios ou ON l.outsourcing_id = ou.id
-      WHERE DATE(l.fecha_cita) = $1
+      WHERE DATE(l.fecha_cita AT TIME ZONE 'America/Guayaquil') = $1
         AND ($2::integer IS NULL OR l.sala_id = $2)
         ${whereExtra}
     `;
@@ -108,7 +108,7 @@ router.get('/hoy', auth, async (req, res) => {
       LEFT JOIN usuarios u ON l.tmk_id = u.id
       LEFT JOIN visitas_sala vs ON vs.lead_id = l.id AND vs.fecha = $1::date
       LEFT JOIN usuarios uc ON vs.consultor_id = uc.id
-      WHERE DATE(l.fecha_cita) = $1
+      WHERE DATE(l.fecha_cita AT TIME ZONE 'America/Guayaquil') = $1
         AND ($2::integer IS NULL OR l.sala_id = $2)
         AND l.estado IN ('confirmada', 'tentativa', 'tour', 'no_tour', 'inasistencia')
       ORDER BY l.fecha_cita ASC

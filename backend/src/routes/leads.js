@@ -240,7 +240,7 @@ router.get('/citas', auth, async (req, res) => {
 
     const result = await pool.query(`
       ${buildLeadSelect()}
-      WHERE l.fecha_cita BETWEEN $1::date AND ($2::date + INTERVAL '1 day')
+      WHERE (l.fecha_cita AT TIME ZONE 'America/Guayaquil')::date BETWEEN $1::date AND $2::date
         AND l.estado IN ('confirmada','tentativa','tour','no_tour')
         AND ($3::integer IS NULL OR l.sala_id = $3)
         ${confirmadorFilter}
