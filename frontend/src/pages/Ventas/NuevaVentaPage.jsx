@@ -64,24 +64,29 @@ export default function NuevaVentaPage() {
 
   // ── Cargar config al montar ───────────────────────────────
   useEffect(() => {
-    Promise.all([
-      getSalas(),
-      getUsuarios(),
-      getFormasPago(),
-      getEmpresas(),
-      getProductos(),
-    ]).then(([s, u, fp, emp, prod]) => {
+    // Cargar cada recurso independientemente para que si uno falla no bloquee los demás
+    getSalas().then(s => {
       setSalas(Array.isArray(s) ? s : [])
-      setUsuarios(Array.isArray(u) ? u : [])
-      setFormasPago(Array.isArray(fp) ? fp.filter(f => f.activo) : [])
-      setEmpresas(Array.isArray(emp) ? emp : [])
-      setCatalogo(Array.isArray(prod) ? prod.filter(p => p.activo) : [])
-      // Preseleccionar sala del usuario logueado
-      if (usuario?.sala_id) {
-        setContrato(c => ({ ...c, sala_id: String(usuario.sala_id) }))
-      }
-    }).catch(console.error)
+      if (usuario?.sala_id) setContrato(c => ({ ...c, sala_id: String(usuario.sala_id) }))
+    }).catch(() => {})
+    getUsuarios().then(u => setUsuarios(Array.isArray(u) ? u : [])).catch(() => {})
+    getFormasPago().then(fp => setFormasPago(Array.isArray(fp) ? fp.filter(f => f.activo) : [])).catch(() => {})
+    getEmpresas().then(emp => setEmpresas(Array.isArray(emp) ? emp : [])).catch(() => {})
+    getProductos().then(prod => setCatalogo(Array.isArray(prod) ? prod.filter(p => p.activo) : [])).catch(() => {})
   }, [])
+
+  // ── Pre-cargar consultor de la calificación en recepción ──
+  useEffect(() => {
+    if (!personaEncontrada?.id) return
+    client.get(`/api/personas/${personaEncontrada.id}/historia`).then(r => {
+      const visitas = r.data?.visitas || []
+      // Buscar la visita calificada más reciente (TOUR o NO_TOUR) con consultor
+      const calificada = visitas.find(v => v.consultor_id && v.calificacion)
+      if (calificada?.consultor_id) {
+        setContrato(c => ({ ...c, consultor_id: String(calificada.consultor_id) }))
+      }
+    }).catch(() => {})
+  }, [personaEncontrada?.id])
 
   // ── Total automático desde carrito ───────────────────────
   const totalCarrito = carrito.reduce(
@@ -321,16 +326,7 @@ export default function NuevaVentaPage() {
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => {
-                      setPersonaEncontrada(p);
-                      setResultadosBusqueda([]);
-                      // Pre-cargar consultor de la última visita
-                      client.get(`/api/personas/${p.id}/historia`).then(r => {
-                        const visitas = r.data?.visitas || [];
-                        const ultima = visitas.find(v => v.consultor_id);
-                        if (ultima?.consultor_id) setContrato(c => ({ ...c, consultor_id: String(ultima.consultor_id) }));
-                      }).catch(() => {});
-                    }}
+                    onClick={() => { setPersonaEncontrada(p); setResultadosBusqueda([]) }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-teal-50 border-b border-gray-50 last:border-0"
                   >
                     <span className="font-medium text-gray-800">{p.nombres} {p.apellidos}</span>
