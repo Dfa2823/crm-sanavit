@@ -396,7 +396,6 @@ router.post('/', auth, async (req, res) => {
     const TASA_INTERES_DEFAULT = 1.5; // % mensual
     if (n_cuotas > 1 && montoFinanciado > 0) {
       const valorCuota = montoFinanciado / n_cuotas;
-      const fechaInicio = fecha_primer_pago ? new Date(fecha_primer_pago) : new Date();
       const aplicaInteres = n_cuotas >= 4;
       const tasaInteres = aplicaInteres ? TASA_INTERES_DEFAULT : 0;
 
@@ -408,12 +407,22 @@ router.post('/', auth, async (req, res) => {
         );
       }
 
+      // Parsear fecha_primer_pago sin timezone (evitar desfase UTC)
+      const fpParts = (fecha_primer_pago || '').split('-').map(Number);
+      const fpYear = fpParts[0] || new Date().getFullYear();
+      const fpMonth = (fpParts[1] || (new Date().getMonth() + 2)); // mes siguiente por defecto
+      const fpDay = fpParts[2] || 1;
+
       for (let i = 0; i < n_cuotas; i++) {
-        const fechaVenc = new Date(fechaInicio);
-        fechaVenc.setMonth(fechaVenc.getMonth() + i);
-        // Limitar dia_pago al último día real del mes (evita overflow: 31 feb → 3 mar)
-        const ultimoDiaMes = new Date(fechaVenc.getFullYear(), fechaVenc.getMonth() + 1, 0).getDate();
-        fechaVenc.setDate(Math.min(dia_pago, ultimoDiaMes));
+        let mesTarget = fpMonth + i - 1; // 0-indexed
+        let anioTarget = fpYear;
+        while (mesTarget > 11) { mesTarget -= 12; anioTarget++; }
+        // Último día real del mes target
+        const ultimoDia = new Date(anioTarget, mesTarget + 1, 0).getDate();
+        const diaFinal = Math.min(fpDay, ultimoDia);
+        const mesStr = String(mesTarget + 1).padStart(2, '0');
+        const diaStr = String(diaFinal).padStart(2, '0');
+        const fechaVenc = `${anioTarget}-${mesStr}-${diaStr}`;
 
         // Primeras 3 cuotas sin interés, a partir de la 4ta se aplica
         const montoInteres = (aplicaInteres && i >= 3)
@@ -424,7 +433,7 @@ router.post('/', auth, async (req, res) => {
         await client.query(`
           INSERT INTO cuotas (contrato_id, numero_cuota, monto_esperado, monto_interes, fecha_vencimiento, estado)
           VALUES ($1, $2, $3, $4, $5, 'pendiente')
-        `, [contrato.id, i + 1, montoEsperado, montoInteres, fechaVenc.toISOString().split('T')[0]]);
+        `, [contrato.id, i + 1, montoEsperado, montoInteres, fechaVenc]);
       }
     }
 
