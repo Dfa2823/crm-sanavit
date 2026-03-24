@@ -6,6 +6,7 @@ import { apiPersonas } from '../../api/personas'
 import { getProductos } from '../../api/productos'
 import { getSalas, getUsuarios, getFormasPago } from '../../api/admin'
 import { getEmpresas } from '../../api/outsourcing'
+import client from '../../api/client'
 // Firma digital eliminada — en Ecuador se firma con tinta azul
 
 function fmt(val) {
@@ -320,7 +321,16 @@ export default function NuevaVentaPage() {
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => { setPersonaEncontrada(p); setResultadosBusqueda([]) }}
+                    onClick={() => {
+                      setPersonaEncontrada(p);
+                      setResultadosBusqueda([]);
+                      // Pre-cargar consultor de la última visita
+                      client.get(`/api/personas/${p.id}/historia`).then(r => {
+                        const visitas = r.data?.visitas || [];
+                        const ultima = visitas.find(v => v.consultor_id);
+                        if (ultima?.consultor_id) setContrato(c => ({ ...c, consultor_id: String(ultima.consultor_id) }));
+                      }).catch(() => {});
+                    }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-teal-50 border-b border-gray-50 last:border-0"
                   >
                     <span className="font-medium text-gray-800">{p.nombres} {p.apellidos}</span>
