@@ -115,8 +115,46 @@ router.get('/stats', auth, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────
-// GET /api/sac/tickets
-// ─────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/sac/tickets:
+ *   get:
+ *     tags: [SAC]
+ *     summary: Listar tickets PQR
+ *     description: Retorna tickets de servicio al cliente (quejas, peticiones, reclamos). Soporta filtros por sala, estado, tipo, prioridad y asignado.
+ *     parameters:
+ *       - in: query
+ *         name: sala_id
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: estado
+ *         schema:
+ *           type: string
+ *           enum: [abierto, en_proceso, resuelto, cerrado]
+ *       - in: query
+ *         name: tipo
+ *         schema:
+ *           type: string
+ *           enum: [queja, peticion, reclamo, sugerencia]
+ *       - in: query
+ *         name: prioridad
+ *         schema:
+ *           type: string
+ *           enum: [baja, normal, alta, urgente]
+ *       - in: query
+ *         name: asignado_a
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Busqueda por texto en descripcion o numero de ticket
+ *     responses:
+ *       200:
+ *         description: Lista de tickets SAC
+ */
 router.get('/tickets', auth, async (req, res) => {
   const { sala_id, estado, tipo, prioridad, asignado_a, q } = req.query;
   const { rol, sala_id: userSalaId } = req.user;

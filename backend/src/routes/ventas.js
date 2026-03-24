@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
 const { paginate, paginatedResponse } = require('../utils/pagination');
+const { dispararWebhook } = require('../utils/webhook');
 
 const router = express.Router();
 
@@ -121,8 +122,55 @@ async function getVenta360(id) {
   };
 }
 
-// GET /api/ventas — lista de contratos
-// Soporta paginacion: ?page=1&limit=50
+/**
+ * @openapi
+ * /api/ventas:
+ *   get:
+ *     tags: [Ventas]
+ *     summary: Listar contratos / ventas
+ *     description: Retorna contratos con resumen financiero. Soporta paginacion y filtros por sala, estado, fecha, persona y consultor.
+ *     parameters:
+ *       - in: query
+ *         name: sala_id
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: estado
+ *         schema:
+ *           type: string
+ *           enum: [activo, inactivo, cancelado, suspendido, completado]
+ *       - in: query
+ *         name: fecha_inicio
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: fecha_fin
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: persona_id
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: consultor_id
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *     responses:
+ *       200:
+ *         description: Lista paginada de contratos
+ */
 router.get('/', auth, async (req, res) => {
   const { sala_id, estado, fecha_inicio, fecha_fin, persona_id, consultor_id, page, limit } = req.query;
   const { rol, sala_id: userSalaId } = req.user;
@@ -193,7 +241,65 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-// POST /api/ventas — crear nuevo contrato
+/**
+ * @openapi
+ * /api/ventas:
+ *   post:
+ *     tags: [Ventas]
+ *     summary: Crear nuevo contrato / venta
+ *     description: Registra un contrato con productos, genera plan de cuotas y consecutivo automatico. Requiere rol consultor, hostess, director o admin.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [persona_id, monto_total]
+ *             properties:
+ *               persona_id:
+ *                 type: integer
+ *               sala_id:
+ *                 type: integer
+ *               consultor_id:
+ *                 type: integer
+ *               tipo_plan:
+ *                 type: string
+ *                 example: mensual
+ *               monto_total:
+ *                 type: number
+ *                 example: 3500
+ *               cuota_inicial:
+ *                 type: number
+ *                 example: 500
+ *               n_cuotas:
+ *                 type: integer
+ *                 example: 12
+ *               valor_financiado:
+ *                 type: number
+ *               fecha_primer_pago:
+ *                 type: string
+ *                 format: date
+ *               segunda_venta:
+ *                 type: boolean
+ *               productos:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     producto_id:
+ *                       type: integer
+ *                     cantidad:
+ *                       type: integer
+ *                     precio_unitario:
+ *                       type: number
+ *     responses:
+ *       201:
+ *         description: Contrato creado con vista 360
+ *       403:
+ *         description: Sin permiso para crear contratos
+ *       409:
+ *         description: Numero de contrato duplicado
+ */
 router.post('/', auth, async (req, res) => {
   const { rol, id: userId, sala_id: userSalaId } = req.user;
   if (!['admin','director','consultor','hostess'].includes(rol)) {
@@ -330,6 +436,15 @@ router.post('/', auth, async (req, res) => {
     // Retornar vista 360° del contrato creado
     const vista = await getVenta360(contrato.id);
     res.status(201).json(vista);
+
+    // Webhook: nueva_venta (fire-and-forget)
+    dispararWebhook('nueva_venta', {
+      contrato_id: contrato.id,
+      numero_contrato: numeroContrato,
+      persona_id,
+      monto_total: valorBruto,
+      productos: productos.length,
+    });
 
   } catch (err) {
     await client.query('ROLLBACK');

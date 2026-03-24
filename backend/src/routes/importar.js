@@ -57,8 +57,34 @@ router.post('/preview', auth, upload.single('archivo'), async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/importar/ejecutar
 // Ejecuta la importación con el mapeo y configuración del usuario
-// Body: FormData con archivo + config JSON
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/importar/ejecutar:
+ *   post:
+ *     tags: [Importar]
+ *     summary: Ejecutar importacion masiva
+ *     description: Importa personas y leads desde un archivo Excel (.xlsx). Requiere archivo + configuracion de mapeo de columnas en JSON. Solo admin, director o supervisor.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [archivo, config]
+ *             properties:
+ *               archivo:
+ *                 type: string
+ *                 format: binary
+ *                 description: Archivo Excel (.xlsx)
+ *               config:
+ *                 type: string
+ *                 description: JSON con mapeo de columnas y configuracion de importacion
+ *     responses:
+ *       200:
+ *         description: Resultado de la importacion con conteo de registros procesados
+ *       403:
+ *         description: Sin permiso para importar
+ */
 router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
   const { rol, id: userId } = req.user;
   if (!['admin', 'director', 'supervisor_cc'].includes(rol)) {

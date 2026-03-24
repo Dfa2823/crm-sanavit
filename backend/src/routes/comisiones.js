@@ -3,12 +3,32 @@ const pool = require('../db');
 
 const router = express.Router();
 
-// ─────────────────────────────────────────────────────────────
-// GET /api/comisiones
-// Query params: mes (YYYY-MM), sala_id, consultor_id
-// Auth: viene del middleware global en index.js (req.user ya existe)
-// Regla: si rol === 'consultor' solo puede ver sus propios datos
-// ─────────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/comisiones:
+ *   get:
+ *     tags: [Comisiones]
+ *     summary: Listar comisiones
+ *     description: Retorna comisiones de consultores por mes. Consultores solo ven sus propios datos. Admin y directores ven todos.
+ *     parameters:
+ *       - in: query
+ *         name: mes
+ *         schema:
+ *           type: string
+ *           example: '2026-03'
+ *         description: Periodo YYYY-MM (por defecto mes actual)
+ *       - in: query
+ *         name: sala_id
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: consultor_id
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Lista de comisiones por consultor
+ */
 router.get('/', async (req, res) => {
   const { mes, sala_id, consultor_id } = req.query;
   const { rol, id: userId, sala_id: userSalaId } = req.user;

@@ -4,7 +4,61 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-// GET /api/kpis?sala_id=X&periodo=2026-03
+/**
+ * @openapi
+ * /api/kpis:
+ *   get:
+ *     tags: [KPIs]
+ *     summary: Obtener KPIs del periodo
+ *     description: Retorna indicadores clave de mercadeo, sala y ventas para un periodo mensual. Incluye efectividad de datos, citas, tours y ventas por consultor y TMK.
+ *     parameters:
+ *       - in: query
+ *         name: sala_id
+ *         schema:
+ *           type: integer
+ *         description: Filtrar por sala (por defecto la sala del usuario)
+ *       - in: query
+ *         name: periodo
+ *         schema:
+ *           type: string
+ *           example: '2026-03'
+ *         description: Periodo en formato YYYY-MM (por defecto mes actual)
+ *     responses:
+ *       200:
+ *         description: KPIs del periodo
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 periodo:
+ *                   type: object
+ *                   properties:
+ *                     inicio:
+ *                       type: string
+ *                       format: date
+ *                     fin:
+ *                       type: string
+ *                       format: date
+ *                 mercadeo:
+ *                   type: object
+ *                   properties:
+ *                     total_leads:
+ *                       type: integer
+ *                     total_citas:
+ *                       type: integer
+ *                     total_tours:
+ *                       type: integer
+ *                     efectividad_datos:
+ *                       type: number
+ *                 ventas:
+ *                   type: object
+ *                   properties:
+ *                     total_contratos:
+ *                       type: integer
+ *                     monto_total:
+ *                       type: number
+ */
 router.get('/', auth, async (req, res) => {
   const { sala_id, periodo } = req.query;
   const { sala_id: userSalaId, rol } = req.user;
@@ -266,8 +320,27 @@ router.get('/hoy', auth, async (req, res) => {
   }
 });
 
-// GET /api/kpis/analytics?sala_id=X&periodo=YYYY-MM
-// Dashboard analytics avanzado: funnel, comparativa, cobros proyectados, top fuentes, actividad por hora
+/**
+ * @openapi
+ * /api/kpis/analytics:
+ *   get:
+ *     tags: [KPIs]
+ *     summary: Analytics avanzado
+ *     description: Dashboard analitico con funnel de conversion, comparativa mensual, cobros proyectados, top fuentes y actividad por hora.
+ *     parameters:
+ *       - in: query
+ *         name: sala_id
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: periodo
+ *         schema:
+ *           type: string
+ *           example: '2026-03'
+ *     responses:
+ *       200:
+ *         description: Analytics del periodo
+ */
 router.get('/analytics', auth, async (req, res) => {
   const { sala_id, periodo } = req.query;
   const { sala_id: userSalaId, rol } = req.user;

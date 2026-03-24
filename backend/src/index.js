@@ -60,8 +60,15 @@ app.use((req, res, next) => {
 const path = require('path');
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+// ── Swagger / OpenAPI docs ────────────────────────────────
+const { setupSwagger } = require('./swagger');
+setupSwagger(app);
+
 // ── Middlewares de autenticación ───────────────────────────
 const authMiddleware = require('./middleware/auth');
+
+// ── Tenant middleware (multi-tenancy base) ────────────────
+const tenantMiddleware = require('./middleware/tenant');
 
 // ── Audit trail middleware ────────────────────────────────
 const { auditMiddleware } = require('./middleware/audit');
@@ -74,26 +81,27 @@ app.use('/api/leads',     require('./routes/leads'));
 app.use('/api/citas',     require('./routes/citas'));
 app.use('/api/usuarios',  require('./routes/usuarios'));
 app.use('/api/kpis',      require('./routes/kpis'));
-app.use('/api/admin',     authMiddleware, require('./routes/admin'));
-app.use('/api/cartera',   authMiddleware, require('./routes/cartera'));
-app.use('/api/reportes',  authMiddleware, require('./routes/reportes'));
-app.use('/api/outsourcing', authMiddleware, require('./routes/outsourcing'));
-app.use('/api/comisiones', authMiddleware, require('./routes/comisiones'));
-app.use('/api/sac',        authMiddleware, require('./routes/sac'));
-app.use('/api/supervisor', authMiddleware, require('./routes/supervisor'));
-app.use('/api/inventario',   authMiddleware, require('./routes/inventario'));
-app.use('/api/alertas',      authMiddleware, require('./routes/alertas'));
-app.use('/api/liquidaciones', authMiddleware, require('./routes/liquidaciones'));
-app.use('/api/perfil',       authMiddleware, require('./routes/perfil'));
-app.use('/api/importar',     authMiddleware, require('./routes/importar'));
-app.use('/api/nomina',       authMiddleware, require('./routes/nomina'));
-app.use('/api/metas',        authMiddleware, require('./routes/metas'));
-app.use('/api/buscar',       authMiddleware, require('./routes/buscar'));
-app.use('/api/consultor',    authMiddleware, require('./routes/consultor'));
+app.use('/api/admin',     authMiddleware, tenantMiddleware, require('./routes/admin'));
+app.use('/api/admin/tenants', authMiddleware, tenantMiddleware, require('./routes/tenants'));
+app.use('/api/cartera',   authMiddleware, tenantMiddleware, require('./routes/cartera'));
+app.use('/api/reportes',  authMiddleware, tenantMiddleware, require('./routes/reportes'));
+app.use('/api/outsourcing', authMiddleware, tenantMiddleware, require('./routes/outsourcing'));
+app.use('/api/comisiones', authMiddleware, tenantMiddleware, require('./routes/comisiones'));
+app.use('/api/sac',        authMiddleware, tenantMiddleware, require('./routes/sac'));
+app.use('/api/supervisor', authMiddleware, tenantMiddleware, require('./routes/supervisor'));
+app.use('/api/inventario',   authMiddleware, tenantMiddleware, require('./routes/inventario'));
+app.use('/api/alertas',      authMiddleware, tenantMiddleware, require('./routes/alertas'));
+app.use('/api/liquidaciones', authMiddleware, tenantMiddleware, require('./routes/liquidaciones'));
+app.use('/api/perfil',       authMiddleware, tenantMiddleware, require('./routes/perfil'));
+app.use('/api/importar',     authMiddleware, tenantMiddleware, require('./routes/importar'));
+app.use('/api/nomina',       authMiddleware, tenantMiddleware, require('./routes/nomina'));
+app.use('/api/metas',        authMiddleware, tenantMiddleware, require('./routes/metas'));
+app.use('/api/buscar',       authMiddleware, tenantMiddleware, require('./routes/buscar'));
+app.use('/api/consultor',    authMiddleware, tenantMiddleware, require('./routes/consultor'));
 
-app.use('/api/productos', authMiddleware, require('./routes/productos'));
-app.use('/api/ventas',    authMiddleware, require('./routes/ventas'));
-app.use('/api/recibos',   authMiddleware, require('./routes/recibos'));
+app.use('/api/productos', authMiddleware, tenantMiddleware, require('./routes/productos'));
+app.use('/api/ventas',    authMiddleware, tenantMiddleware, require('./routes/ventas'));
+app.use('/api/recibos',   authMiddleware, tenantMiddleware, require('./routes/recibos'));
 
 // ── Health check ───────────────────────────────────────────
 app.get('/health', (req, res) => {
@@ -108,9 +116,13 @@ app.get('/health', (req, res) => {
             '/api/comisiones','/api/sac','/api/supervisor','/api/inventario',
             '/api/productos','/api/ventas','/api/recibos',
             '/api/alertas','/api/liquidaciones','/api/perfil','/api/importar',
-            '/api/nomina','/api/metas','/api/buscar','/api/consultor'],
+            '/api/nomina','/api/metas','/api/buscar','/api/consultor',
+            '/api/admin/tenants'],
   });
 });
+
+// ── Migración multi-tenancy al arrancar ─────────────────────
+require('./migrations/tenants')().catch(e => console.warn('[TENANTS]', e.message));
 
 // ── Crear índices de rendimiento al arrancar ────────────────
 require('./migrations/indices')().catch(e => console.warn('[INDICES]', e.message));

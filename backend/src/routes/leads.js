@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
 const { paginate, paginatedResponse } = require('../utils/pagination');
+const { dispararWebhook } = require('../utils/webhook');
 
 const router = express.Router();
 
@@ -52,8 +53,80 @@ function buildLeadSelect() {
   `;
 }
 
-// GET /api/leads — leads del TMK en el día (o todos para supervisores)
-// Soporta paginación: ?page=1&limit=50
+/**
+ * @openapi
+ * /api/leads:
+ *   get:
+ *     tags: [Leads]
+ *     summary: Listar leads
+ *     description: Retorna leads del TMK actual o todos para supervisores. Soporta paginacion y filtros por fecha y sala.
+ *     parameters:
+ *       - in: query
+ *         name: fecha
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filtrar por fecha (YYYY-MM-DD)
+ *       - in: query
+ *         name: sala_id
+ *         schema:
+ *           type: integer
+ *         description: Filtrar por sala
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *     responses:
+ *       200:
+ *         description: Lista paginada de leads
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       persona_id:
+ *                         type: integer
+ *                       nombres:
+ *                         type: string
+ *                       apellidos:
+ *                         type: string
+ *                       estado:
+ *                         type: string
+ *                         enum: [pendiente, confirmada, tentativa, tour, no_tour, inasistencia, cancelada]
+ *                       fuente_nombre:
+ *                         type: string
+ *                       tipificacion_nombre:
+ *                         type: string
+ *                       tmk_nombre:
+ *                         type: string
+ *                       fecha_cita:
+ *                         type: string
+ *                         format: date-time
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     pages:
+ *                       type: integer
+ */
 router.get('/', auth, async (req, res) => {
   const { fecha, sala_id, page, limit } = req.query;
   const { rol, id: userId, sala_id: userSalaId } = req.user;
@@ -231,7 +304,45 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-// POST /api/leads — crear nuevo lead
+/**
+ * @openapi
+ * /api/leads:
+ *   post:
+ *     tags: [Leads]
+ *     summary: Crear nuevo lead
+ *     description: Registra un nuevo lead asociado a una persona existente. Requiere persona_id, tipificacion_id y fuente_id.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [persona_id, tipificacion_id, fuente_id]
+ *             properties:
+ *               persona_id:
+ *                 type: integer
+ *               fuente_id:
+ *                 type: integer
+ *               tipificacion_id:
+ *                 type: integer
+ *               patologia:
+ *                 type: string
+ *               fecha_cita:
+ *                 type: string
+ *                 format: date-time
+ *               fecha_rellamar:
+ *                 type: string
+ *                 format: date-time
+ *               observacion:
+ *                 type: string
+ *               outsourcing_id:
+ *                 type: integer
+ *     responses:
+ *       201:
+ *         description: Lead creado exitosamente
+ *       400:
+ *         description: Datos faltantes o invalidos
+ */
 router.post('/', auth, async (req, res) => {
   const {
     persona_id,
@@ -301,6 +412,15 @@ router.post('/', auth, async (req, res) => {
     `, [result.rows[0].id]);
 
     res.status(201).json(newLead.rows[0]);
+
+    // Webhook: lead_creado (fire-and-forget)
+    dispararWebhook('lead_creado', {
+      lead_id: result.rows[0].id,
+      persona_id,
+      fuente_id,
+      tipificacion_id,
+      estado,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al crear lead' });

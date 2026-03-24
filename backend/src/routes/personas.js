@@ -4,8 +4,45 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-// GET /api/personas?q=BUSQUEDA
-// Buscar persona por nombre, teléfono o documento
+/**
+ * @openapi
+ * /api/personas:
+ *   get:
+ *     tags: [Personas]
+ *     summary: Buscar personas
+ *     description: Busca personas por nombre, telefono o documento. Sin parametro q retorna las 50 mas recientes.
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Termino de busqueda (nombre, telefono o documento)
+ *         example: Juan
+ *     responses:
+ *       200:
+ *         description: Lista de personas
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   nombres:
+ *                     type: string
+ *                   apellidos:
+ *                     type: string
+ *                   telefono:
+ *                     type: string
+ *                   email:
+ *                     type: string
+ *                   ciudad:
+ *                     type: string
+ *                   num_documento:
+ *                     type: string
+ */
 router.get('/', auth, async (req, res) => {
   const { q } = req.query;
   try {

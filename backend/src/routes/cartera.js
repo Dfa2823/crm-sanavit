@@ -4,6 +4,48 @@ const { paginate, paginatedResponse } = require('../utils/pagination');
 
 const router = express.Router();
 
+/**
+ * @openapi
+ * /api/cartera:
+ *   get:
+ *     tags: [Cartera]
+ *     summary: Listar cuotas de cartera
+ *     description: Retorna cuotas pendientes y vencidas con datos del contrato y persona. Soporta paginacion y filtros por sala, estado y rango de fechas.
+ *     parameters:
+ *       - in: query
+ *         name: sala_id
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: estado
+ *         schema:
+ *           type: string
+ *           enum: [pendiente, vencido, parcial, pagado]
+ *       - in: query
+ *         name: fecha_inicio
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: fecha_fin
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *     responses:
+ *       200:
+ *         description: Lista paginada de cuotas de cartera
+ */
+
 // Auto-migraciones: campos de tipificación de cartera + intereses
 (async () => {
   try {

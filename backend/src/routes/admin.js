@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const pool = require('../db');
+const { EVENTOS_VALIDOS } = require('../utils/webhook');
 
 const router = express.Router();
 
@@ -120,7 +121,42 @@ function requireAdmin(req, res, next) {
 // USUARIOS
 // ═══════════════════════════════════════════════════════════════
 
-// GET /api/admin/usuarios — listar todos los usuarios (sin password)
+/**
+ * @openapi
+ * /api/admin/usuarios:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Listar usuarios del sistema
+ *     description: Retorna todos los usuarios con su rol, sala y configuracion salarial. Solo admin y director.
+ *     responses:
+ *       200:
+ *         description: Lista de usuarios
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   nombre:
+ *                     type: string
+ *                   username:
+ *                     type: string
+ *                   activo:
+ *                     type: boolean
+ *                   rol:
+ *                     type: string
+ *                   rol_label:
+ *                     type: string
+ *                   sala_nombre:
+ *                     type: string
+ *                   sueldo_base:
+ *                     type: number
+ *       403:
+ *         description: Sin permiso de administrador
+ */
 router.get('/usuarios', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -816,6 +852,218 @@ router.patch('/escalas-tmk/:id', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al actualizar escala TMK' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// WEBHOOKS
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * @openapi
+ * /api/admin/webhooks:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Listar webhooks configurados
+ *     description: Retorna todos los webhooks registrados. Solo admin y director.
+ *     responses:
+ *       200:
+ *         description: Lista de webhooks
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   evento:
+ *                     type: string
+ *                     enum: [nueva_venta, pago_registrado, lead_creado, tour_registrado]
+ *                   url:
+ *                     type: string
+ *                   secreto:
+ *                     type: string
+ *                   activo:
+ *                     type: boolean
+ *                   created_at:
+ *                     type: string
+ *                     format: date-time
+ */
+router.get('/webhooks', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM webhooks ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener webhooks' });
+  }
+});
+
+/**
+ * @openapi
+ * /api/admin/webhooks:
+ *   post:
+ *     tags: [Admin]
+ *     summary: Crear webhook
+ *     description: Registra un nuevo webhook para un evento. Eventos soportados nueva_venta, pago_registrado, lead_creado, tour_registrado.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [evento, url]
+ *             properties:
+ *               evento:
+ *                 type: string
+ *                 enum: [nueva_venta, pago_registrado, lead_creado, tour_registrado]
+ *               url:
+ *                 type: string
+ *                 example: https://example.com/webhook
+ *               secreto:
+ *                 type: string
+ *                 description: Secreto enviado en header X-Webhook-Secret
+ *     responses:
+ *       201:
+ *         description: Webhook creado
+ *       400:
+ *         description: Evento invalido o datos faltantes
+ */
+router.post('/webhooks', requireAdmin, async (req, res) => {
+  const { evento, url, secreto } = req.body;
+
+  if (!evento || !url) {
+    return res.status(400).json({ error: 'evento y url son requeridos' });
+  }
+
+  if (!EVENTOS_VALIDOS.includes(evento)) {
+    return res.status(400).json({
+      error: `Evento invalido. Eventos soportados: ${EVENTOS_VALIDOS.join(', ')}`,
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      'INSERT INTO webhooks (evento, url, secreto) VALUES ($1, $2, $3) RETURNING *',
+      [evento, url, secreto || null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al crear webhook' });
+  }
+});
+
+/**
+ * @openapi
+ * /api/admin/webhooks/{id}:
+ *   patch:
+ *     tags: [Admin]
+ *     summary: Actualizar webhook
+ *     description: Actualiza url, secreto o estado activo de un webhook.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               evento:
+ *                 type: string
+ *               url:
+ *                 type: string
+ *               secreto:
+ *                 type: string
+ *               activo:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Webhook actualizado
+ *       404:
+ *         description: Webhook no encontrado
+ */
+router.patch('/webhooks/:id', requireAdmin, async (req, res) => {
+  const { evento, url, secreto, activo } = req.body;
+
+  try {
+    const updates = [];
+    const params = [];
+    let idx = 1;
+
+    if (evento !== undefined) {
+      if (!EVENTOS_VALIDOS.includes(evento)) {
+        return res.status(400).json({
+          error: `Evento invalido. Eventos soportados: ${EVENTOS_VALIDOS.join(', ')}`,
+        });
+      }
+      updates.push(`evento = $${idx++}`); params.push(evento);
+    }
+    if (url !== undefined)     { updates.push(`url = $${idx++}`);     params.push(url); }
+    if (secreto !== undefined) { updates.push(`secreto = $${idx++}`); params.push(secreto); }
+    if (activo !== undefined)  { updates.push(`activo = $${idx++}`);  params.push(activo); }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No hay campos para actualizar' });
+    }
+
+    params.push(req.params.id);
+    const result = await pool.query(
+      `UPDATE webhooks SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
+      params
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Webhook no encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar webhook' });
+  }
+});
+
+/**
+ * @openapi
+ * /api/admin/webhooks/{id}:
+ *   delete:
+ *     tags: [Admin]
+ *     summary: Eliminar webhook
+ *     description: Elimina permanentemente un webhook.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Webhook eliminado
+ *       404:
+ *         description: Webhook no encontrado
+ */
+router.delete('/webhooks/:id', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'DELETE FROM webhooks WHERE id = $1 RETURNING id',
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Webhook no encontrado' });
+    }
+
+    res.json({ ok: true, id: result.rows[0].id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al eliminar webhook' });
   }
 });
 

@@ -17,7 +17,56 @@ const loginLimiter = rateLimit({
   skipSuccessfulRequests: true,
 });
 
-// POST /api/auth/login
+/**
+ * @openapi
+ * /api/auth/login:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Iniciar sesion
+ *     description: Autentica un usuario con username y password. Retorna un JWT valido por 8 horas.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [username, password]
+ *             properties:
+ *               username:
+ *                 type: string
+ *                 example: admin
+ *               password:
+ *                 type: string
+ *                 example: '123456'
+ *     responses:
+ *       200:
+ *         description: Login exitoso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                 usuario:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     nombre:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *                     rol:
+ *                       type: string
+ *                     sala_id:
+ *                       type: integer
+ *       401:
+ *         description: Credenciales incorrectas
+ *       403:
+ *         description: Usuario inactivo
+ */
 router.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
 
@@ -28,6 +77,7 @@ router.post('/login', loginLimiter, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT u.id, u.nombre, u.username, u.password_hash, u.activo, u.permisos,
+             u.tenant_id,
              r.nombre AS rol, r.label AS rol_label,
              s.id AS sala_id, s.nombre AS sala_nombre, s.ciudad AS sala_ciudad
       FROM usuarios u
@@ -67,6 +117,7 @@ router.post('/login', loginLimiter, async (req, res) => {
       sala_nombre: user.sala_nombre,
       sala_ciudad: user.sala_ciudad,
       permisos: user.permisos || null,
+      tenant_id: user.tenant_id || 1,
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, {

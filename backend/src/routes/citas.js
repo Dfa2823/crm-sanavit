@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
+const { dispararWebhook } = require('../utils/webhook');
 
 const router = express.Router();
 
@@ -192,6 +193,16 @@ router.patch('/:lead_id/calificar', auth, async (req, res) => {
     );
 
     res.json({ message: 'Calificación registrada', estado: nuevoEstado });
+
+    // Webhook: tour_registrado (fire-and-forget, solo si es TOUR)
+    if (calificacion === 'TOUR') {
+      dispararWebhook('tour_registrado', {
+        lead_id: parseInt(lead_id),
+        persona_id: lead.persona_id,
+        sala_id: lead.sala_id,
+        consultor_id: consultor_id || null,
+      });
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al calificar visita' });

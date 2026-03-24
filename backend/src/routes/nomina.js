@@ -168,8 +168,37 @@ router.get('/', async (req, res) => {
   }
 });
 
-// ─── POST /api/nomina/calcular ───────────────────────────────────────────────
-// Body: { mes: 'YYYY-MM', sala_id?: number, tipo_liquidacion?: 'garantizado'|'comisiones'|'completa' }
+/**
+ * @openapi
+ * /api/nomina/calcular:
+ *   post:
+ *     tags: [Nomina]
+ *     summary: Calcular nomina mensual
+ *     description: Calcula la nomina de todos los empleados para un mes dado. Incluye sueldo base, comisiones, bonos y deducciones. Solo admin o director.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [mes]
+ *             properties:
+ *               mes:
+ *                 type: string
+ *                 example: '2026-03'
+ *                 description: Periodo en formato YYYY-MM
+ *               sala_id:
+ *                 type: integer
+ *               tipo_liquidacion:
+ *                 type: string
+ *                 enum: [garantizado, comisiones, completa]
+ *                 default: completa
+ *     responses:
+ *       200:
+ *         description: Nomina calculada para todos los empleados del periodo
+ *       403:
+ *         description: Sin permiso
+ */
 router.post('/calcular', requireAdminOrDirector, async (req, res) => {
   const { mes, sala_id, tipo_liquidacion: tipoLiq = 'completa' } = req.body;
 

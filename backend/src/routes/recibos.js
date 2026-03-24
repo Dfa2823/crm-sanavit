@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
+const { dispararWebhook } = require('../utils/webhook');
 
 const router = express.Router();
 
@@ -38,7 +39,47 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// POST /api/recibos — registrar pago
+/**
+ * @openapi
+ * /api/recibos:
+ *   post:
+ *     tags: [Recibos]
+ *     summary: Registrar pago / recibo
+ *     description: Registra un pago asociado a un contrato y opcionalmente a una cuota. Actualiza automaticamente el estado de la cuota.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [persona_id, valor]
+ *             properties:
+ *               contrato_id:
+ *                 type: integer
+ *               cuota_id:
+ *                 type: integer
+ *               persona_id:
+ *                 type: integer
+ *               sala_id:
+ *                 type: integer
+ *               forma_pago_id:
+ *                 type: integer
+ *               valor:
+ *                 type: number
+ *                 example: 250.00
+ *               fecha_pago:
+ *                 type: string
+ *                 format: date
+ *               referencia_pago:
+ *                 type: string
+ *               observacion:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Recibo creado exitosamente
+ *       400:
+ *         description: Datos faltantes
+ */
 router.post('/', auth, async (req, res) => {
   const { id: userId } = req.user;
   const { contrato_id, cuota_id, persona_id, sala_id, forma_pago_id, valor, fecha_pago, referencia_pago, observacion } = req.body;
@@ -103,6 +144,15 @@ router.post('/', auth, async (req, res) => {
     req.audit('registrar_pago', 'recibos', result.rows[0].id, { valor, contrato_id, cuota_id, forma_pago_id });
 
     res.status(201).json(recibo.rows[0]);
+
+    // Webhook: pago_registrado (fire-and-forget)
+    dispararWebhook('pago_registrado', {
+      recibo_id: result.rows[0].id,
+      contrato_id,
+      persona_id,
+      valor: parseFloat(valor),
+      forma_pago_id,
+    });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error(err);
