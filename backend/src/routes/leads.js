@@ -441,11 +441,24 @@ router.patch('/:id', auth, async (req, res) => {
   }
 
   try {
+    // Si se cambió la tipificación a una que requiere cita y no se envió estado,
+    // auto-cambiar estado a 'tentativa' para que caiga al confirmador
+    let estadoFinal = estado;
+    if (tipificacion_id !== undefined && estado === undefined) {
+      const tipCheck = await pool.query('SELECT requiere_fecha_cita FROM tipificaciones WHERE id = $1', [tipificacion_id]);
+      if (tipCheck.rows.length > 0 && tipCheck.rows[0].requiere_fecha_cita) {
+        const leadCheck = await pool.query('SELECT estado FROM leads WHERE id = $1', [req.params.id]);
+        if (leadCheck.rows.length > 0 && leadCheck.rows[0].estado === 'pendiente') {
+          estadoFinal = 'tentativa';
+        }
+      }
+    }
+
     // Auto-asignar confirmador_id cuando el estado cambia a 'confirmada' o 'tentativa'
     // y no se envió confirmador_id explícitamente
     let autoConfirmadorId = confirmador_id;
     if (
-      (estado === 'confirmada' || estado === 'tentativa') &&
+      (estadoFinal === 'confirmada' || estadoFinal === 'tentativa') &&
       confirmador_id === undefined
     ) {
       // Buscar el TMK del lead para resolver su confirmador asignado
@@ -469,7 +482,7 @@ router.patch('/:id', auth, async (req, res) => {
     const params = [];
     let idx = 1;
 
-    if (estado !== undefined)           { updates.push(`estado = $${idx++}`);           params.push(estado); }
+    if (estadoFinal !== undefined)       { updates.push(`estado = $${idx++}`);           params.push(estadoFinal); }
     if (fecha_cita !== undefined)       { updates.push(`fecha_cita = $${idx++}`);       params.push(fecha_cita); }
     if (fecha_rellamar !== undefined)   { updates.push(`fecha_rellamar = $${idx++}`);   params.push(fecha_rellamar); }
     if (autoConfirmadorId !== undefined) { updates.push(`confirmador_id = $${idx++}`);  params.push(autoConfirmadorId); }
