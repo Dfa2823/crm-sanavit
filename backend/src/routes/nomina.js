@@ -595,6 +595,8 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
       ORDER BY u.nombre
     `, [mes, salaParam, tipoLiq]);
 
+    req.audit('calcular_nomina', 'nomina_mensual', null, { mes, tipo_liquidacion: tipoLiq, sala_id: salaParam, empleados: resultados.length });
+
     res.json(lista.rows);
   } catch (err) {
     console.error('Error en POST /api/nomina/calcular:', err);
@@ -706,6 +708,10 @@ router.patch('/:id(\\d+)', requireAdminOrDirector, async (req, res) => {
       LEFT JOIN usuarios ua ON n.aprobado_por = ua.id
       WHERE n.id = $1
     `, [id]);
+
+    if (estado) {
+      req.audit('cambiar_estado_nomina', 'nomina_mensual', id, { estado, usuario_id: reg.usuario_id, mes: reg.mes });
+    }
 
     res.json(updated.rows[0]);
   } catch (err) {
@@ -1227,6 +1233,8 @@ router.post('/suspender-comision', requireAdminOrDirector, async (req, res) => {
       UPDATE nomina_mensual SET comisiones_suspendidas = $1, updated_at = NOW()
       WHERE usuario_id = $2 AND mes = $3 AND estado = 'borrador'
     `, [JSON.stringify(suspRes.rows), usuario_id, mes]);
+
+    req.audit('suspender_comision', 'comisiones_suspendidas', null, { contrato_id, usuario_id, motivo: motivo || 'Sin motivo', mes });
 
     res.json({ success: true, message: 'Comision suspendida correctamente', suspendidas: suspRes.rows });
   } catch (err) {

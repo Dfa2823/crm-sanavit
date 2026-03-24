@@ -385,6 +385,7 @@ function DashboardAdmin() {
   const [alertas, setAlertas] = useState(null)
   const [loading, setLoading] = useState(true)
   const [mes, setMes]         = useState(getMesActual())
+  const [analytics, setAnalytics] = useState(null)
 
   // Live data
   const [kpisHoy, setKpisHoy]     = useState(null)
@@ -396,9 +397,11 @@ function DashboardAdmin() {
     Promise.all([
       client.get(`/api/kpis${params}`).catch(() => ({ data: null })),
       client.get('/api/alertas/resumen').catch(() => ({ data: null })),
-    ]).then(([kpisRes, alertasRes]) => {
+      client.get(`/api/kpis/analytics${params}`).catch(() => ({ data: null })),
+    ]).then(([kpisRes, alertasRes, analyticsRes]) => {
       setKpis(kpisRes.data)
       setAlertas(alertasRes.data)
+      setAnalytics(analyticsRes.data)
     }).finally(() => setLoading(false))
   }, [mes])
 
@@ -533,6 +536,234 @@ function DashboardAdmin() {
               />
             </div>
           </Section>
+
+          {/* ══════════════════════════════════════════════════════════════════
+              ANALYTICS AVANZADO
+              ══════════════════════════════════════════════════════════════════ */}
+          {analytics && (
+            <>
+              {/* ── Funnel de Conversion ── */}
+              <Section title="Funnel de conversion" subtitle="De lead a venta cerrada">
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 animate-fadeIn hover-lift">
+                  {(() => {
+                    const fn = analytics.funnel || {}
+                    const maxVal = fn.leads || 1
+                    const steps = [
+                      { label: 'Leads',       value: fn.leads,       color: 'bg-teal-500',    light: 'bg-teal-50'    },
+                      { label: 'Citas',        value: fn.citas,       color: 'bg-blue-500',    light: 'bg-blue-50'    },
+                      { label: 'Asistencias',  value: fn.asistencias, color: 'bg-amber-500',   light: 'bg-amber-50'   },
+                      { label: 'Tours',        value: fn.tours,       color: 'bg-green-500',   light: 'bg-green-50'   },
+                      { label: 'Ventas',       value: fn.ventas,      color: 'bg-emerald-600', light: 'bg-emerald-50' },
+                    ]
+                    return (
+                      <div className="space-y-3">
+                        {steps.map((s, i) => {
+                          const pct = maxVal > 0 ? ((s.value / maxVal) * 100) : 0
+                          return (
+                            <div key={s.label} className="animate-staggerFadeIn" style={{ animationDelay: `${i * 0.1}s` }}>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-sm font-semibold text-gray-700">{s.label}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-bold text-gray-800">{s.value ?? 0}</span>
+                                  <span className="text-xs text-gray-400">({pct.toFixed(0)}%)</span>
+                                </div>
+                              </div>
+                              <div className={`w-full h-7 rounded-lg ${s.light} overflow-hidden`}>
+                                <div
+                                  className={`h-full rounded-lg ${s.color} transition-all duration-700 ease-out`}
+                                  style={{ width: `${Math.max(pct, 2)}%` }}
+                                />
+                              </div>
+                            </div>
+                          )
+                        })}
+                        <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-2">
+                          <IconTrendingUp className="w-4 h-4 text-emerald-600" />
+                          <span className="text-sm font-semibold text-gray-600">
+                            Conversion Lead a Venta:
+                          </span>
+                          <span className="text-sm font-bold text-emerald-600">
+                            {fn.conversion_lead_venta || '0.0%'}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              </Section>
+
+              {/* ── Comparativa Mes Actual vs Anterior ── */}
+              <Section title="Comparativa mensual" subtitle="Mes actual vs mes anterior">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {(() => {
+                    const comp = analytics.comparativa || {}
+                    const actual = comp.mes_actual || {}
+                    const anterior = comp.mes_anterior || {}
+                    const calcVar = (a, b) => {
+                      if (!b || b === 0) return a > 0 ? '+100.0%' : '0.0%'
+                      const v = ((a - b) / b) * 100
+                      return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
+                    }
+                    const items = [
+                      { label: 'Leads',  valor: actual.leads,  variacion: comp.variacion_leads,  icon: IconTarget,    color: 'teal'  },
+                      { label: 'Tours',  valor: actual.tours,  variacion: calcVar(actual.tours, anterior.tours), icon: IconBuilding,  color: 'blue'  },
+                      { label: 'Ventas', valor: actual.ventas, variacion: comp.variacion_ventas, icon: IconBriefcase, color: 'green' },
+                      { label: 'Monto',  valor: actual.monto != null ? `$${Number(actual.monto).toLocaleString('es-EC', { maximumFractionDigits: 0 })}` : '--', variacion: comp.variacion_monto, icon: IconDollar, color: 'green' },
+                    ]
+                    return items.map((item, i) => {
+                      const vStr = item.variacion || '0.0%'
+                      const vNum = parseFloat(vStr)
+                      const isPositive = vNum >= 0
+                      return (
+                        <div
+                          key={item.label}
+                          className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md hover:border-gray-200 transition-all duration-300 hover-lift animate-staggerFadeIn"
+                          style={{ animationDelay: `${i * 0.08}s` }}
+                        >
+                          <div className="flex items-start gap-4">
+                            <div className={`shrink-0 w-11 h-11 rounded-xl ${(ICON_THEMES[item.color]||ICON_THEMES.teal).bg} ring-1 ${(ICON_THEMES[item.color]||ICON_THEMES.teal).ring} flex items-center justify-center`}>
+                              <item.icon className={`w-5 h-5 ${(ICON_THEMES[item.color]||ICON_THEMES.teal).text}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">{item.label}</p>
+                              <p className="text-2xl font-bold text-gray-800 mt-1">{item.valor ?? '--'}</p>
+                              <span className={`inline-flex items-center gap-1 text-xs font-semibold mt-1 ${isPositive ? 'text-emerald-600' : 'text-red-500'}`}>
+                                {isPositive
+                                  ? <IconTrendingUp className="w-3.5 h-3.5" />
+                                  : <IconTrendingDown className="w-3.5 h-3.5" />
+                                }
+                                {vStr}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  })()}
+                </div>
+              </Section>
+
+              {/* ── Pronostico de Cobros ── */}
+              <Section title="Pronostico de cobros" subtitle="Cuotas pendientes por cobrar">
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 animate-fadeIn hover-lift">
+                  {(() => {
+                    const cb = analytics.cobros_proyectados || {}
+                    const m7  = Number(cb.monto_proximos_7_dias  || 0)
+                    const m30 = Number(cb.monto_proximos_30_dias || 0)
+                    const c7  = cb.cuotas_proximos_7_dias  || 0
+                    const c30 = cb.cuotas_proximos_30_dias || 0
+                    const pct7 = m30 > 0 ? (m7 / m30) * 100 : 0
+                    return (
+                      <div className="space-y-5">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <IconClock className="w-4 h-4 text-teal-600" />
+                              <span className="text-sm font-semibold text-gray-700">Proximos 7 dias</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-lg font-bold text-gray-800">${m7.toLocaleString('es-EC', { maximumFractionDigits: 0 })}</span>
+                              <span className="text-xs text-gray-400 ml-2">({c7} cuotas)</span>
+                            </div>
+                          </div>
+                          <div className="w-full h-3 rounded-full bg-teal-50 overflow-hidden">
+                            <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-teal-600 transition-all duration-700" style={{ width: `${Math.max(pct7, 2)}%` }} />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <IconCalendar className="w-4 h-4 text-emerald-600" />
+                              <span className="text-sm font-semibold text-gray-700">Proximos 30 dias</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-lg font-bold text-gray-800">${m30.toLocaleString('es-EC', { maximumFractionDigits: 0 })}</span>
+                              <span className="text-xs text-gray-400 ml-2">({c30} cuotas)</span>
+                            </div>
+                          </div>
+                          <div className="w-full h-3 rounded-full bg-emerald-50 overflow-hidden">
+                            <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all duration-700" style={{ width: '100%' }} />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              </Section>
+
+              {/* ── Top Fuentes con Conversion ── */}
+              {analytics.top_fuentes && analytics.top_fuentes.length > 0 && (
+                <Section title="Top fuentes" subtitle="Rendimiento por fuente de leads">
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-fadeIn hover-lift">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50/50">
+                          <th className="text-left px-5 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wider">Fuente</th>
+                          <th className="text-right px-5 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wider">Leads</th>
+                          <th className="text-right px-5 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wider">Tours</th>
+                          <th className="px-5 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wider w-40">Conversion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analytics.top_fuentes.map((f, i) => {
+                          const convNum = parseFloat(f.conversion) || 0
+                          return (
+                            <tr key={f.fuente} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors animate-staggerFadeIn" style={{ animationDelay: `${i * 0.05}s` }}>
+                              <td className="px-5 py-3 font-medium text-gray-700">{f.fuente}</td>
+                              <td className="px-5 py-3 text-right font-semibold text-gray-800">{f.leads}</td>
+                              <td className="px-5 py-3 text-right font-semibold text-gray-800">{f.tours}</td>
+                              <td className="px-5 py-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
+                                    <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-emerald-500 transition-all duration-500" style={{ width: `${Math.min(convNum, 100)}%` }} />
+                                  </div>
+                                  <span className="text-xs font-bold text-gray-600 w-12 text-right">{f.conversion}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Section>
+              )}
+
+              {/* ── Actividad por Hora ── */}
+              {analytics.actividad_hora && analytics.actividad_hora.length > 0 && (
+                <Section title="Actividad por hora" subtitle="Distribucion de leads y citas a lo largo del dia">
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 animate-fadeIn hover-lift">
+                    {(() => {
+                      const data = analytics.actividad_hora
+                      const maxLeads = Math.max(...data.map(d => d.leads), 1)
+                      return (
+                        <div className="flex items-end gap-1 h-32">
+                          {data.map((d, i) => {
+                            const hLeads = (d.leads / maxLeads) * 100
+                            const hCitas = maxLeads > 0 ? (d.citas / maxLeads) * 100 : 0
+                            return (
+                              <div key={d.hora} className="flex-1 flex flex-col items-center gap-0.5 group" title={`${d.hora}h: ${d.leads} leads, ${d.citas} citas`}>
+                                <div className="w-full flex flex-col justify-end h-24">
+                                  <div className="w-full bg-teal-400 rounded-t transition-all duration-500 group-hover:bg-teal-500" style={{ height: `${Math.max(hLeads, 2)}%` }} />
+                                </div>
+                                <span className="text-[10px] text-gray-400 font-medium">{d.hora}h</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
+                    <div className="flex items-center gap-4 mt-4 pt-3 border-t border-gray-100">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-3 h-3 rounded bg-teal-400" />
+                        <span className="text-xs text-gray-500">Leads</span>
+                      </div>
+                    </div>
+                  </div>
+                </Section>
+              )}
+            </>
+          )}
         </>
       )}
     </div>

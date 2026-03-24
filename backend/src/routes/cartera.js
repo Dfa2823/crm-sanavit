@@ -1,5 +1,6 @@
 const express = require('express');
 const pool = require('../db');
+const { paginate, paginatedResponse } = require('../utils/pagination');
 
 const router = express.Router();
 
@@ -91,7 +92,7 @@ const router = express.Router();
 //   aging    — 30 | 60 | 90  — filtra cuotas vencidas hace >= X días
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
-  const { sala_id, estado = 'todos', aging } = req.query;
+  const { sala_id, estado = 'todos', aging, page, limit } = req.query;
   const { rol, sala_id: userSalaId } = req.user;
 
   try {
@@ -130,8 +131,18 @@ router.get('/', async (req, res) => {
 
     const whereStr = `WHERE ${whereClauses.join(' AND ')}`;
 
-    const result = await pool.query(
-      `SELECT
+    // Contar total
+    const countResult = await pool.query(
+      `SELECT COUNT(*)
+       FROM cuotas cu
+       JOIN contratos c ON cu.contrato_id = c.id
+       ${whereStr}`,
+      params
+    );
+    const total = parseInt(countResult.rows[0].count);
+
+    // Query paginada
+    const baseQuery = `SELECT
         cu.id                                                          AS cuota_id,
         cu.numero_cuota,
         cu.monto_esperado,
@@ -186,12 +197,12 @@ router.get('/', async (req, res) => {
       ORDER BY
         CASE WHEN ug.fecha_rellamar IS NOT NULL AND ug.fecha_rellamar::date <= CURRENT_DATE THEN 0 ELSE 1 END,
         CASE WHEN cu.tipificacion_cartera = 'volver_a_llamar' THEN 0 ELSE 1 END,
-        cu.fecha_vencimiento ASC
-      LIMIT 500`,
-      params
-    );
+        cu.fecha_vencimiento ASC`;
 
-    res.json(result.rows);
+    const { paginatedQuery, page: p, limit: l } = paginate(baseQuery, { page, limit });
+    const result = await pool.query(paginatedQuery, params);
+
+    res.json(paginatedResponse(result.rows, total, p, l));
   } catch (err) {
     console.error('GET /api/cartera error:', err);
     res.status(500).json({ error: err.message });
@@ -628,6 +639,8 @@ router.post('/refinanciar/:contrato_id', async (req, res) => {
     ]);
 
     await client.query('COMMIT');
+
+    req.audit('refinanciar_contrato', 'refinanciaciones', null, { contrato_id: contratoId, monto_abono: abono, saldo_anterior: parseFloat(saldoPendiente.toFixed(2)), saldo_refinanciado: saldoRestante, nuevas_cuotas: nCuotas });
 
     res.json({
       ok: true,

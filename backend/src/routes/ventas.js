@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
+const { paginate, paginatedResponse } = require('../utils/pagination');
 
 const router = express.Router();
 
@@ -121,8 +122,9 @@ async function getVenta360(id) {
 }
 
 // GET /api/ventas — lista de contratos
+// Soporta paginacion: ?page=1&limit=50
 router.get('/', auth, async (req, res) => {
-  const { sala_id, estado, fecha_inicio, fecha_fin, persona_id, consultor_id } = req.query;
+  const { sala_id, estado, fecha_inicio, fecha_fin, persona_id, consultor_id, page, limit } = req.query;
   const { rol, sala_id: userSalaId } = req.user;
 
   try {
@@ -143,7 +145,15 @@ router.get('/', auth, async (req, res) => {
 
     const whereStr = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
-    const result = await pool.query(`
+    // Contar total
+    const countResult = await pool.query(
+      `SELECT COUNT(DISTINCT c.id) FROM contratos c JOIN personas p ON c.persona_id = p.id ${whereStr}`,
+      params
+    );
+    const total = parseInt(countResult.rows[0].count);
+
+    // Query paginada
+    const baseQuery = `
       SELECT
         c.id, c.numero_contrato, c.fecha_contrato, c.tipo_plan,
         c.monto_total, c.n_cuotas, c.estado, c.segunda_venta,
@@ -160,10 +170,11 @@ router.get('/', auth, async (req, res) => {
       ${whereStr}
       GROUP BY c.id, p.id, s.id, u.id
       ORDER BY c.fecha_contrato DESC
-      LIMIT 200
-    `, params);
+    `;
+    const { paginatedQuery, page: pg, limit: lm } = paginate(baseQuery, { page, limit });
+    const result = await pool.query(paginatedQuery, params);
 
-    res.json(result.rows);
+    res.json(paginatedResponse(result.rows, total, pg, lm));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -313,6 +324,9 @@ router.post('/', auth, async (req, res) => {
 
     await client.query('COMMIT');
 
+    // Audit trail
+    req.audit('crear_contrato', 'contratos', contrato.id, { numero_contrato: numeroContrato, monto_total: valorBruto, persona_id, productos: productos.length });
+
     // Retornar vista 360° del contrato creado
     const vista = await getVenta360(contrato.id);
     res.status(201).json(vista);
@@ -367,6 +381,8 @@ router.patch('/:id/anular', auth, async (req, res) => {
        RETURNING id, numero_contrato, estado, motivo_anulacion`,
       [motivo || 'Caída en mesa', userId, contratoId]
     );
+
+    req.audit('anular_contrato', 'contratos', contratoId, { motivo: motivo || 'Caída en mesa', numero_contrato: result.rows[0]?.numero_contrato });
 
     res.json(result.rows[0]);
   } catch (err) {

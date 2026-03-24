@@ -205,6 +205,8 @@ router.post('/usuarios', requireAdmin, async (req, res) => {
       WHERE u.id = $1
     `, [result.rows[0].id]);
 
+    req.audit('crear_usuario', 'usuarios', result.rows[0].id, { username, rol_id, sala_id });
+
     res.status(201).json(newUser.rows[0]);
   } catch (err) {
     console.error(err);
@@ -273,6 +275,15 @@ router.patch('/usuarios/:id', requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
+    const cambios = {};
+    if (nombre !== undefined) cambios.nombre = nombre;
+    if (sala_id !== undefined) cambios.sala_id = sala_id;
+    if (rol_id !== undefined) cambios.rol_id = rol_id;
+    if (activo !== undefined) cambios.activo = activo;
+    if (sueldo_base !== undefined) cambios.sueldo_base = sueldo_base;
+    if (password !== undefined && password !== '') cambios.password_changed = true;
+    req.audit('modificar_usuario', 'usuarios', req.params.id, cambios);
+
     res.json(updated.rows[0]);
   } catch (err) {
     console.error(err);
@@ -315,6 +326,8 @@ router.delete('/usuarios/:id', requireAdmin, async (req, res) => {
       'UPDATE usuarios SET activo = false WHERE id = $1 RETURNING id',
       [req.params.id]
     );
+
+    req.audit('inactivar_usuario', 'usuarios', req.params.id);
 
     res.json({ message: 'Usuario desactivado correctamente', id: result.rows[0].id });
   } catch (err) {
@@ -706,6 +719,7 @@ router.patch('/usuarios/:id/permisos', requireAdmin, async (req, res) => {
       [valor, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Usuario no encontrado' });
+    req.audit('cambiar_permisos', 'usuarios', req.params.id, { permisos });
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);

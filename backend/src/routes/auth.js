@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const pool = require('../db');
+const { auditLog } = require('../middleware/audit');
 
 const router = express.Router();
 
@@ -36,17 +37,23 @@ router.post('/login', loginLimiter, async (req, res) => {
     `, [username]);
 
     if (result.rows.length === 0) {
+      const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+      auditLog({ username, accion: 'login_fallido', tabla: 'usuarios', registro_id: null, datos_despues: { razon: 'usuario_no_existe' }, ip });
       return res.status(401).json({ error: 'Credenciales incorrectas' });
     }
 
     const user = result.rows[0];
 
     if (!user.activo) {
+      const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+      auditLog({ usuario_id: user.id, username, accion: 'login_fallido', tabla: 'usuarios', registro_id: user.id, datos_despues: { razon: 'usuario_inactivo' }, ip });
       return res.status(403).json({ error: 'Usuario inactivo. Contacte al administrador.' });
     }
 
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
+      const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+      auditLog({ usuario_id: user.id, username, accion: 'login_fallido', tabla: 'usuarios', registro_id: user.id, datos_despues: { razon: 'password_incorrecto' }, ip });
       return res.status(401).json({ error: 'Credenciales incorrectas' });
     }
 
@@ -65,6 +72,9 @@ router.post('/login', loginLimiter, async (req, res) => {
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN || '8h',
     });
+
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+    auditLog({ usuario_id: user.id, username: user.username, accion: 'login_exitoso', tabla: 'usuarios', registro_id: user.id, ip });
 
     res.json({
       token,

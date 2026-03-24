@@ -100,6 +100,8 @@ router.post('/', auth, async (req, res) => {
       WHERE r.id = $1
     `, [result.rows[0].id]);
 
+    req.audit('registrar_pago', 'recibos', result.rows[0].id, { valor, contrato_id, cuota_id, forma_pago_id });
+
     res.status(201).json(recibo.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -121,6 +123,7 @@ router.patch('/:id/anular', auth, async (req, res) => {
       [req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Recibo no encontrado o ya anulado' });
+    req.audit('anular_recibo', 'recibos', req.params.id, { contrato_id: result.rows[0].contrato_id, valor: result.rows[0].valor });
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });

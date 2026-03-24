@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
+const { paginate, paginatedResponse } = require('../utils/pagination');
 
 const router = express.Router();
 
@@ -52,8 +53,9 @@ function buildLeadSelect() {
 }
 
 // GET /api/leads — leads del TMK en el día (o todos para supervisores)
+// Soporta paginación: ?page=1&limit=50
 router.get('/', auth, async (req, res) => {
-  const { fecha, sala_id } = req.query;
+  const { fecha, sala_id, page, limit } = req.query;
   const { rol, id: userId, sala_id: userSalaId } = req.user;
 
   try {
@@ -89,25 +91,37 @@ router.get('/', auth, async (req, res) => {
       idx++;
     }
 
-    // Filtro de fecha (por fecha_cita o created_at)
+    // Filtro de fecha (por fecha_cita o created_at) — usa rango para aprovechar índice
     if (fecha) {
-      where.push(`DATE(l.fecha_cita) = $${idx} OR DATE(l.created_at) = $${idx}`);
+      where.push(`(
+        (l.fecha_cita >= $${idx}::date AND l.fecha_cita < $${idx}::date + INTERVAL '1 day')
+        OR (l.created_at >= $${idx}::date AND l.created_at < $${idx}::date + INTERVAL '1 day')
+      )`);
       params.push(fecha);
       idx++;
     }
 
     const whereStr = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
-    const result = await pool.query(`
+    // Contar total
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM leads l JOIN personas p ON l.persona_id = p.id ${whereStr}`,
+      params
+    );
+    const total = parseInt(countResult.rows[0].count);
+
+    // Query paginada
+    const baseQuery = `
       ${buildLeadSelect()}
       ${whereStr}
       ORDER BY
         CASE WHEN l.estado = 'pendiente' AND l.fecha_rellamar IS NOT NULL AND l.fecha_rellamar::date <= CURRENT_DATE THEN 0 ELSE 1 END,
         l.created_at DESC
-      LIMIT 200
-    `, params);
+    `;
+    const { paginatedQuery, page: p, limit: l } = paginate(baseQuery, { page, limit });
+    const result = await pool.query(paginatedQuery, params);
 
-    res.json(result.rows);
+    res.json(paginatedResponse(result.rows, total, p, l));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al obtener leads' });

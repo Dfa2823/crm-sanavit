@@ -63,6 +63,10 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // ── Middlewares de autenticación ───────────────────────────
 const authMiddleware = require('./middleware/auth');
 
+// ── Audit trail middleware ────────────────────────────────
+const { auditMiddleware } = require('./middleware/audit');
+app.use(auditMiddleware);
+
 // ── Rutas ─────────────────────────────────────────────────
 app.use('/api/auth',      require('./routes/auth'));
 app.use('/api/personas',  require('./routes/personas'));
@@ -107,6 +111,9 @@ app.get('/health', (req, res) => {
             '/api/nomina','/api/metas','/api/buscar','/api/consultor'],
   });
 });
+
+// ── Crear índices de rendimiento al arrancar ────────────────
+require('./migrations/indices')().catch(e => console.warn('[INDICES]', e.message));
 
 // ── 404 fallback ───────────────────────────────────────────
 app.use((req, res) => {
