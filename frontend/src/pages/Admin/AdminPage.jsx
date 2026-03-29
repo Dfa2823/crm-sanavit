@@ -336,6 +336,7 @@ function TabUsuarios({ salas, roles }) {
   const [modalReasignar, setModalReasignar] = useState(null) // { usuario, leads_pendientes }
   const [guardando, setGuardando] = useState(false)
   const [mensajeExito, setMensajeExito] = useState('')
+  const [errorReasignar, setErrorReasignar] = useState('')
 
   const [busqueda, setBusqueda] = useState('')
   const [formNuevo, setFormNuevo] = useState({
@@ -369,13 +370,19 @@ function TabUsuarios({ salas, roles }) {
     setGuardando(true)
     setError('')
     try {
-      await createUsuario(formNuevo)
+      const payload = {
+        ...formNuevo,
+        rol_id:  formNuevo.rol_id  ? parseInt(formNuevo.rol_id, 10) : null,
+        sala_id: formNuevo.sala_id ? parseInt(formNuevo.sala_id, 10) : null,
+      }
+      await createUsuario(payload)
       setModalNuevo(false)
       setFormNuevo({
         nombre: '', username: '', password: '', sala_id: '', rol_id: '',
         sueldo_base: '', pct_comision_venta: '', pct_desbloqueo: '',
         pct_comision_cobro: '', bono_por_tour: '', bono_por_cita: '',
       })
+      setMensajeExito('Usuario creado correctamente')
       cargar()
     } catch (err) {
       setError('Error al crear usuario: ' + (err.response?.data?.error || err.message))
@@ -389,21 +396,27 @@ function TabUsuarios({ salas, roles }) {
     setGuardando(true)
     setError('')
     try {
+      if (!formEditar.rol_id) {
+        setError('Debe seleccionar un rol')
+        setGuardando(false)
+        return
+      }
       const payload = {
         nombre:  formEditar.nombre,
-        sala_id: formEditar.sala_id || null,
-        rol_id:  formEditar.rol_id,
+        sala_id: formEditar.sala_id ? parseInt(formEditar.sala_id, 10) : null,
+        rol_id:  parseInt(formEditar.rol_id, 10),
         activo:  formEditar.activo,
-        sueldo_base:        formEditar.sueldo_base        !== '' ? formEditar.sueldo_base        : null,
-        pct_comision_venta: formEditar.pct_comision_venta !== '' ? formEditar.pct_comision_venta : null,
-        pct_desbloqueo:     formEditar.pct_desbloqueo     !== '' ? formEditar.pct_desbloqueo     : null,
-        pct_comision_cobro: formEditar.pct_comision_cobro !== '' ? formEditar.pct_comision_cobro : null,
-        bono_por_tour:      formEditar.bono_por_tour      !== '' ? formEditar.bono_por_tour      : null,
-        bono_por_cita:      formEditar.bono_por_cita      !== '' ? formEditar.bono_por_cita      : null,
+        sueldo_base:        formEditar.sueldo_base        !== '' ? parseFloat(formEditar.sueldo_base)        : null,
+        pct_comision_venta: formEditar.pct_comision_venta !== '' ? parseFloat(formEditar.pct_comision_venta) : null,
+        pct_desbloqueo:     formEditar.pct_desbloqueo     !== '' ? parseFloat(formEditar.pct_desbloqueo)     : null,
+        pct_comision_cobro: formEditar.pct_comision_cobro !== '' ? parseFloat(formEditar.pct_comision_cobro) : null,
+        bono_por_tour:      formEditar.bono_por_tour      !== '' ? parseFloat(formEditar.bono_por_tour)      : null,
+        bono_por_cita:      formEditar.bono_por_cita      !== '' ? parseFloat(formEditar.bono_por_cita)      : null,
       }
       if (formEditar.password) payload.password = formEditar.password
       await updateUsuario(modalEditar.id, payload)
       setModalEditar(null)
+      setMensajeExito('Usuario actualizado correctamente')
       cargar()
     } catch (err) {
       setError('Error al actualizar usuario: ' + (err.response?.data?.error || err.message))
@@ -445,7 +458,7 @@ function TabUsuarios({ salas, roles }) {
   async function handleReasignarEInactivar() {
     if (!modalReasignar) return
     setGuardando(true)
-    setError('')
+    setErrorReasignar('')
     try {
       const result = await reasignarEInactivar(modalReasignar.usuario.id)
       setMensajeExito(
@@ -454,7 +467,8 @@ function TabUsuarios({ salas, roles }) {
       setModalReasignar(null)
       cargar()
     } catch (err) {
-      setError('Error al reasignar e inactivar: ' + (err.response?.data?.error || err.message))
+      const msg = err.response?.data?.error || err.message || 'Error desconocido'
+      setErrorReasignar(msg)
     } finally {
       setGuardando(false)
     }
@@ -463,8 +477,8 @@ function TabUsuarios({ salas, roles }) {
   function abrirEditar(u) {
     setFormEditar({
       nombre:  u.nombre  || '',
-      sala_id: u.sala_id || '',
-      rol_id:  u.rol_id  || '',
+      sala_id: u.sala_id ? String(u.sala_id) : '',
+      rol_id:  u.rol_id  ? String(u.rol_id)  : '',
       activo:  u.activo !== false,
       password: '',
       sueldo_base:        u.sueldo_base        ?? '',
@@ -474,6 +488,7 @@ function TabUsuarios({ salas, roles }) {
       bono_por_tour:      u.bono_por_tour      ?? '',
       bono_por_cita:      u.bono_por_cita      ?? '',
     })
+    setError('')
     setModalEditar(u)
   }
 
@@ -777,7 +792,7 @@ function TabUsuarios({ salas, roles }) {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-gray-800 text-lg">Reasignar leads</h3>
-              <button onClick={() => setModalReasignar(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+              <button onClick={() => { setModalReasignar(null); setErrorReasignar(''); }} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
             </div>
 
             <div className="mb-4 px-3 py-3 bg-amber-50 border border-amber-200 rounded-lg">
@@ -785,17 +800,19 @@ function TabUsuarios({ salas, roles }) {
                 {modalReasignar.usuario.nombre} tiene {modalReasignar.leads_pendientes} leads pendientes.
               </p>
               <p className="text-amber-700 text-xs">
-                Al confirmar, los leads se reasignarán aleatoriamente entre los TMKs activos de la misma sala y luego el usuario será inactivado.
+                Al confirmar, los leads se reasignarán entre los TMKs activos de la misma sala y luego el usuario será inactivado.
               </p>
             </div>
 
-            {error && (
-              <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs">{error}</div>
+            {errorReasignar && (
+              <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {errorReasignar}
+              </div>
             )}
 
             <div className="flex gap-3">
               <button
-                onClick={() => setModalReasignar(null)}
+                onClick={() => { setModalReasignar(null); setErrorReasignar(''); }}
                 className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
               >
                 Cancelar

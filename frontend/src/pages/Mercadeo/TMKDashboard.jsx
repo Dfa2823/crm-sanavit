@@ -6,6 +6,7 @@ import { apiPersonas } from '../../api/personas'
 import client from '../../api/client'
 import CapturarLead from './CapturarLead'
 import LastUpdated from '../../components/UI/LastUpdated'
+import { formatFechaCorta, formatFechaSoloFecha } from '../../utils/formatFechaEC'
 
 const ESTADO_BADGE = {
   pendiente:   'badge-gray',
@@ -396,10 +397,7 @@ function LeadDetailDrawer({ leadId, tipificaciones, onClose, onActualizado }) {
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-700">{h.usuario_nombre}</span>
                       <span className="text-[10px] text-gray-400">
-                        {new Date(h.created_at).toLocaleDateString('es-EC', {
-                          day: '2-digit', month: 'short', year: 'numeric',
-                          hour: '2-digit', minute: '2-digit',
-                        })}
+                        {formatFechaCorta(h.created_at)}
                       </span>
                     </div>
                     {h.tipificacion_nombre && (
@@ -432,6 +430,9 @@ export default function TMKDashboard() {
   const [obsTemp, setObsTemp] = useState('')
   const [editandoRellamar, setEditandoRellamar] = useState(null)
   const [fechaRellamar, setFechaRellamar] = useState('')
+  const [editandoCita, setEditandoCita] = useState(null) // leadId para selector de cita
+  const [citaEstado, setCitaEstado] = useState('tentativa')
+  const [citaFecha, setCitaFecha] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('todos')
   const [leadDetalle, setLeadDetalle] = useState(null) // lead.id para drawer detalle
   const [lastUpdated, setLastUpdated] = useState(null)
@@ -463,6 +464,20 @@ export default function TMKDashboard() {
   async function cambiarTipificacion(leadId, tipificacionId) {
     try {
       const tip = tipificaciones.find(t => t.id == tipificacionId)
+
+      // Si la tipificacion es "Cita" (requiere_fecha_cita), mostrar selector de estado + fecha
+      if (tip?.requiere_fecha_cita) {
+        setEditandoCita(leadId)
+        setCitaEstado('tentativa')
+        setCitaFecha('')
+        // Guardar la tipificacion_id temporalmente en el lead local
+        setLeads(prev => prev.map(l => l.id === leadId
+          ? { ...l, tipificacion_id: tipificacionId, tipificacion_nombre: tip?.nombre }
+          : l
+        ))
+        return
+      }
+
       await apiLeads.actualizar(leadId, { tipificacion_id: tipificacionId })
       setLeads(prev => prev.map(l => l.id === leadId
         ? { ...l, tipificacion_id: tipificacionId, tipificacion_nombre: tip?.nombre }
@@ -472,6 +487,26 @@ export default function TMKDashboard() {
         setEditandoRellamar(leadId)
         setFechaRellamar('')
       }
+    } catch (err) { console.error(err) }
+  }
+
+  // Guardar cita con estado (tentativa/confirmada) y fecha
+  async function guardarCitaConEstado(leadId) {
+    if (!citaFecha) return
+    try {
+      const lead = leads.find(l => l.id === leadId)
+      await apiLeads.actualizar(leadId, {
+        tipificacion_id: lead?.tipificacion_id,
+        fecha_cita: citaFecha,
+        estado: citaEstado,
+      })
+      setLeads(prev => prev.map(l => l.id === leadId
+        ? { ...l, fecha_cita: citaFecha, estado: citaEstado }
+        : l
+      ))
+      setEditandoCita(null)
+      setCitaFecha('')
+      setCitaEstado('tentativa')
     } catch (err) { console.error(err) }
   }
 
@@ -713,6 +748,38 @@ export default function TMKDashboard() {
                           <button onClick={() => setEditandoRellamar(null)} className="text-xs text-gray-400">X</button>
                         </div>
                       )}
+                      {/* Selector de estado + fecha para Cita */}
+                      {editandoCita === lead.id && (
+                        <div className="mt-1 p-2 bg-green-50 border border-green-200 rounded-lg space-y-1">
+                          <div className="flex gap-2 items-center">
+                            <label className="text-[10px] text-green-700 font-semibold">Estado:</label>
+                            <label className="flex items-center gap-1 text-xs text-gray-700 cursor-pointer">
+                              <input type="radio" name={`cita-estado-${lead.id}`} value="tentativa"
+                                checked={citaEstado === 'tentativa'} onChange={() => setCitaEstado('tentativa')}
+                                className="text-green-600" />
+                              Tentativa
+                            </label>
+                            <label className="flex items-center gap-1 text-xs text-gray-700 cursor-pointer">
+                              <input type="radio" name={`cita-estado-${lead.id}`} value="confirmada"
+                                checked={citaEstado === 'confirmada'} onChange={() => setCitaEstado('confirmada')}
+                                className="text-green-600" />
+                              Confirmada
+                            </label>
+                          </div>
+                          <input type="datetime-local"
+                            className="text-xs border border-green-300 rounded px-2 py-1 w-full focus:outline-none focus:ring-1 focus:ring-green-400 bg-white"
+                            value={citaFecha}
+                            onChange={e => setCitaFecha(e.target.value)}
+                            autoFocus
+                          />
+                          <div className="flex gap-1">
+                            <button onClick={() => guardarCitaConEstado(lead.id)}
+                              disabled={!citaFecha}
+                              className="text-xs text-green-700 font-medium disabled:opacity-50">OK</button>
+                            <button onClick={() => setEditandoCita(null)} className="text-xs text-gray-400">X</button>
+                          </div>
+                        </div>
+                      )}
                       {/* Observacion rapida inline */}
                       {editandoObs === lead.id ? (
                         <div className="mt-1 flex gap-1">
@@ -740,11 +807,9 @@ export default function TMKDashboard() {
                     </td>
                     <td className="text-gray-500 text-sm">
                       {lead.fecha_cita
-                        ? new Date(lead.fecha_cita).toLocaleDateString('es-EC', {
-                            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
-                          })
+                        ? formatFechaCorta(lead.fecha_cita)
                         : lead.fecha_rellamar
-                          ? `Rellamar: ${new Date(lead.fecha_rellamar).toLocaleDateString('es-EC', { day: '2-digit', month: 'short' })}`
+                          ? `Rellamar: ${formatFechaSoloFecha(lead.fecha_rellamar)}`
                           : '--'}
                     </td>
                     <td>

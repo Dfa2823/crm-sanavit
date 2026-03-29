@@ -604,7 +604,10 @@ export default function SupervisorDashboard() {
                       Volver a llamar
                     </th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      No contacto
+                      No contesta
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Buzon
                     </th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">
                       Rechazos
@@ -641,7 +644,10 @@ export default function SupervisorDashboard() {
                         {tmk.volver_llamar}
                       </td>
                       <td className="px-4 py-3 text-center text-gray-600">
-                        {tmk.no_contacto}
+                        {tmk.no_contesta ?? tmk.no_contacto ?? 0}
+                      </td>
+                      <td className="px-4 py-3 text-center text-gray-600">
+                        {tmk.buzon ?? 0}
                       </td>
                       <td className="px-4 py-3 text-center text-gray-600">
                         {tmk.rechazos}

@@ -441,10 +441,16 @@ router.patch('/:id', auth, async (req, res) => {
   }
 
   try {
-    // TMK y outsourcing NO pueden cambiar el estado directamente
-    // Solo pueden: tipificacion, observacion, fecha_rellamar, patologia
+    // TMK y outsourcing NO pueden cambiar el estado libremente
+    // Solo pueden elegir entre 'tentativa' y 'confirmada' al tipificar como Cita
     const rolesNoEstado = ['tmk', 'outsourcing'];
-    let estadoFinal = rolesNoEstado.includes(req.user.rol) ? undefined : estado;
+    let estadoFinal;
+    if (rolesNoEstado.includes(req.user.rol)) {
+      // Permitir solo tentativa/confirmada (cuando tipifican Cita)
+      estadoFinal = (estado === 'tentativa' || estado === 'confirmada') ? estado : undefined;
+    } else {
+      estadoFinal = estado;
+    }
     if (tipificacion_id !== undefined && estado === undefined) {
       const tipCheck = await pool.query('SELECT requiere_fecha_cita FROM tipificaciones WHERE id = $1', [tipificacion_id]);
       if (tipCheck.rows.length > 0 && tipCheck.rows[0].requiere_fecha_cita) {

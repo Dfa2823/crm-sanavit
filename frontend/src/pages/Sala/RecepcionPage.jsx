@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { apiCitas } from '../../api/citas'
 import { apiPersonas } from '../../api/personas'
 import { apiUsuarios } from '../../api/usuarios'
+import { formatHoraEC } from '../../utils/formatFechaEC'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import LastUpdated from '../../components/UI/LastUpdated'
@@ -12,7 +13,7 @@ function exportarManifiestoPDF(citas, hoyStr) {
   const filas = citas.map(c => `
     <tr>
       <td>${c.nombres || ''} ${c.apellidos || ''}<br><small>${c.ciudad || ''} · ${c.edad || ''} años</small></td>
-      <td>${c.fecha_cita ? new Date(c.fecha_cita).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+      <td>${c.fecha_cita ? formatHoraEC(c.fecha_cita) : '—'}</td>
       <td>${c.hora_llegada || '—'}</td>
       <td>${c.consultor_nombre || '—'}</td>
       <td>${c.tmk_nombre || '—'}</td>
@@ -72,7 +73,7 @@ function exportarManifiestoCSV(citas) {
     c.telefono || '',
     c.ciudad || '',
     c.edad || '',
-    c.fecha_cita ? new Date(c.fecha_cita).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '',
+    c.fecha_cita ? formatHoraEC(c.fecha_cita) : '',
     c.hora_llegada || '',
     c.consultor_nombre || '',
     c.tmk_nombre || '',
@@ -309,7 +310,7 @@ export default function RecepcionPage() {
                     </td>
                     <td className="text-sm font-mono text-gray-700">
                       {cita.fecha_cita
-                        ? new Date(cita.fecha_cita).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })
+                        ? formatHoraEC(cita.fecha_cita)
                         : '—'}
                     </td>
                     <td className="text-sm font-mono text-gray-600">

@@ -306,8 +306,8 @@ router.patch('/usuarios/:id', requireAdmin, async (req, res) => {
     let idx = 1;
 
     if (nombre !== undefined)             { updates.push(`nombre = $${idx++}`);             params.push(nombre); }
-    if (sala_id !== undefined)            { updates.push(`sala_id = $${idx++}`);            params.push(sala_id); }
-    if (rol_id !== undefined)             { updates.push(`rol_id = $${idx++}`);             params.push(rol_id); }
+    if (sala_id !== undefined)            { updates.push(`sala_id = $${idx++}`);            params.push(sala_id === null ? null : parseInt(sala_id, 10) || null); }
+    if (rol_id !== undefined && rol_id !== null && rol_id !== '') { updates.push(`rol_id = $${idx++}`); params.push(parseInt(rol_id, 10)); }
     if (activo !== undefined)             { updates.push(`activo = $${idx++}`);             params.push(activo); }
     if (sueldo_base !== undefined)        { updates.push(`sueldo_base = $${idx++}`);        params.push(sueldo_base); }
     if (pct_comision_venta !== undefined) { updates.push(`pct_comision_venta = $${idx++}`); params.push(pct_comision_venta); }
@@ -456,22 +456,35 @@ router.post('/usuarios/:id/reasignar', requireAdmin, async (req, res) => {
 
 // POST /api/admin/usuarios/:id/reasignar-e-inactivar — reasignar leads + inactivar usuario en un solo paso
 router.post('/usuarios/:id/reasignar-e-inactivar', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
   try {
     const tmkId = Number(req.params.id);
 
     if (tmkId === req.user.id) {
+      client.release();
       return res.status(400).json({ error: 'No puedes desactivar tu propia cuenta' });
     }
 
+    await client.query('BEGIN');
+
+    // Verificar que el usuario existe
+    const userCheck = await client.query('SELECT id, sala_id FROM usuarios WHERE id = $1', [tmkId]);
+    if (userCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const tmkSala = userCheck.rows[0].sala_id;
+
     // Obtener leads pendientes del TMK
-    const leadsRes = await pool.query(
+    const leadsRes = await client.query(
       `SELECT id FROM leads WHERE tmk_id = $1 AND estado IN ('pendiente', 'tentativa', 'confirmada')`,
       [tmkId]
     );
 
     // Obtener TMKs activos de la misma sala
-    const tmkSala = (await pool.query('SELECT sala_id FROM usuarios WHERE id = $1', [tmkId])).rows[0]?.sala_id;
-    const tmksRes = await pool.query(
+    const tmksRes = await client.query(
       `SELECT id, nombre FROM usuarios u JOIN roles r ON u.rol_id = r.id
        WHERE r.nombre = 'tmk' AND u.activo = true AND u.id != $1
          AND ($2::integer IS NULL OR u.sala_id = $2)`,
@@ -483,22 +496,38 @@ router.post('/usuarios/:id/reasignar-e-inactivar', requireAdmin, async (req, res
 
     if (leadsRes.rows.length > 0) {
       if (tmkIds.length === 0) {
-        return res.status(400).json({ error: 'No hay otros TMKs activos en la misma sala para reasignar los leads' });
+        // No hay TMKs disponibles — intentar en TODAS las salas
+        const tmksGlobalRes = await client.query(
+          `SELECT id, nombre FROM usuarios u JOIN roles r ON u.rol_id = r.id
+           WHERE r.nombre = 'tmk' AND u.activo = true AND u.id != $1`,
+          [tmkId]
+        );
+        if (tmksGlobalRes.rows.length === 0) {
+          await client.query('ROLLBACK');
+          client.release();
+          return res.status(400).json({
+            error: 'No hay TMKs activos disponibles para reasignar los leads. Debe activar al menos un TMK antes de inactivar este usuario.'
+          });
+        }
+        // Usar TMKs de otras salas como fallback
+        tmkIds.push(...tmksGlobalRes.rows.map(t => t.id));
       }
 
-      // Distribuir leads aleatoriamente entre TMKs activos
-      let idx = 0;
-      for (const lead of leadsRes.rows) {
-        const randomIdx = Math.floor(Math.random() * tmkIds.length);
-        const nuevoTmk = tmkIds[randomIdx];
-        await pool.query('UPDATE leads SET tmk_id = $1, updated_at = NOW() WHERE id = $2', [nuevoTmk, lead.id]);
-        idx++;
+      // Distribuir leads con round-robin entre TMKs activos
+      for (let i = 0; i < leadsRes.rows.length; i++) {
+        const nuevoTmk = tmkIds[i % tmkIds.length];
+        await client.query('UPDATE leads SET tmk_id = $1, updated_at = NOW() WHERE id = $2', [nuevoTmk, leadsRes.rows[i].id]);
       }
       reasignados = leadsRes.rows.length;
     }
 
     // Inactivar el usuario
-    await pool.query('UPDATE usuarios SET activo = false WHERE id = $1', [tmkId]);
+    await client.query('UPDATE usuarios SET activo = false WHERE id = $1', [tmkId]);
+
+    await client.query('COMMIT');
+    client.release();
+
+    req.audit('reasignar_e_inactivar', 'usuarios', tmkId, { reasignados, tmks_destino: tmkIds.length });
 
     res.json({
       message: 'Usuario inactivado correctamente',
@@ -506,7 +535,9 @@ router.post('/usuarios/:id/reasignar-e-inactivar', requireAdmin, async (req, res
       tmks_destino: tmkIds.length,
     });
   } catch (err) {
-    console.error(err);
+    await client.query('ROLLBACK').catch(() => {});
+    client.release();
+    console.error('Error en reasignar-e-inactivar:', err);
     res.status(500).json({ error: 'Error al reasignar e inactivar: ' + err.message });
   }
 });

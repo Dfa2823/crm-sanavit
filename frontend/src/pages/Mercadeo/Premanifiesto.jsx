@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { apiCitas } from '../../api/citas'
 import { apiUsuarios } from '../../api/usuarios'
+import { formatHoraEC } from '../../utils/formatFechaEC'
 
 const TABS = [
   { key: 'confirmadas',  label: 'Confirmadas',  icon: '✅', color: 'green' },
@@ -54,9 +55,7 @@ function TablaPremanifiesto({ items }) {
               </td>
               <td className="text-sm text-gray-700 font-medium">
                 {item.fecha_cita
-                  ? new Date(item.fecha_cita).toLocaleTimeString('es-EC', {
-                      hour: '2-digit', minute: '2-digit'
-                    })
+                  ? formatHoraEC(item.fecha_cita)
                   : '—'}
               </td>
               <td className="text-sm text-gray-600">{item.tmk_nombre || '—'}</td>
@@ -90,7 +89,7 @@ function exportarPDF(data, filtros) {
         <td>${item.nombres || ''} ${item.apellidos || ''}<br><small>${item.ciudad || ''}</small></td>
         <td>${item.telefono || '—'}</td>
         <td>${item.fecha_cita
-          ? new Date(item.fecha_cita).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })
+          ? formatHoraEC(item.fecha_cita)
           : '—'}</td>
         <td>${item.tmk_nombre || '—'}</td>
         <td>${item.outsourcing_nombre || 'Interno'}</td>
@@ -149,7 +148,7 @@ function exportarCSV(data, filtros) {
       item.telefono || '',
       item.ciudad || '',
       item.fecha_cita
-        ? new Date(item.fecha_cita).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })
+        ? formatHoraEC(item.fecha_cita)
         : '',
       item.tmk_nombre || '',
       item.outsourcing_nombre || 'Interno',

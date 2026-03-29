@@ -30,7 +30,7 @@ export default function NuevaVentaPage() {
   const [personaEncontrada, setPersonaEncontrada] = useState(null)
   const [buscando, setBuscando]                 = useState(false)
   const [nuevaPersona, setNuevaPersona]         = useState({
-    nombres: '', apellidos: '', ciudad: '', email: '',
+    nombres: '', apellidos: '', ciudad: '', email: '', direccion: '',
   })
 
   // ── Sección 2: Contrato ───────────────────────────────────
@@ -139,7 +139,7 @@ export default function NuevaVentaPage() {
 
   // ── Buscar persona (debounce, multi-modo) ─────────────────
   useEffect(() => {
-    const minLen = modoBusqueda === 'nombre' ? 3 : 6
+    const minLen = modoBusqueda === 'nombre' ? 3 : 4
     if (busqueda.length < minLen) {
       setPersonaEncontrada(null)
       setResultadosBusqueda([])
@@ -154,12 +154,30 @@ export default function NuevaVentaPage() {
           setPersonaEncontrada(null)
         } else if (modoBusqueda === 'telefono') {
           const exacto = res.find(p => p.telefono === busqueda || p.telefono2 === busqueda)
-          setPersonaEncontrada(exacto || null)
-          setResultadosBusqueda([])
+          if (exacto) {
+            setPersonaEncontrada(exacto)
+            setResultadosBusqueda([])
+          } else if (res.length > 0) {
+            // Mostrar resultados parciales si no hay match exacto
+            setResultadosBusqueda(res)
+            setPersonaEncontrada(null)
+          } else {
+            setPersonaEncontrada(null)
+            setResultadosBusqueda([])
+          }
         } else { // cedula
           const exacto = res.find(p => p.num_documento === busqueda)
-          setPersonaEncontrada(exacto || null)
-          setResultadosBusqueda([])
+          if (exacto) {
+            setPersonaEncontrada(exacto)
+            setResultadosBusqueda([])
+          } else if (res.length > 0) {
+            // Mostrar resultados parciales si no hay match exacto
+            setResultadosBusqueda(res)
+            setPersonaEncontrada(null)
+          } else {
+            setPersonaEncontrada(null)
+            setResultadosBusqueda([])
+          }
         }
       } finally { setBuscando(false) }
     }, 500)
@@ -240,6 +258,7 @@ export default function NuevaVentaPage() {
           telefono: busqueda,
           ciudad: nuevaPersona.ciudad,
           email: nuevaPersona.email,
+          direccion: nuevaPersona.direccion || undefined,
         })
         persona_id = p.id
       }
@@ -357,8 +376,8 @@ export default function NuevaVentaPage() {
               )}
             </div>
 
-            {/* Dropdown para modo nombre */}
-            {modoBusqueda === 'nombre' && resultadosBusqueda.length > 0 && !personaEncontrada && (
+            {/* Dropdown de resultados */}
+            {resultadosBusqueda.length > 0 && !personaEncontrada && (
               <div className="absolute z-10 mt-1 max-w-sm w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                 {resultadosBusqueda.map(p => (
                   <button
@@ -368,7 +387,9 @@ export default function NuevaVentaPage() {
                     className="w-full text-left px-3 py-2 text-sm hover:bg-teal-50 border-b border-gray-50 last:border-0"
                   >
                     <span className="font-medium text-gray-800">{p.nombres} {p.apellidos}</span>
-                    <span className="text-gray-400 ml-2 text-xs">{p.telefono} · {p.ciudad || '—'}</span>
+                    <span className="text-gray-400 ml-2 text-xs">
+                      {p.telefono} · {p.num_documento || '—'} · {p.ciudad || '—'}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -391,7 +412,7 @@ export default function NuevaVentaPage() {
             </div>
           )}
 
-          {!personaEncontrada && modoBusqueda === 'telefono' && busqueda.length >= 7 && !buscando && (
+          {!personaEncontrada && modoBusqueda === 'telefono' && busqueda.length >= 7 && !buscando && resultadosBusqueda.length === 0 && (
             <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100">
               <p className="col-span-2 text-xs text-blue-600 font-medium">Cliente nuevo — completar datos:</p>
               <div>
@@ -420,6 +441,13 @@ export default function NuevaVentaPage() {
                 <input type="email" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   value={nuevaPersona.email}
                   onChange={e => setNuevaPersona(p => ({ ...p, email: e.target.value }))} />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Direccion</label>
+                <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder="Ej: Av. 6 de Diciembre N32-100 y Whymper"
+                  value={nuevaPersona.direccion}
+                  onChange={e => setNuevaPersona(p => ({ ...p, direccion: e.target.value }))} />
               </div>
             </div>
           )}

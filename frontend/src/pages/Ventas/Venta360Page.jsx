@@ -160,6 +160,8 @@ export default function Venta360Page() {
     fecha_pago: new Date().toISOString().split('T')[0],
     referencia_pago: '',
     observacion: '',
+    tipo_tarjeta: '',
+    entidad_tarjeta: '',
   })
   const [guardandoPago, setGuardandoPago] = useState(false)
   const [errorPago, setErrorPago]         = useState('')
@@ -224,10 +226,12 @@ export default function Venta360Page() {
         observacion: pago.observacion || undefined,
         sala_id: data.contrato.sala_id,
         comprobante: comprobante || undefined,
+        tipo_tarjeta: pago.tipo_tarjeta || undefined,
+        entidad_tarjeta: pago.entidad_tarjeta || undefined,
       })
       addToast(`Pago de $${Number(pago.valor).toLocaleString('es-EC', { minimumFractionDigits: 2 })} registrado`)
       setMostrarPago(false)
-      setPago({ cuota_id: '', valor: '', forma_pago_id: '', fecha_pago: new Date().toISOString().split('T')[0], referencia_pago: '', observacion: '' })
+      setPago({ cuota_id: '', valor: '', forma_pago_id: '', fecha_pago: new Date().toISOString().split('T')[0], referencia_pago: '', observacion: '', tipo_tarjeta: '', entidad_tarjeta: '' })
       setComprobante(null); setComprobanteNombre('')
       if (comprobanteRef.current) comprobanteRef.current.value = ''
       cargar()
@@ -839,7 +843,15 @@ export default function Venta360Page() {
                       <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
                         <td className="px-4 py-3 font-mono text-xs text-teal-700">{r.consecutivo || `RC-${r.id}`}</td>
                         <td className="px-4 py-3 text-right font-bold text-green-700">{fmt(r.valor)}</td>
-                        <td className="px-4 py-3 text-gray-600">{r.forma_pago_nombre || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {r.forma_pago_nombre || '—'}
+                          {r.tipo_tarjeta && (
+                            <span className="block text-xs text-blue-600 mt-0.5">
+                              {r.tipo_tarjeta === 'credito' ? 'Credito' : 'Debito'}
+                              {r.entidad_tarjeta ? ` · ${r.entidad_tarjeta}` : ''}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-center text-xs">{r.fecha_pago ? new Date(r.fecha_pago).toLocaleDateString('es-EC') : '—'}</td>
                         <td className="px-4 py-3 text-xs text-gray-400">{r.referencia_pago || '—'}</td>
                         <td className="px-4 py-3 text-center">
@@ -944,11 +956,47 @@ export default function Venta360Page() {
                 <select
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   value={pago.forma_pago_id}
-                  onChange={e => setPago(p => ({ ...p, forma_pago_id: e.target.value }))}>
+                  onChange={e => setPago(p => ({ ...p, forma_pago_id: e.target.value, tipo_tarjeta: '', entidad_tarjeta: '' }))}>
                   <option value="">Seleccionar...</option>
                   {formasPago.map(fp => <option key={fp.id} value={fp.id}>{fp.nombre}</option>)}
                 </select>
               </div>
+
+              {/* Tipo y entidad de tarjeta — solo si la forma de pago es tarjeta */}
+              {(() => {
+                const fpSel = formasPago.find(f => String(f.id) === String(pago.forma_pago_id))
+                const esTarjeta = fpSel && /tarjeta/i.test(fpSel.nombre)
+                if (!esTarjeta) return null
+                return (
+                  <div className="grid grid-cols-2 gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Tipo de tarjeta</label>
+                      <select
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                        value={pago.tipo_tarjeta}
+                        onChange={e => setPago(p => ({ ...p, tipo_tarjeta: e.target.value }))}>
+                        <option value="">Seleccionar...</option>
+                        <option value="credito">Credito</option>
+                        <option value="debito">Debito</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Entidad</label>
+                      <select
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                        value={pago.entidad_tarjeta}
+                        onChange={e => setPago(p => ({ ...p, entidad_tarjeta: e.target.value }))}>
+                        <option value="">Seleccionar...</option>
+                        <option value="Visa">Visa</option>
+                        <option value="Mastercard">Mastercard</option>
+                        <option value="Diners Club">Diners Club</option>
+                        <option value="American Express">American Express</option>
+                        <option value="Otra">Otra</option>
+                      </select>
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Fecha */}
               <div>

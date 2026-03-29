@@ -12,6 +12,7 @@ import client from '../../api/client'
 import { apiPersonas } from '../../api/personas'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../context/AuthContext'
+import { formatFechaSemana, formatFechaCorta } from '../../utils/formatFechaEC'
 
 // ─── react-big-calendar config ───────────────────────────────────────────────
 
@@ -68,7 +69,20 @@ function DrawerCita({ lead, onClose, onActualizar }) {
   const [nuevaHora, setNuevaHora]  = useState('')
   const [guardando, setGuardando]  = useState(false)
 
+  // Tipificacion del confirmador
+  const [tipificaciones, setTipificaciones] = useState([])
+  const [tipSeleccionada, setTipSeleccionada] = useState('')
+  const [obsConfirmador, setObsConfirmador] = useState('')
+  const [guardandoTip, setGuardandoTip] = useState(false)
+
   const esAdmin = ['admin', 'director', 'supervisor_cc', 'confirmador'].includes(usuario?.rol)
+
+  // Cargar tipificaciones
+  useEffect(() => {
+    apiLeads.configuracion().then(cfg => {
+      if (cfg?.tipificaciones) setTipificaciones(cfg.tipificaciones)
+    }).catch(console.error)
+  }, [])
 
   // Fetch persona details when drawer opens
   useEffect(() => {
@@ -143,6 +157,46 @@ function DrawerCita({ lead, onClose, onActualizar }) {
       onActualizar()
     } catch { addToast('Error al reprogramar', 'error') }
     finally { setGuardando(false) }
+  }
+
+  // Guardar tipificacion del confirmador
+  async function guardarTipificacion() {
+    if (!tipSeleccionada) return
+    setGuardandoTip(true)
+    try {
+      const tip = tipificaciones.find(t => String(t.id) === String(tipSeleccionada))
+      const payload = {
+        tipificacion_id: tipSeleccionada,
+      }
+      if (obsConfirmador.trim()) payload.observacion = obsConfirmador
+
+      // Determinar estado segun tipificacion
+      if (tip?.requiere_fecha_cita) {
+        payload.estado = 'confirmada'
+      } else if (tip?.nombre === 'No le interesa') {
+        payload.estado = 'cancelada'
+      }
+      // "No contesta", "Buzon" => no cambian estado
+
+      await apiLeads.actualizar(lead.id, payload)
+
+      // Guardar en historial si hay observacion
+      if (obsConfirmador.trim()) {
+        await apiLeads.guardarObservacion(lead.id, {
+          observacion: obsConfirmador,
+          tipificacion_id: tipSeleccionada,
+        })
+      }
+
+      addToast(`Tipificado como: ${tip?.nombre || 'OK'}`)
+      setTipSeleccionada('')
+      setObsConfirmador('')
+      onActualizar()
+    } catch {
+      addToast('Error al tipificar', 'error')
+    } finally {
+      setGuardandoTip(false)
+    }
   }
 
   async function confirmar() {
@@ -289,10 +343,7 @@ function DrawerCita({ lead, onClose, onActualizar }) {
                     <span className="text-gray-500">Fecha y hora:</span>
                     <p className="font-medium text-gray-800">
                       {lead.fecha_cita
-                        ? new Date(lead.fecha_cita).toLocaleString('es-EC', {
-                            weekday: 'short', day: '2-digit', month: 'short',
-                            hour: '2-digit', minute: '2-digit',
-                          })
+                        ? formatFechaSemana(lead.fecha_cita)
                         : '—'}
                     </p>
                   </div>
@@ -318,6 +369,42 @@ function DrawerCita({ lead, onClose, onActualizar }) {
                   )}
                 </div>
               </div>
+
+              {/* ─── Seccion: Tipificacion del Confirmador ─── */}
+              {esAdmin && (
+                <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl space-y-3">
+                  <h3 className="font-semibold text-purple-800 text-sm">Tipificar gestion</h3>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Tipificacion</label>
+                    <select
+                      className="w-full border border-purple-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      value={tipSeleccionada}
+                      onChange={e => setTipSeleccionada(e.target.value)}
+                    >
+                      <option value="">Seleccionar...</option>
+                      {tipificaciones.map(t => (
+                        <option key={t.id} value={t.id}>{t.nombre}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Observacion</label>
+                    <textarea
+                      className="w-full border border-purple-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white resize-none h-16"
+                      placeholder="Escribir observacion..."
+                      value={obsConfirmador}
+                      onChange={e => setObsConfirmador(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    onClick={guardarTipificacion}
+                    disabled={guardandoTip || !tipSeleccionada}
+                    className="w-full text-xs bg-purple-600 hover:bg-purple-700 text-white rounded-lg py-2 font-medium disabled:opacity-50 transition-colors"
+                  >
+                    {guardandoTip ? 'Guardando...' : 'Guardar tipificacion'}
+                  </button>
+                </div>
+              )}
 
               {/* ─── Seccion: Reagendar fecha ─── */}
               {esAdmin && editFecha && (
@@ -416,13 +503,17 @@ function CalendarioVista() {
         ? { inicio: rangoActual.inicio, fin: rangoActual.fin }
         : {}
       const data = await apiLeads.citasCalendario(params)
-      const eventos = data.map(lead => ({
-        id:       lead.id,
-        title:    `${lead.nombres} ${lead.apellidos}`,
-        start:    new Date(lead.fecha_cita),
-        end:      addHours(new Date(lead.fecha_cita), 1),
-        resource: lead,
-      }))
+      const eventos = data.map(lead => {
+        // Parsear fecha en zona Ecuador para evitar desfase
+        const startDate = new Date(lead.fecha_cita)
+        return {
+          id:       lead.id,
+          title:    `${lead.nombres} ${lead.apellidos}`,
+          start:    startDate,
+          end:      addHours(startDate, 1),
+          resource: lead,
+        }
+      })
       setCitas(eventos)
     } catch { setCitas([]) }
     finally  { setLoading(false) }
@@ -599,11 +690,7 @@ function PendientesVista() {
   }
 
   function formatFecha(iso) {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('es-EC', {
-      weekday: 'short', day: '2-digit', month: 'short',
-      hour: '2-digit', minute: '2-digit',
-    })
+    return formatFechaSemana(iso)
   }
 
   return (

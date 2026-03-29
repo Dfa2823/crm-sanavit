@@ -360,11 +360,14 @@ function PanelCobro({ cuota, formasPago, onClose, onSaved }) {
   const [fecha, setFecha]             = useState(hoy)
   const [referencia, setReferencia]   = useState('')
   const [observacion, setObservacion] = useState('')
+  const [tipoTarjeta, setTipoTarjeta]         = useState('')
+  const [entidadTarjeta, setEntidadTarjeta]   = useState('')
   const [saving, setSaving]           = useState(false)
   const [error, setError]             = useState('')
 
   const formaSeleccionada = formasPago.find(f => String(f.id) === String(formaPagoId))
   const requiereRef = formaSeleccionada?.requiere_referencia
+  const esTarjeta = formaSeleccionada && /tarjeta/i.test(formaSeleccionada.nombre)
 
   const guardar = async () => {
     if (!monto || Number(monto) <= 0) { setError('El monto debe ser mayor a 0'); return }
@@ -383,6 +386,8 @@ function PanelCobro({ cuota, formasPago, onClose, onSaved }) {
         referencia_pago: referencia || undefined,
         observacion: observacion || undefined,
         sala_id: cuota.sala_id,
+        tipo_tarjeta: tipoTarjeta || undefined,
+        entidad_tarjeta: entidadTarjeta || undefined,
       })
       onSaved()
       onClose()
@@ -420,12 +425,38 @@ function PanelCobro({ cuota, formasPago, onClose, onSaved }) {
 
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Forma de pago *</label>
-            <select value={formaPagoId} onChange={e => setFormaPagoId(e.target.value)}
+            <select value={formaPagoId} onChange={e => { setFormaPagoId(e.target.value); setTipoTarjeta(''); setEntidadTarjeta('') }}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
               <option value="">Seleccionar...</option>
               {formasPago.map(fp => <option key={fp.id} value={fp.id}>{fp.nombre}</option>)}
             </select>
           </div>
+
+          {esTarjeta && (
+            <div className="grid grid-cols-2 gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Tipo de tarjeta</label>
+                <select value={tipoTarjeta} onChange={e => setTipoTarjeta(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white">
+                  <option value="">Seleccionar...</option>
+                  <option value="credito">Credito</option>
+                  <option value="debito">Debito</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Entidad</label>
+                <select value={entidadTarjeta} onChange={e => setEntidadTarjeta(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white">
+                  <option value="">Seleccionar...</option>
+                  <option value="Visa">Visa</option>
+                  <option value="Mastercard">Mastercard</option>
+                  <option value="Diners Club">Diners Club</option>
+                  <option value="American Express">American Express</option>
+                  <option value="Otra">Otra</option>
+                </select>
+              </div>
+            </div>
+          )}
 
           {(requiereRef || formaPagoId) && (
             <div>

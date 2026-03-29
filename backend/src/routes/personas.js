@@ -55,8 +55,10 @@ router.get('/', auth, async (req, res) => {
                created_at
         FROM personas
         WHERE nombres ILIKE $1 OR apellidos ILIKE $1
-           OR telefono LIKE $2 OR num_documento LIKE $2
-           OR telefono2 LIKE $2
+           OR CONCAT(nombres,' ',apellidos) ILIKE $1
+           OR telefono ILIKE $2 OR num_documento ILIKE $2
+           OR telefono2 ILIKE $2
+           OR email ILIKE $1
         ORDER BY nombres ASC
         LIMIT 20
       `, [term, `%${q.trim()}%`]);
@@ -127,7 +129,7 @@ router.get('/:id', auth, async (req, res) => {
 router.post('/', auth, async (req, res) => {
   const {
     nombres, apellidos, telefono, telefono2, email, ciudad, edad,
-    tipo_documento, num_documento, situacion_laboral, patologia
+    tipo_documento, num_documento, situacion_laboral, patologia, direccion
   } = req.body;
 
   if (!nombres || !telefono) {
@@ -148,11 +150,11 @@ router.post('/', auth, async (req, res) => {
 
     const result = await pool.query(`
       INSERT INTO personas (nombres, apellidos, telefono, telefono2, email, ciudad, edad,
-                            tipo_documento, num_documento, situacion_laboral, patologia)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                            tipo_documento, num_documento, situacion_laboral, patologia, direccion)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING *
     `, [nombres, apellidos, telefono, telefono2 || null, email, ciudad, edad,
-        tipo_documento, num_documento, situacion_laboral, patologia]);
+        tipo_documento, num_documento, situacion_laboral, patologia, direccion || null]);
 
     res.status(201).json(result.rows[0]);
   } catch (err) {

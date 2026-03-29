@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import client from '../../api/client'
+import { formatFechaEC } from '../../utils/formatFechaEC'
 
 const SEGURIDAD_SOCIAL  = ['Cotizante', 'Beneficiario', 'Subsidiado', 'Retirado']
 const SITUACION_LABORAL = ['Empleado público', 'Empleado privado', 'Independiente', 'Jubilado']
@@ -471,7 +472,7 @@ export default function HojaDeVida() {
                       )}
                       {lead.fecha_cita && (
                         <p className="text-xs text-blue-600 mt-1">
-                          📅 Cita: {new Date(lead.fecha_cita).toLocaleString('es-EC')}
+                          Cita: {formatFechaEC(lead.fecha_cita)}
                         </p>
                       )}
                     </div>

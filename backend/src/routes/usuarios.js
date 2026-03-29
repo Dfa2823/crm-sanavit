@@ -27,7 +27,7 @@ router.get('/', auth, async (req, res) => {
     }
 
     const result = await pool.query(`
-      SELECT u.id, u.nombre, u.username, u.activo,
+      SELECT u.id, u.nombre, u.username, u.activo, u.sala_id,
              r.nombre AS rol, r.label AS rol_label,
              s.nombre AS sala_nombre, s.ciudad AS sala_ciudad
       FROM usuarios u

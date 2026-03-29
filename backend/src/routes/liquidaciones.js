@@ -69,15 +69,18 @@ router.get('/', auth, requireAdminOrDirector, async (req, res) => {
         l.observacion,
         u.nombre   AS consultor_nombre,
         u.id       AS consultor_id,
+        r.nombre   AS rol,
+        r.label    AS rol_label,
         s.nombre   AS sala_nombre,
         ua.nombre  AS aprobado_por_nombre
       FROM liquidaciones l
       JOIN usuarios u ON l.consultor_id = u.id
+      JOIN roles r ON u.rol_id = r.id
       LEFT JOIN salas s ON l.sala_id = s.id
       LEFT JOIN usuarios ua ON l.aprobado_por = ua.id
       WHERE l.mes = $1
         AND ($2::integer IS NULL OR l.sala_id = $2)
-      ORDER BY u.nombre
+      ORDER BY l.monto_comision DESC, u.nombre
     `, [mesFiltro, salaParam]);
 
     res.json(result.rows);
@@ -91,6 +94,7 @@ router.get('/', auth, requireAdminOrDirector, async (req, res) => {
 // POST /api/liquidaciones/calcular
 // Body: { mes: 'YYYY-MM', sala_id: X (opcional) }
 // Solo admin/director — calcula y crea/actualiza liquidaciones del mes
+// para TODOS los roles con comisiones: consultor, TMK, confirmador, hostess
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/calcular', auth, requireAdminOrDirector, async (req, res) => {
   const { mes, sala_id } = req.body;
@@ -102,11 +106,12 @@ router.post('/calcular', auth, requireAdminOrDirector, async (req, res) => {
   const salaParam = sala_id ? parseInt(sala_id, 10) : null;
 
   try {
-    // Calcular comisiones agrupadas por consultor
-    // REQ2: Comisión sobre monto BASE (sin intereses). Se resta monto_interes de cuotas pagadas.
+    const resultados = []; // { usuario_id, sala_id, monto_comision, contratos_count }
+
+    // ─── 1. CONSULTORES: Comisión sobre ventas desbloqueadas ──────────────
     const calculo = await pool.query(`
       SELECT
-        c.consultor_id,
+        c.consultor_id AS usuario_id,
         c.sala_id,
         COUNT(c.id)::integer AS contratos_count,
         COALESCE(SUM(
@@ -132,13 +137,94 @@ router.post('/calcular', auth, requireAdminOrDirector, async (req, res) => {
         AND c.consultor_id IS NOT NULL
       GROUP BY c.consultor_id, c.sala_id
     `, [mes, salaParam]);
+    resultados.push(...calculo.rows);
 
-    if (calculo.rows.length === 0) {
-      return res.json({ mensaje: 'No hay contratos para calcular en este período', liquidaciones: [] });
+    // ─── 2. TMK: Bono por tours (leads que generaron TOUR) ────────────────
+    const tmkCalculo = await pool.query(`
+      SELECT
+        l.tmk_id AS usuario_id,
+        u.sala_id,
+        COUNT(vs.id)::integer AS contratos_count,
+        COALESCE(COUNT(vs.id) * COALESCE(u.bono_por_tour, 0), 0) AS monto_comision
+      FROM leads l
+      JOIN visitas_sala vs ON vs.lead_id = l.id
+      JOIN usuarios u ON l.tmk_id = u.id
+      JOIN roles r ON u.rol_id = r.id
+      WHERE r.nombre = 'tmk'
+        AND u.activo = true
+        AND vs.calificacion = 'TOUR'
+        AND TO_CHAR(vs.fecha, 'YYYY-MM') = $1
+        AND ($2::integer IS NULL OR u.sala_id = $2)
+        AND l.tmk_id IS NOT NULL
+      GROUP BY l.tmk_id, u.sala_id, u.bono_por_tour
+    `, [mes, salaParam]);
+    resultados.push(...tmkCalculo.rows);
+
+    // ─── 3. CONFIRMADOR: Bono por citas confirmadas ───────────────────────
+    const confCalculo = await pool.query(`
+      SELECT
+        l.confirmador_id AS usuario_id,
+        u.sala_id,
+        COUNT(l.id)::integer AS contratos_count,
+        COALESCE(COUNT(l.id) * COALESCE(u.bono_por_cita, 0), 0) AS monto_comision
+      FROM leads l
+      JOIN usuarios u ON l.confirmador_id = u.id
+      JOIN roles r ON u.rol_id = r.id
+      WHERE r.nombre = 'confirmador'
+        AND u.activo = true
+        AND l.estado IN ('confirmada', 'tour', 'venta')
+        AND TO_CHAR(COALESCE(l.fecha_cita, l.created_at), 'YYYY-MM') = $1
+        AND ($2::integer IS NULL OR u.sala_id = $2)
+        AND l.confirmador_id IS NOT NULL
+      GROUP BY l.confirmador_id, u.sala_id, u.bono_por_cita
+    `, [mes, salaParam]);
+    resultados.push(...confCalculo.rows);
+
+    // ─── 4. HOSTESS: Bono por tours atendidos ─────────────────────────────
+    const hostCalculo = await pool.query(`
+      SELECT
+        vs.hostess_id AS usuario_id,
+        u.sala_id,
+        COUNT(vs.id)::integer AS contratos_count,
+        COALESCE(COUNT(vs.id) * COALESCE(u.bono_por_tour, 0), 0) AS monto_comision
+      FROM visitas_sala vs
+      JOIN usuarios u ON vs.hostess_id = u.id
+      JOIN roles r ON u.rol_id = r.id
+      WHERE r.nombre = 'hostess'
+        AND u.activo = true
+        AND vs.calificacion = 'TOUR'
+        AND TO_CHAR(vs.fecha, 'YYYY-MM') = $1
+        AND ($2::integer IS NULL OR u.sala_id = $2)
+        AND vs.hostess_id IS NOT NULL
+      GROUP BY vs.hostess_id, u.sala_id, u.bono_por_tour
+    `, [mes, salaParam]);
+    resultados.push(...hostCalculo.rows);
+
+    // ─── Consolidar: agrupar por usuario (un usuario puede tener comisiones de distintas fuentes)
+    const consolidado = {};
+    for (const row of resultados) {
+      if (!row.usuario_id) continue;
+      const key = row.usuario_id;
+      if (!consolidado[key]) {
+        consolidado[key] = {
+          usuario_id: row.usuario_id,
+          sala_id: row.sala_id,
+          monto_comision: 0,
+          contratos_count: 0,
+        };
+      }
+      consolidado[key].monto_comision += parseFloat(row.monto_comision) || 0;
+      consolidado[key].contratos_count += parseInt(row.contratos_count) || 0;
+    }
+
+    const filas = Object.values(consolidado);
+
+    if (filas.length === 0) {
+      return res.json({ mensaje: 'No hay comisiones para calcular en este periodo', liquidaciones: [] });
     }
 
     // INSERT ... ON CONFLICT DO UPDATE solo si estado = 'pendiente'
-    const insertPromises = calculo.rows.map(row =>
+    const insertPromises = filas.map(row =>
       pool.query(`
         INSERT INTO liquidaciones (consultor_id, sala_id, mes, monto_comision, contratos_count, estado)
         VALUES ($1, $2, $3, $4, $5, 'pendiente')
@@ -148,7 +234,7 @@ router.post('/calcular', auth, requireAdminOrDirector, async (req, res) => {
               sala_id          = EXCLUDED.sala_id
           WHERE liquidaciones.estado = 'pendiente'
         RETURNING id
-      `, [row.consultor_id, row.sala_id, mes, row.monto_comision, row.contratos_count])
+      `, [row.usuario_id, row.sala_id, mes, Math.round(row.monto_comision * 100) / 100, row.contratos_count])
     );
 
     await Promise.all(insertPromises);
@@ -166,15 +252,18 @@ router.post('/calcular', auth, requireAdminOrDirector, async (req, res) => {
         l.observacion,
         u.nombre   AS consultor_nombre,
         u.id       AS consultor_id,
+        r.nombre   AS rol,
+        r.label    AS rol_label,
         s.nombre   AS sala_nombre,
         ua.nombre  AS aprobado_por_nombre
       FROM liquidaciones l
       JOIN usuarios u ON l.consultor_id = u.id
+      JOIN roles r ON u.rol_id = r.id
       LEFT JOIN salas s ON l.sala_id = s.id
       LEFT JOIN usuarios ua ON l.aprobado_por = ua.id
       WHERE l.mes = $1
         AND ($2::integer IS NULL OR l.sala_id = $2)
-      ORDER BY u.nombre
+      ORDER BY l.monto_comision DESC, u.nombre
     `, [mes, salaParam]);
 
     res.json(lista.rows);
@@ -261,10 +350,13 @@ router.patch('/:id', auth, requireAdminOrDirector, async (req, res) => {
         l.observacion,
         u.nombre   AS consultor_nombre,
         u.id       AS consultor_id,
+        r.nombre   AS rol,
+        r.label    AS rol_label,
         s.nombre   AS sala_nombre,
         ua.nombre  AS aprobado_por_nombre
       FROM liquidaciones l
       JOIN usuarios u ON l.consultor_id = u.id
+      JOIN roles r ON u.rol_id = r.id
       LEFT JOIN salas s ON l.sala_id = s.id
       LEFT JOIN usuarios ua ON l.aprobado_por = ua.id
       WHERE l.id = $1

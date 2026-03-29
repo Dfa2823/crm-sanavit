@@ -5,10 +5,12 @@ const { dispararWebhook } = require('../utils/webhook');
 
 const router = express.Router();
 
-// Auto-migrate: agregar columna comprobante si no existe
+// Auto-migrate: agregar columnas si no existen
 (async () => {
   try {
     await pool.query(`ALTER TABLE recibos ADD COLUMN IF NOT EXISTS comprobante TEXT`);
+    await pool.query(`ALTER TABLE recibos ADD COLUMN IF NOT EXISTS tipo_tarjeta VARCHAR(20)`);
+    await pool.query(`ALTER TABLE recibos ADD COLUMN IF NOT EXISTS entidad_tarjeta VARCHAR(50)`);
   } catch (err) {
     console.error('Recibos migration warning:', err.message);
   }
@@ -91,7 +93,7 @@ router.get('/', auth, async (req, res) => {
  */
 router.post('/', auth, async (req, res) => {
   const { id: userId } = req.user;
-  const { contrato_id, cuota_id, persona_id, sala_id, forma_pago_id, valor, fecha_pago, referencia_pago, observacion, comprobante } = req.body;
+  const { contrato_id, cuota_id, persona_id, sala_id, forma_pago_id, valor, fecha_pago, referencia_pago, observacion, comprobante, tipo_tarjeta, entidad_tarjeta } = req.body;
 
   if (!persona_id || !valor) return res.status(400).json({ error: 'persona_id y valor son requeridos' });
 
@@ -119,10 +121,10 @@ router.post('/', auth, async (req, res) => {
     }
 
     const result = await client.query(`
-      INSERT INTO recibos (consecutivo, contrato_id, cuota_id, persona_id, sala_id, forma_pago_id, valor, fecha_pago, usuario_id, referencia_pago, observacion, comprobante)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      INSERT INTO recibos (consecutivo, contrato_id, cuota_id, persona_id, sala_id, forma_pago_id, valor, fecha_pago, usuario_id, referencia_pago, observacion, comprobante, tipo_tarjeta, entidad_tarjeta)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       RETURNING *
-    `, [consecutivo, contrato_id, cuota_id, persona_id, salaId, forma_pago_id, valor, fecha_pago || new Date().toISOString().split('T')[0], userId, referencia_pago, observacion, comprobante || null]);
+    `, [consecutivo, contrato_id, cuota_id, persona_id, salaId, forma_pago_id, valor, fecha_pago || new Date().toISOString().split('T')[0], userId, referencia_pago, observacion, comprobante || null, tipo_tarjeta || null, entidad_tarjeta || null]);
 
     // Si hay cuota_id, actualizar el estado de la cuota
     if (cuota_id) {

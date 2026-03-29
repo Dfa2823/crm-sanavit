@@ -662,9 +662,10 @@ export default function LiquidacionesPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Consultor</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Empleado</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Rol</th>
                   <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Sala</th>
-                  <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Contratos</th>
+                  <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Actividad</th>
                   <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Comision</th>
                   <th className="text-center text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Estado</th>
                   <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide py-3 px-4">Aprobado por</th>
@@ -684,10 +685,15 @@ export default function LiquidacionesPage() {
                       <button
                         onClick={() => setDetalleId(d.id)}
                         className="text-teal-700 hover:text-teal-900 hover:underline text-left"
-                        title="Ver detalle de contratos"
+                        title="Ver detalle"
                       >
                         {d.consultor_nombre}
                       </button>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700">
+                        {d.rol_label || d.rol || 'Consultor'}
+                      </span>
                     </td>
                     <td className="py-3 px-4 text-gray-500 text-xs">{d.sala_nombre || '—'}</td>
                     <td className="py-3 px-4 text-right text-gray-700">{d.contratos_count ?? '—'}</td>
