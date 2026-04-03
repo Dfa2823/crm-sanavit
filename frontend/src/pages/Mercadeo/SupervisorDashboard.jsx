@@ -534,7 +534,7 @@ export default function SupervisorDashboard() {
             {errorResumen}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <StatCard
               titulo="Total Leads Capturados"
               valor={resumen?.total_leads ?? 0}
@@ -548,6 +548,12 @@ export default function SupervisorDashboard() {
               icon="📅"
             />
             <StatCard
+              titulo="No Concretas"
+              valor={resumen?.total_no_concretas ?? 0}
+              color="yellow"
+              icon="📋"
+            />
+            <StatCard
               titulo="Efectividad"
               valor={`${resumen?.efectividad_pct ?? 0}%`}
               color="teal"
@@ -556,7 +562,7 @@ export default function SupervisorDashboard() {
             <StatCard
               titulo="Confirmadas"
               valor={resumen?.total_confirmadas ?? 0}
-              color="yellow"
+              color="green"
               icon="✅"
             />
           </div>
@@ -598,6 +604,9 @@ export default function SupervisorDashboard() {
                       Citas
                     </th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      No concretas
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">
                       % Efectividad
                     </th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -634,6 +643,9 @@ export default function SupervisorDashboard() {
                       </td>
                       <td className="px-4 py-3 text-center font-bold text-green-700">
                         {tmk.citas_agendadas}
+                      </td>
+                      <td className="px-4 py-3 text-center font-bold text-amber-600">
+                        {tmk.citas_no_concretas ?? 0}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${efectividadBadge(tmk.pct_efectividad)}`}>

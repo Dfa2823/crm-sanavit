@@ -12,7 +12,7 @@ import client from '../../api/client'
 import { apiPersonas } from '../../api/personas'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../context/AuthContext'
-import { formatFechaSemana, formatFechaCorta } from '../../utils/formatFechaEC'
+import { formatFechaSemana, formatFechaCorta, toEcuadorISO } from '../../utils/formatFechaEC'
 
 // ─── react-big-calendar config ───────────────────────────────────────────────
 
@@ -71,7 +71,7 @@ function DrawerCita({ lead, onClose, onActualizar }) {
 
   // Tipificacion del confirmador
   const [tipificaciones, setTipificaciones] = useState([])
-  const [tipSeleccionada, setTipSeleccionada] = useState('')
+  const [tipSeleccionada, setTipSeleccionada] = useState(lead?.tipificacion_id ? String(lead.tipificacion_id) : '')
   const [obsConfirmador, setObsConfirmador] = useState('')
   const [guardandoTip, setGuardandoTip] = useState(false)
 
@@ -125,6 +125,9 @@ function DrawerCita({ lead, onClose, onActualizar }) {
       setNuevaHora(d.toTimeString().slice(0, 5))
     }
     setEditFecha(false)
+    // Init tipificacion con la actual del lead
+    setTipSeleccionada(lead.tipificacion_id ? String(lead.tipificacion_id) : '')
+    setObsConfirmador('')
   }, [lead])
 
   async function guardarDatosPersona() {
@@ -149,7 +152,7 @@ function DrawerCita({ lead, onClose, onActualizar }) {
     setGuardando(true)
     try {
       await apiLeads.actualizar(lead.id, {
-        fecha_cita: `${nuevaFecha}T${nuevaHora || '09:00'}:00`,
+        fecha_cita: toEcuadorISO(`${nuevaFecha}T${nuevaHora || '09:00'}`),
         estado: 'tentativa',
       })
       addToast('Cita reagendada — requiere nueva confirmacion')
@@ -172,7 +175,8 @@ function DrawerCita({ lead, onClose, onActualizar }) {
 
       // Determinar estado segun tipificacion
       if (tip?.requiere_fecha_cita) {
-        payload.estado = 'confirmada'
+        // "Super tentativa" siempre va como tentativa
+        payload.estado = tip?.nombre === 'Super tentativa' ? 'tentativa' : 'confirmada'
       } else if (tip?.nombre === 'No le interesa') {
         payload.estado = 'cancelada'
       }
@@ -202,7 +206,11 @@ function DrawerCita({ lead, onClose, onActualizar }) {
   async function confirmar() {
     setGuardando(true)
     try {
-      await apiLeads.actualizar(lead.id, { estado: 'confirmada' })
+      const payload = { estado: 'confirmada' }
+      // Si hay tipificacion seleccionada, enviarla tambien
+      if (tipSeleccionada) payload.tipificacion_id = tipSeleccionada
+      if (obsConfirmador.trim()) payload.observacion = obsConfirmador
+      await apiLeads.actualizar(lead.id, payload)
       addToast('Estado actualizado a Confirmada')
       onActualizar()
     } catch { addToast('Error al actualizar', 'error') }
@@ -537,8 +545,11 @@ function CalendarioVista() {
 
   const onEventDrop = useCallback(async ({ event, start }) => {
     try {
+      // Construir fecha con offset Ecuador desde el Date local del navegador
+      const pad = (n) => String(n).padStart(2, '0')
+      const ecFecha = `${start.getFullYear()}-${pad(start.getMonth()+1)}-${pad(start.getDate())}T${pad(start.getHours())}:${pad(start.getMinutes())}:00-05:00`
       await apiLeads.actualizar(event.resource.id, {
-        fecha_cita: start.toISOString(),
+        fecha_cita: ecFecha,
       })
       addToast('Cita reprogramada')
       fetchCitas()
@@ -665,7 +676,7 @@ function PendientesVista() {
     try {
       await apiLeads.actualizar(modal.lead.id, {
         estado: 'confirmada',
-        fecha_cita: `${formConfirmar.fecha_cita}T${formConfirmar.hora_cita || '09:00'}:00`,
+        fecha_cita: toEcuadorISO(`${formConfirmar.fecha_cita}T${formConfirmar.hora_cita || '09:00'}`),
       })
       addToast('Cita confirmada y añadida al pre-manifiesto')
       setModal(null)
@@ -680,7 +691,7 @@ function PendientesVista() {
     try {
       await apiLeads.actualizar(modal.lead.id, {
         estado: 'tentativa',
-        fecha_cita: `${formReagendar.fecha_cita}T${formReagendar.hora_cita || '09:00'}:00`,
+        fecha_cita: toEcuadorISO(`${formReagendar.fecha_cita}T${formReagendar.hora_cita || '09:00'}`),
       })
       addToast('Cita reagendada — requiere nueva confirmación')
       setModal(null)

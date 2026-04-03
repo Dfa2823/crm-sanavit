@@ -44,11 +44,12 @@ async function seed() {
         ('outsourcing',    'Outsourcing')
     `);
 
-    // ── TIPIFICACIONES (9 aprobadas) ────────────────────────
+    // ── TIPIFICACIONES (10 aprobadas) ────────────────────────
     await client.query(`
       INSERT INTO tipificaciones (nombre, requiere_fecha_cita, requiere_fecha_rellamar) VALUES
         ('Buzón',              false, false),
         ('Cita',               true,  false),
+        ('Cita no concreta',   true,  false),
         ('Dato falso',         false, false),
         ('Enfermedad',         false, false),
         ('Fuera de la ciudad', false, false),

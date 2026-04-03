@@ -178,32 +178,27 @@ export default function ContratoPrint() {
             <table className="w-full border-collapse" style={{ fontSize: '10px' }}>
               <thead>
                 <tr className="bg-teal-50">
-                  <th className="border border-gray-400 px-2 py-1 text-left font-semibold">Descripcion</th>
                   <th className="border border-gray-400 px-2 py-1 text-center font-semibold w-14">Cant.</th>
-                  <th className="border border-gray-400 px-2 py-1 text-right font-semibold">Precio Unit.</th>
-                  <th className="border border-gray-400 px-2 py-1 text-right font-semibold">Subtotal</th>
+                  <th className="border border-gray-400 px-2 py-1 text-left font-semibold">Descripcion del producto</th>
                 </tr>
               </thead>
               <tbody>
                 {(productos || []).length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="border border-gray-400 px-2 py-1.5 text-center text-gray-400 italic">
+                    <td colSpan={2} className="border border-gray-400 px-2 py-1.5 text-center text-gray-400 italic">
                       Sin productos registrados
                     </td>
                   </tr>
                 ) : (
                   (productos || []).map((p, i) => (
                     <tr key={p.id || i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
-                      <td className="border border-gray-400 px-2 py-1">{p.producto_nombre || p.nombre || '\u2014'}</td>
                       <td className="border border-gray-400 px-2 py-1 text-center">{p.cantidad || 1}</td>
-                      <td className="border border-gray-400 px-2 py-1 text-right">{formatMoney(p.precio_unitario)}</td>
-                      <td className="border border-gray-400 px-2 py-1 text-right">{formatMoney(p.valor_total || p.subtotal || (p.precio_unitario * (p.cantidad || 1)))}</td>
+                      <td className="border border-gray-400 px-2 py-1">{p.producto_nombre || p.nombre || '\u2014'}</td>
                     </tr>
                   ))
                 )}
                 <tr className="bg-teal-50 font-bold">
-                  <td colSpan={3} className="border border-gray-400 px-2 py-1 text-right">TOTAL</td>
-                  <td className="border border-gray-400 px-2 py-1 text-right">{formatMoney(contrato.monto_total)}</td>
+                  <td colSpan={2} className="border border-gray-400 px-2 py-1 text-right">TOTAL: {formatMoney(contrato.monto_total)}</td>
                 </tr>
               </tbody>
             </table>

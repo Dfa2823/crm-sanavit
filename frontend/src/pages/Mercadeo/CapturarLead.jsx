@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { apiLeads } from '../../api/leads'
 import { apiPersonas } from '../../api/personas'
+import { toEcuadorISO } from '../../utils/formatFechaEC'
 
 export default function CapturarLead({ onClose, onGuardado }) {
   const [config, setConfig] = useState({ tipificaciones: [], fuentes: [] })
@@ -76,10 +77,10 @@ export default function CapturarLead({ onClose, onGuardado }) {
       let fecha_rellamar = null
 
       if (tipSeleccionada?.requiere_fecha_cita && lead.fecha_cita) {
-        fecha_cita = `${lead.fecha_cita}T${lead.hora_cita || '09:00'}:00`
+        fecha_cita = toEcuadorISO(`${lead.fecha_cita}T${lead.hora_cita || '09:00'}`)
       }
       if (tipSeleccionada?.requiere_fecha_rellamar && lead.fecha_rellamar) {
-        fecha_rellamar = `${lead.fecha_rellamar}T${lead.hora_rellamar || '09:00'}:00`
+        fecha_rellamar = toEcuadorISO(`${lead.fecha_rellamar}T${lead.hora_rellamar || '09:00'}`)
       }
 
       await apiLeads.crear({

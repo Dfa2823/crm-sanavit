@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { getCartera, getCarteraResumen, getTipificaciones, registrarGestion, getHistorialContrato, getInfoRefinanciacion, refinanciarContrato } from '../../api/cartera'
 import { getSalas, getFormasPago } from '../../api/admin'
+import { toEcuadorISO } from '../../utils/formatFechaEC'
 import { createRecibo } from '../../api/recibos'
 
 import { fmt } from '../../utils/formatCurrency'
@@ -176,7 +177,7 @@ function PanelGestion({ cuota, tipificaciones, onClose, onSaved }) {
       await registrarGestion(cuota.cuota_id, {
         tipificacion_cartera_id: Number(tipId),
         observacion: observacion || undefined,
-        fecha_rellamar: requiereFecha ? fechaRellamar : undefined,
+        fecha_rellamar: requiereFecha ? toEcuadorISO(fechaRellamar) : undefined,
       })
       onSaved()
       onClose()

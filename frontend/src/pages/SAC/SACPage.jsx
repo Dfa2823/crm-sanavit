@@ -8,6 +8,7 @@ import {
 } from '../../api/sac'
 import { apiPersonas } from '../../api/personas'
 import client from '../../api/client'
+import { toEcuadorISO } from '../../utils/formatFechaEC'
 
 // ─── Configuraciones de badges ────────────────────────────
 const TIPO_CONFIG = {
@@ -899,7 +900,7 @@ function TabFidelizacion() {
     if (!modalData || !fechaCita) return
     setGuardando(true)
     try {
-      await agendarRevisita(modalData.id, { fecha_cita: fechaCita, observacion: observacion.trim() || undefined })
+      await agendarRevisita(modalData.id, { fecha_cita: toEcuadorISO(fechaCita + 'T09:00'), observacion: observacion.trim() || undefined })
       setClientes(prev => prev.filter(c => c.id !== modalData.id))
       setModalData(null)
       setFechaCita('')

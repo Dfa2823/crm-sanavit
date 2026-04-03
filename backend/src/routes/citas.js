@@ -42,14 +42,16 @@ router.get('/premanifiesto', auth, async (req, res) => {
     const baseQuery = `
       SELECT
         l.id, l.estado, l.patologia, l.observacion,
-        l.fecha_cita, l.outsourcing_id,
+        l.fecha_cita, l.outsourcing_id, l.tipificacion_id,
         p.nombres, p.apellidos, p.telefono, p.ciudad,
         f.nombre AS fuente_nombre,
+        t.nombre AS tipificacion_nombre,
         u.nombre AS tmk_nombre,
         ou.nombre AS outsourcing_nombre
       FROM leads l
       JOIN personas p ON l.persona_id = p.id
       LEFT JOIN fuentes f ON l.fuente_id = f.id
+      LEFT JOIN tipificaciones t ON l.tipificacion_id = t.id
       LEFT JOIN usuarios u ON l.tmk_id = u.id
       LEFT JOIN usuarios ou ON l.outsourcing_id = ou.id
       WHERE DATE(l.fecha_cita AT TIME ZONE 'America/Guayaquil') = $1
@@ -96,8 +98,10 @@ router.get('/hoy', auth, async (req, res) => {
     const result = await pool.query(`
       SELECT
         l.id AS lead_id, l.estado, l.patologia, l.fecha_cita, l.observacion,
+        l.tipificacion_id,
         p.id AS persona_id, p.nombres, p.apellidos, p.telefono, p.ciudad, p.edad,
         f.nombre AS fuente_nombre,
+        t.nombre AS tipificacion_nombre,
         u.nombre AS tmk_nombre,
         vs.id AS visita_id, vs.hora_llegada, vs.calificacion, vs.hora_cita_agendada,
         vs.consultor_id, vs.acompanante,
@@ -105,6 +109,7 @@ router.get('/hoy', auth, async (req, res) => {
       FROM leads l
       JOIN personas p ON l.persona_id = p.id
       LEFT JOIN fuentes f ON l.fuente_id = f.id
+      LEFT JOIN tipificaciones t ON l.tipificacion_id = t.id
       LEFT JOIN usuarios u ON l.tmk_id = u.id
       LEFT JOIN visitas_sala vs ON vs.lead_id = l.id AND vs.fecha = $1::date
       LEFT JOIN usuarios uc ON vs.consultor_id = uc.id

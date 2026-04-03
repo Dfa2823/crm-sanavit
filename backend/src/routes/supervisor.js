@@ -70,6 +70,7 @@ router.get('/tmk', auth, soloSupervisor, async (req, res) => {
         COALESCE(s.nombre, 'Sin sala') AS sala_nombre,
         COUNT(l.id)                                                                    AS leads_captados,
         COUNT(CASE WHEN t.nombre = 'Cita' THEN 1 END)                                 AS citas_agendadas,
+        COUNT(CASE WHEN t.nombre = 'Super tentativa' THEN 1 END)                    AS citas_no_concretas,
         COUNT(CASE WHEN t.nombre = 'Volver a llamar' THEN 1 END)                      AS volver_llamar,
         COUNT(CASE WHEN t.nombre = 'No contesta' THEN 1 END)                           AS no_contesta,
         COUNT(CASE WHEN t.nombre = 'Buzón' THEN 1 END)                                AS buzon,
@@ -104,6 +105,7 @@ router.get('/tmk', auth, soloSupervisor, async (req, res) => {
         sala_nombre: row.sala_nombre,
         leads_captados: Number(row.leads_captados),
         citas_agendadas: Number(row.citas_agendadas),
+        citas_no_concretas: Number(row.citas_no_concretas),
         volver_llamar: Number(row.volver_llamar),
         no_contesta: Number(row.no_contesta),
         buzon: Number(row.buzon),
@@ -148,6 +150,7 @@ router.get('/resumen', auth, soloSupervisor, async (req, res) => {
       SELECT
         COUNT(l.id)                                                              AS total_leads,
         COUNT(CASE WHEN t.nombre = 'Cita' THEN 1 END)                          AS total_citas,
+        COUNT(CASE WHEN t.nombre = 'Super tentativa' THEN 1 END)            AS total_no_concretas,
         COUNT(CASE WHEN l.estado = 'confirmada' THEN 1 END)                    AS total_confirmadas,
         ROUND(
           COUNT(CASE WHEN t.nombre = 'Cita' THEN 1 END)::numeric
@@ -202,6 +205,7 @@ router.get('/resumen', auth, soloSupervisor, async (req, res) => {
       sala_id: salaFiltro || null,
       total_leads: Number(totales.total_leads),
       total_citas: Number(totales.total_citas),
+      total_no_concretas: Number(totales.total_no_concretas),
       total_confirmadas: Number(totales.total_confirmadas),
       efectividad_pct: totales.efectividad_pct !== null ? Number(totales.efectividad_pct) : 0,
       top_fuente: topFuenteRes.rows[0]?.fuente || null,

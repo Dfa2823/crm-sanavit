@@ -33,6 +33,7 @@ function TablaPremanifiesto({ items }) {
             <th>Cliente</th>
             <th>Teléfono</th>
             <th>Hora cita</th>
+            <th>Tipificación</th>
             <th>TMK</th>
             <th>Call Center</th>
             <th>Patología</th>
@@ -56,6 +57,11 @@ function TablaPremanifiesto({ items }) {
               <td className="text-sm text-gray-700 font-medium">
                 {item.fecha_cita
                   ? formatHoraEC(item.fecha_cita)
+                  : '—'}
+              </td>
+              <td className="text-sm text-gray-600">
+                {item.tipificacion_nombre
+                  ? <span className="badge badge-blue text-xs">{item.tipificacion_nombre}</span>
                   : '—'}
               </td>
               <td className="text-sm text-gray-600">{item.tmk_nombre || '—'}</td>
@@ -91,6 +97,7 @@ function exportarPDF(data, filtros) {
         <td>${item.fecha_cita
           ? formatHoraEC(item.fecha_cita)
           : '—'}</td>
+        <td>${item.tipificacion_nombre || '—'}</td>
         <td>${item.tmk_nombre || '—'}</td>
         <td>${item.outsourcing_nombre || 'Interno'}</td>
         <td>${item.patologia || '—'}</td>
@@ -103,7 +110,7 @@ function exportarPDF(data, filtros) {
           ? '<p class="empty">Sin registros en esta categoría</p>'
           : `<table>
               <thead><tr>
-                <th>Cliente</th><th>Teléfono</th><th>Hora</th>
+                <th>Cliente</th><th>Teléfono</th><th>Hora</th><th>Tipificación</th>
                 <th>TMK</th><th>Call Center</th><th>Patología</th><th>Observación</th>
               </tr></thead>
               <tbody>${filas}</tbody>
@@ -139,7 +146,7 @@ function exportarPDF(data, filtros) {
 
 function exportarCSV(data, filtros) {
   if (!data) return
-  const cols = ['Sección', 'Nombres', 'Apellidos', 'Teléfono', 'Ciudad', 'Hora cita', 'TMK', 'Call Center', 'Patología', 'Observación']
+  const cols = ['Sección', 'Nombres', 'Apellidos', 'Teléfono', 'Ciudad', 'Hora cita', 'Tipificación', 'TMK', 'Call Center', 'Patología', 'Observación']
   const rows = TABS.flatMap(tab =>
     (data[tab.key] || []).map(item => [
       tab.label,
@@ -150,6 +157,7 @@ function exportarCSV(data, filtros) {
       item.fecha_cita
         ? formatHoraEC(item.fecha_cita)
         : '',
+      item.tipificacion_nombre || '',
       item.tmk_nombre || '',
       item.outsourcing_nombre || 'Interno',
       item.patologia || '',

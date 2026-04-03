@@ -6,6 +6,23 @@ const { dispararWebhook } = require('../utils/webhook');
 
 const router = express.Router();
 
+// ── Auto-migrate: tipificacion "Super tentativa" ─────────
+(async () => {
+  try {
+    const exists = await pool.query(
+      "SELECT id FROM tipificaciones WHERE nombre = 'Super tentativa'"
+    );
+    if (exists.rows.length === 0) {
+      await pool.query(
+        "INSERT INTO tipificaciones (nombre, requiere_fecha_cita, requiere_fecha_rellamar) VALUES ('Super tentativa', true, false)"
+      );
+      console.log('  ✓ Tipificacion "Super tentativa" creada');
+    }
+  } catch (err) {
+    console.error('Error auto-migrate Super tentativa:', err.message);
+  }
+})();
+
 // ── Auto-migrate: tabla lead_observaciones ────────────────
 (async () => {
   try {
@@ -370,7 +387,9 @@ router.post('/', auth, async (req, res) => {
     const tip = tipRes.rows[0];
 
     let estado = 'pendiente';
-    if (tip.requiere_fecha_cita) estado = 'confirmada';
+    if (tip.requiere_fecha_cita) {
+      estado = tip.nombre === 'Super tentativa' ? 'tentativa' : 'confirmada';
+    }
 
     // Auto-asignar confirmador_id si el TMK tiene asignación
     const tmkIdFinal = rol === 'tmk' ? userId : (req.body.tmk_id || userId);

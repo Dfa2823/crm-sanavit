@@ -6,7 +6,7 @@ import { apiPersonas } from '../../api/personas'
 import client from '../../api/client'
 import CapturarLead from './CapturarLead'
 import LastUpdated from '../../components/UI/LastUpdated'
-import { formatFechaCorta, formatFechaSoloFecha } from '../../utils/formatFechaEC'
+import { formatFechaCorta, formatFechaSoloFecha, toEcuadorISO } from '../../utils/formatFechaEC'
 
 const ESTADO_BADGE = {
   pendiente:   'badge-gray',
@@ -83,8 +83,8 @@ function LeadDetailDrawer({ leadId, tipificaciones, onClose, onActualizado }) {
       // Solo enviar campos que cambiaron (estado, tmk_id y fuente_id son readonly para TMK)
       if (String(form.tipificacion_id) !== String(lead.tipificacion_id || '')) payload.tipificacion_id = form.tipificacion_id || null
       if (form.patologia !== (lead.patologia || '')) payload.patologia = form.patologia
-      if (form.fecha_cita !== (lead.fecha_cita ? lead.fecha_cita.slice(0, 16) : '')) payload.fecha_cita = form.fecha_cita || null
-      if (form.fecha_rellamar !== (lead.fecha_rellamar ? lead.fecha_rellamar.slice(0, 16) : '')) payload.fecha_rellamar = form.fecha_rellamar || null
+      if (form.fecha_cita !== (lead.fecha_cita ? lead.fecha_cita.slice(0, 16) : '')) payload.fecha_cita = toEcuadorISO(form.fecha_cita) || null
+      if (form.fecha_rellamar !== (lead.fecha_rellamar ? lead.fecha_rellamar.slice(0, 16) : '')) payload.fecha_rellamar = toEcuadorISO(form.fecha_rellamar) || null
       if (form.observacion !== (lead.observacion || '')) payload.observacion = form.observacion
       if (String(form.sala_id) !== String(lead.sala_id || '')) payload.sala_id = form.sala_id || null
 
@@ -468,7 +468,8 @@ export default function TMKDashboard() {
       // Si la tipificacion es "Cita" (requiere_fecha_cita), mostrar selector de estado + fecha
       if (tip?.requiere_fecha_cita) {
         setEditandoCita(leadId)
-        setCitaEstado('tentativa')
+        // "Super tentativa" siempre es tentativa, "Cita" normal permite elegir
+        setCitaEstado(tip?.nombre === 'Super tentativa' ? 'tentativa' : 'tentativa')
         setCitaFecha('')
         // Guardar la tipificacion_id temporalmente en el lead local
         setLeads(prev => prev.map(l => l.id === leadId
@@ -497,7 +498,7 @@ export default function TMKDashboard() {
       const lead = leads.find(l => l.id === leadId)
       await apiLeads.actualizar(leadId, {
         tipificacion_id: lead?.tipificacion_id,
-        fecha_cita: citaFecha,
+        fecha_cita: toEcuadorISO(citaFecha),
         estado: citaEstado,
       })
       setLeads(prev => prev.map(l => l.id === leadId
@@ -514,7 +515,7 @@ export default function TMKDashboard() {
   async function guardarFechaRellamar(leadId) {
     if (!fechaRellamar) return
     try {
-      await apiLeads.actualizar(leadId, { fecha_rellamar: fechaRellamar })
+      await apiLeads.actualizar(leadId, { fecha_rellamar: toEcuadorISO(fechaRellamar) })
       setLeads(prev => prev.map(l => l.id === leadId ? { ...l, fecha_rellamar: fechaRellamar } : l))
       setEditandoRellamar(null)
       setFechaRellamar('')
@@ -757,14 +758,16 @@ export default function TMKDashboard() {
                               <input type="radio" name={`cita-estado-${lead.id}`} value="tentativa"
                                 checked={citaEstado === 'tentativa'} onChange={() => setCitaEstado('tentativa')}
                                 className="text-green-600" />
-                              Tentativa
+                              {lead.tipificacion_nombre === 'Super tentativa' ? 'No concreta' : 'Tentativa'}
                             </label>
-                            <label className="flex items-center gap-1 text-xs text-gray-700 cursor-pointer">
-                              <input type="radio" name={`cita-estado-${lead.id}`} value="confirmada"
-                                checked={citaEstado === 'confirmada'} onChange={() => setCitaEstado('confirmada')}
-                                className="text-green-600" />
-                              Confirmada
-                            </label>
+                            {lead.tipificacion_nombre !== 'Super tentativa' && (
+                              <label className="flex items-center gap-1 text-xs text-gray-700 cursor-pointer">
+                                <input type="radio" name={`cita-estado-${lead.id}`} value="confirmada"
+                                  checked={citaEstado === 'confirmada'} onChange={() => setCitaEstado('confirmada')}
+                                  className="text-green-600" />
+                                Confirmada
+                              </label>
+                            )}
                           </div>
                           <input type="datetime-local"
                             className="text-xs border border-green-300 rounded px-2 py-1 w-full focus:outline-none focus:ring-1 focus:ring-green-400 bg-white"
