@@ -377,7 +377,7 @@ router.post('/', auth, async (req, res) => {
       tipo_plan || 'mensual', descripcion_plan,
       valorBruto, valorBruto, ivaPorc, valorIva,
       cuota_inicial, forma_pago_inicial_id,
-      n_cuotas > 0 ? parseFloat(valor_financiado || 0) / n_cuotas : 0,
+      n_cuotas > 0 ? parseFloat(valor_financiado || (valorBruto - (cuota_inicial || 0))) / n_cuotas : 0,
       n_cuotas, dia_pago, fecha_primer_pago,
       outsourcing_empresa_id, segunda_venta, sac_asesor_id || null, observaciones,
       firma_cliente || null,
@@ -396,7 +396,8 @@ router.post('/', auth, async (req, res) => {
     }
 
     // Generar plan de cuotas si hay financiación
-    const montoFinanciado = parseFloat(valor_financiado || 0);
+    // Auto-calcular valor_financiado si no se envió explícitamente
+    const montoFinanciado = parseFloat(valor_financiado || (valorBruto - (cuota_inicial || 0)));
     const TASA_INTERES_DEFAULT = 1.5; // % mensual
     if (n_cuotas >= 1 && montoFinanciado > 0) {
       const valorCuota = montoFinanciado / n_cuotas;

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import client from '../../api/client'
+import { formatFechaSoloFecha } from '../../utils/formatFechaEC'
 
 const TIPO_CONFIG = {
   persona:  { icon: '👤', color: 'text-blue-600',   label: 'Cliente' },
@@ -175,7 +176,7 @@ export default function GlobalSearch({ onClose }) {
                         <p className="text-sm font-medium text-gray-800">{l.cliente}</p>
                         <p className="text-xs text-gray-400">
                           📱 {l.telefono} · {l.estado} · {l.fuente_nombre || '—'} ·{' '}
-                          {new Date(l.created_at).toLocaleDateString('es-EC')}
+                          {formatFechaSoloFecha(l.created_at)}
                         </p>
                       </div>
                       <span className="text-xs text-orange-500 flex-shrink-0">Ver →</span>

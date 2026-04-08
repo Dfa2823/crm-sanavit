@@ -148,7 +148,7 @@ router.get('/', async (req, res) => {
     // Restringir sala para roles no privilegiados
     const efectivaSalaId =
       sala_id ||
-      (!['admin', 'director', 'asesor_cartera'].includes(rol) ? userSalaId : null);
+      (!['admin', 'director', 'asesor_cartera', 'cartera'].includes(rol) ? userSalaId : null);
 
     if (efectivaSalaId) {
       whereClauses.push(`c.sala_id = $${idx}`);
@@ -270,7 +270,7 @@ router.get('/resumen', async (req, res) => {
 
     const efectivaSalaId =
       sala_id ||
-      (!['admin', 'director', 'asesor_cartera'].includes(rol) ? userSalaId : null);
+      (!['admin', 'director', 'asesor_cartera', 'cartera'].includes(rol) ? userSalaId : null);
 
     if (efectivaSalaId) {
       whereClauses.push(`c.sala_id = $${idx}`);
@@ -341,7 +341,7 @@ router.get('/tipificaciones', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/cuotas/:id/gestion', async (req, res) => {
   const { rol } = req.user;
-  if (!['asesor_cartera', 'admin', 'director'].includes(rol)) {
+  if (!['asesor_cartera', 'cartera', 'admin', 'director'].includes(rol)) {
     return res.status(403).json({ error: 'Sin permiso para registrar gestión de cartera' });
   }
 
@@ -432,7 +432,7 @@ router.get('/historial/:contrato_id', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.patch('/cuotas/:id/gestion', async (req, res) => {
   const { rol } = req.user;
-  if (!['asesor_cartera', 'admin', 'director'].includes(rol)) {
+  if (!['asesor_cartera', 'cartera', 'admin', 'director'].includes(rol)) {
     return res.status(403).json({ error: 'Sin permiso para registrar gestión de cartera' });
   }
 
@@ -534,7 +534,7 @@ router.get('/refinanciacion/:contrato_id', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/refinanciar/:contrato_id', async (req, res) => {
   const { rol } = req.user;
-  if (!['admin', 'director', 'asesor_cartera'].includes(rol)) {
+  if (!['admin', 'director', 'asesor_cartera', 'cartera'].includes(rol)) {
     return res.status(403).json({ error: 'Sin permiso para refinanciar' });
   }
 

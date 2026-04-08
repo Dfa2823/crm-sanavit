@@ -388,7 +388,13 @@ router.post('/', auth, async (req, res) => {
 
     let estado = 'pendiente';
     if (tip.requiere_fecha_cita) {
-      estado = tip.nombre === 'Super tentativa' ? 'tentativa' : 'confirmada';
+      // Respetar el estado enviado explícitamente por el frontend (tentativa o confirmada)
+      if (req.body.estado === 'tentativa' || req.body.estado === 'confirmada') {
+        estado = req.body.estado;
+      } else {
+        // Fallback: Super tentativa → tentativa, resto → confirmada
+        estado = tip.nombre === 'Super tentativa' ? 'tentativa' : 'confirmada';
+      }
     }
 
     // Auto-asignar confirmador_id si el TMK tiene asignación
@@ -519,6 +525,10 @@ router.patch('/:id', auth, async (req, res) => {
     if (sala_id !== undefined)          { updates.push(`sala_id = $${idx++}`);          params.push(sala_id); }
 
     if (updates.length === 0) {
+      // Mensaje más claro si el TMK intentó cambiar el estado sin permiso
+      if (rolesNoEstado.includes(req.user.rol) && estado !== undefined && estadoFinal === undefined) {
+        return res.status(403).json({ error: 'El TMK no puede modificar el estado del lead a ese valor' });
+      }
       return res.status(400).json({ error: 'No hay campos para actualizar' });
     }
 

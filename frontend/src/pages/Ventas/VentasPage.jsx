@@ -4,6 +4,7 @@ import { getVentas } from '../../api/ventas'
 import { getSalas } from '../../api/admin'
 import { useAuth } from '../../context/AuthContext'
 import { fmt } from '../../utils/formatCurrency'
+import { formatFechaSoloFecha } from '../../utils/formatFechaEC'
 
 const ESTADO_CONFIG = {
   activo:     { label: 'Activo',     cls: 'badge-green' },
@@ -224,7 +225,7 @@ export default function VentasPage() {
                         <td className="px-4 py-3 text-right text-orange-600 font-medium">{fmt(v.saldo)}</td>
                         <td className="px-4 py-3 text-center"><BadgeEstado estado={v.estado} /></td>
                         <td className="px-4 py-3 text-center text-xs text-gray-500">
-                          {v.fecha_contrato ? new Date(v.fecha_contrato).toLocaleDateString('es-EC') : '—'}
+                          {v.fecha_contrato ? formatFechaSoloFecha(v.fecha_contrato) : '—'}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <button

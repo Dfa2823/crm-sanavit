@@ -41,6 +41,7 @@ export function formatFechaSoloFecha(fecha) {
   return new Date(fecha).toLocaleDateString('es-EC', {
     day: '2-digit',
     month: 'short',
+    year: 'numeric',
     timeZone: 'America/Guayaquil',
   })
 }

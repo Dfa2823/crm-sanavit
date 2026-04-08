@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { getEmpresas, createEmpresa, updateEmpresa, getOutsourcingStats, getOutsourcingSalas, crearLeadOutsourcing, cargaMasivaOutsourcing, getMisLeads, getMiResumen } from '../../api/outsourcing'
+import { toEcuadorISO } from '../../utils/formatFechaEC'
 
 export default function OutsourcingPage() {
   const { usuario } = useAuth()
@@ -175,6 +176,7 @@ export default function OutsourcingPage() {
     try {
       await crearLeadOutsourcing({
         ...leadForm,
+        fecha_cita: toEcuadorISO(leadForm.fecha_cita),
         sala_id: Number(leadForm.sala_id),
         outsourcing_empresa_id: leadForm.outsourcing_empresa_id ? Number(leadForm.outsourcing_empresa_id) : null,
       })

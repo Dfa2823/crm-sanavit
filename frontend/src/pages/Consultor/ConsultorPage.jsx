@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { getMisClientes, getResumen, getComisiones } from '../../api/consultor'
 import { fmt } from '../../utils/formatCurrency'
+import { formatFechaSoloFecha } from '../../utils/formatFechaEC'
 
 function Spinner() {
   return (
@@ -244,7 +245,7 @@ export default function ConsultorPage() {
                           </td>
                           <td className="py-3 px-4 font-mono text-xs text-teal-700 font-bold">{c.numero_contrato}</td>
                           <td className="py-3 px-4 text-sm text-gray-500">
-                            {c.fecha_contrato ? new Date(c.fecha_contrato).toLocaleDateString('es-EC') : '---'}
+                            {c.fecha_contrato ? formatFechaSoloFecha(c.fecha_contrato) : '---'}
                           </td>
                           <td className="py-3 px-4 text-right font-semibold text-gray-800">{fmt(c.monto_total)}</td>
                           <td className="py-3 px-4 text-right text-green-700 font-medium">{fmt(c.total_pagado)}</td>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getDetalleAlertas } from '../../api/alertas'
+import { formatFechaSoloFecha } from '../../utils/formatFechaEC'
 
 /* ── constantes de estilo ── */
 const PRIORIDAD_CLASS = {
@@ -85,7 +86,7 @@ function AlertaCard({ alerta: a }) {
 
       {/* Fecha */}
       <p className="text-xs text-gray-400 mt-1">
-        {a.fecha ? new Date(a.fecha).toLocaleDateString('es-EC') : ''}
+        {a.fecha ? formatFechaSoloFecha(a.fecha) : ''}
       </p>
     </div>
   )

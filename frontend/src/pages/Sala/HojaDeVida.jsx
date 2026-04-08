@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import client from '../../api/client'
-import { formatFechaEC } from '../../utils/formatFechaEC'
+import { formatFechaEC, formatFechaSoloFecha } from '../../utils/formatFechaEC'
 
 const SEGURIDAD_SOCIAL  = ['Cotizante', 'Beneficiario', 'Subsidiado', 'Retirado']
 const SITUACION_LABORAL = ['Empleado público', 'Empleado privado', 'Independiente', 'Jubilado']
@@ -456,7 +456,7 @@ export default function HojaDeVida() {
                           )}
                         </div>
                         <span className="text-xs text-gray-400 flex-shrink-0 ml-2">
-                          {new Date(lead.created_at).toLocaleDateString('es-EC')}
+                          {formatFechaSoloFecha(lead.created_at)}
                         </span>
                       </div>
                       <p className="text-sm text-gray-700 mt-1">
@@ -644,7 +644,7 @@ export default function HojaDeVida() {
                     <div className="flex items-center justify-between mt-3">
                       <p className="text-xs text-gray-400">
                         {c.fecha_contrato
-                          ? new Date(c.fecha_contrato).toLocaleDateString('es-EC')
+                          ? formatFechaSoloFecha(c.fecha_contrato)
                           : '—'}
                         {c.sala_nombre && ` · ${c.sala_nombre}`}
                       </p>
@@ -767,10 +767,10 @@ export default function HojaDeVida() {
                   <p className="text-xs text-gray-400 mt-2">
                     Apertura:{' '}
                     {t.fecha_apertura
-                      ? new Date(t.fecha_apertura).toLocaleDateString('es-EC')
+                      ? formatFechaSoloFecha(t.fecha_apertura)
                       : '—'}
                     {t.fecha_cierre &&
-                      ` · Cierre: ${new Date(t.fecha_cierre).toLocaleDateString('es-EC')}`}
+                      ` · Cierre: ${formatFechaSoloFecha(t.fecha_cierre)}`}
                     {t.asignado_nombre && ` · Asignado: ${t.asignado_nombre}`}
                   </p>
                 </div>

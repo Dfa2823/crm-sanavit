@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { getMiPerfil, cambiarPassword } from '../../api/perfil'
+import { formatFechaSoloFecha } from '../../utils/formatFechaEC'
 
 function Spinner() {
   return (
@@ -67,7 +68,7 @@ export default function PerfilPage() {
                 ['Sala', perfil?.sala_nombre || '---'],
                 ['Ciudad', perfil?.sala_ciudad || '---'],
                 ['Estado', perfil?.activo ? 'Activo' : 'Inactivo'],
-                ['Desde', perfil?.created_at ? new Date(perfil.created_at).toLocaleDateString('es-EC') : '---'],
+                ['Desde', perfil?.created_at ? formatFechaSoloFecha(perfil.created_at) : '---'],
               ].map(([label, val]) => (
                 <div key={label}>
                   <p className='text-xs text-gray-400 uppercase'>{label}</p>

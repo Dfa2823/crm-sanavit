@@ -7,6 +7,7 @@ import { createRecibo, anularRecibo } from '../../api/recibos'
 import { getFormasPago } from '../../api/admin'
 import { useToast } from '../../context/ToastContext'
 import client from '../../api/client'
+import { formatFechaSoloFecha } from '../../utils/formatFechaEC'
 
 const TIPOS_DOC = [
   { value: 'contrato_firmado', label: 'Contrato firmado' },
@@ -102,7 +103,7 @@ function TabDocumentos({ contratoId }) {
                 </td>
                 <td className="px-4 py-2 text-gray-700">{d.nombre_archivo}</td>
                 <td className="px-4 py-2 text-gray-500 text-xs">{d.uploaded_by_nombre || '—'}</td>
-                <td className="px-4 py-2 text-gray-500 text-xs">{new Date(d.created_at).toLocaleDateString('es-EC')}</td>
+                <td className="px-4 py-2 text-gray-500 text-xs">{formatFechaSoloFecha(d.created_at)}</td>
                 <td className="px-4 py-2 text-center">
                   <div className="flex items-center gap-2 justify-center">
                     <a href={d.url} target="_blank" rel="noreferrer"
@@ -556,7 +557,7 @@ export default function Venta360Page() {
                   {[
                     { label: 'Tipo documento', value: contrato.tipo_documento },
                     { label: 'N° documento', value: contrato.num_documento },
-                    { label: 'Fecha nacimiento', value: contrato.fecha_nacimiento ? new Date(contrato.fecha_nacimiento).toLocaleDateString('es-EC') : null },
+                    { label: 'Fecha nacimiento', value: contrato.fecha_nacimiento ? formatFechaSoloFecha(contrato.fecha_nacimiento) : null },
                     { label: 'Género', value: contrato.genero },
                     { label: 'Estado civil', value: contrato.estado_civil },
                     { label: 'Patología', value: contrato.patologia },
@@ -577,7 +578,7 @@ export default function Venta360Page() {
               <div className="space-y-3">
                 {[
                   { label: 'N° Contrato', value: contrato.numero_contrato, mono: true },
-                  { label: 'Fecha contrato', value: contrato.fecha_contrato ? new Date(contrato.fecha_contrato).toLocaleDateString('es-EC') : null },
+                  { label: 'Fecha contrato', value: contrato.fecha_contrato ? formatFechaSoloFecha(contrato.fecha_contrato) : null },
                   { label: 'Sala', value: contrato.sala_nombre },
                   { label: 'Consultor', value: contrato.consultor_nombre },
                   { label: 'Outsourcing', value: contrato.outsourcing_nombre },
@@ -760,9 +761,9 @@ export default function Venta360Page() {
                         <td className="px-4 py-3 text-right font-medium">{fmt(q.monto_esperado)}</td>
                         <td className="px-4 py-3 text-right text-green-600">{fmt(q.monto_pagado)}</td>
                         <td className="px-4 py-3 text-right text-orange-600 font-medium">{fmt(saldo)}</td>
-                        <td className="px-4 py-3 text-center text-xs">{new Date(q.fecha_vencimiento).toLocaleDateString('es-EC')}</td>
+                        <td className="px-4 py-3 text-center text-xs">{formatFechaSoloFecha(q.fecha_vencimiento)}</td>
                         <td className="px-4 py-3 text-center text-xs text-gray-500">
-                          {q.fecha_pago ? new Date(q.fecha_pago).toLocaleDateString('es-EC') : '—'}
+                          {q.fecha_pago ? formatFechaSoloFecha(q.fecha_pago) : '—'}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -852,7 +853,7 @@ export default function Venta360Page() {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-center text-xs">{r.fecha_pago ? new Date(r.fecha_pago).toLocaleDateString('es-EC') : '—'}</td>
+                        <td className="px-4 py-3 text-center text-xs">{r.fecha_pago ? formatFechaSoloFecha(r.fecha_pago) : '—'}</td>
                         <td className="px-4 py-3 text-xs text-gray-400">{r.referencia_pago || '—'}</td>
                         <td className="px-4 py-3 text-center">
                           <span className={`text-xs px-2 py-0.5 rounded-full ${r.estado === 'activo' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { getLiquidaciones, calcularMes, actualizarEstado, getDetalleLiquidacion, suspenderComision, reactivarComision } from '../../api/liquidaciones'
 import { getSalas } from '../../api/admin'
+import { formatFechaSoloFecha } from '../../utils/formatFechaEC'
 
 // ─── Utilidades ──────────────────────────────────────────────────────────────
 
@@ -705,13 +706,13 @@ export default function LiquidacionesPage() {
                       {d.aprobado_por_nombre || '—'}
                       {d.fecha_aprobacion && (
                         <div className="text-gray-400 text-xs mt-0.5">
-                          {new Date(d.fecha_aprobacion).toLocaleDateString('es-EC')}
+                          {formatFechaSoloFecha(d.fecha_aprobacion)}
                         </div>
                       )}
                     </td>
                     <td className="py-3 px-4 text-gray-500 text-xs">
                       {d.fecha_pago
-                        ? new Date(d.fecha_pago).toLocaleDateString('es-EC')
+                        ? formatFechaSoloFecha(d.fecha_pago)
                         : '—'}
                     </td>
                     {esAdmin && (

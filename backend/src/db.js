@@ -6,6 +6,7 @@ const { Pool } = pg;
 // Con esto, PostgreSQL devuelve la hora en la timezone de la sesión (Ecuador)
 // y Node.js la pasa tal cual al frontend sin conversión
 pg.types.setTypeParser(20, val => parseInt(val, 10));   // BIGINT → number
+pg.types.setTypeParser(1082, val => val);                // DATE → string as-is (YYYY-MM-DD)
 pg.types.setTypeParser(1114, val => val);                // TIMESTAMP → string as-is
 pg.types.setTypeParser(1184, val => val);                // TIMESTAMPTZ → string as-is
 
