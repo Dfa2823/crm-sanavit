@@ -1,11 +1,13 @@
-const { Pool, types } = require('pg');
+const pg = require('pg');
+const { Pool } = pg;
 
 // ── CRÍTICO: Evitar que el driver pg convierta timestamps a UTC ──────
 // Sin esto, TIMESTAMPTZ se lee como Date JS → se serializa como UTC (Z)
 // Con esto, PostgreSQL devuelve la hora en la timezone de la sesión (Ecuador)
 // y Node.js la pasa tal cual al frontend sin conversión
-types.setTypeParser(1114, str => str); // TIMESTAMP WITHOUT TZ → string as-is
-types.setTypeParser(1184, str => str); // TIMESTAMPTZ → string as-is
+pg.types.setTypeParser(20, val => parseInt(val, 10));   // BIGINT → number
+pg.types.setTypeParser(1114, val => val);                // TIMESTAMP → string as-is
+pg.types.setTypeParser(1184, val => val);                // TIMESTAMPTZ → string as-is
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
