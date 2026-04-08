@@ -1,5 +1,6 @@
 const express = require('express');
 const pool = require('../db');
+const { hoyEC } = require('../db');
 const auth = require('../middleware/auth');
 const { dispararWebhook } = require('../utils/webhook');
 
@@ -15,7 +16,7 @@ router.get('/premanifiesto', auth, async (req, res) => {
   const fechaConsulta = fecha || (() => {
     const m = new Date();
     m.setDate(m.getDate() + 1);
-    return m.toISOString().split('T')[0];
+    return m.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
   })();
 
   const salaId = sala_id || userSalaId;
@@ -92,7 +93,7 @@ router.get('/hoy', auth, async (req, res) => {
   const { sala_id: userSalaId, rol, id: userId } = req.user;
   const salaId = sala_id || userSalaId;
 
-  const hoy = new Date().toISOString().split('T')[0];
+  const hoy = hoyEC();
 
   try {
     const result = await pool.query(`
@@ -154,7 +155,7 @@ router.patch('/:lead_id/calificar', auth, async (req, res) => {
     }
     const lead = leadRes.rows[0];
 
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = hoyEC();
 
     // Verificar si ya existe visita hoy
     const visitaExistente = await pool.query(

@@ -126,7 +126,7 @@ function requireAdminOrDirector(req, res, next) {
 // Admin/director: ve todo. Otros roles: solo su propio registro
 router.get('/', async (req, res) => {
   const { mes, sala_id, estado, tipo_liquidacion } = req.query;
-  const mesFiltro = mes || new Date().toISOString().slice(0, 7);
+  const mesFiltro = mes || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7);
   const { rol, id: userId } = req.user;
 
   try {
@@ -441,7 +441,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           const diffToMon = dow === 0 ? -6 : 1 - dow;
           const lunes = new Date(fecha);
           lunes.setDate(fecha.getDate() + diffToMon);
-          const semKey = lunes.toISOString().slice(0, 10);
+          const semKey = lunes.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
           if (!semanas[semKey]) {
             semanas[semKey] = { inicio: semKey, tours: 0 };
           }
@@ -463,7 +463,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           const diffToMon = dow === 0 ? -6 : 1 - dow;
           const lunes = new Date(ft);
           lunes.setDate(ft.getDate() + diffToMon);
-          const semKey = lunes.toISOString().slice(0, 10);
+          const semKey = lunes.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
           if (semanas[semKey]) {
             semanas[semKey].tours++;
           } else {

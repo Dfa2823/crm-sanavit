@@ -8,7 +8,7 @@ import {
 } from '../../api/sac'
 import { apiPersonas } from '../../api/personas'
 import client from '../../api/client'
-import { toEcuadorISO } from '../../utils/formatFechaEC'
+import { toEcuadorISO, hoyEC } from '../../utils/formatFechaEC'
 
 // ─── Configuraciones de badges ────────────────────────────
 const TIPO_CONFIG = {
@@ -990,7 +990,7 @@ function TabFidelizacion() {
                 type="date"
                 value={fechaCita}
                 onChange={e => setFechaCita(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
+                min={hoyEC()}
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>

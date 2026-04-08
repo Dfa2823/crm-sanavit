@@ -478,7 +478,7 @@ router.get('/analytics', auth, async (req, res) => {
     // ── Actividad por hora ──
     const actividadRes = await pool.query(`
       SELECT
-        EXTRACT(HOUR FROM l.created_at) AS hora,
+        EXTRACT(HOUR FROM l.created_at AT TIME ZONE 'America/Guayaquil') AS hora,
         COUNT(*) AS leads,
         COUNT(*) FILTER (WHERE l.estado IN ('confirmada','tentativa')) AS citas
       FROM leads l

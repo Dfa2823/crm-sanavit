@@ -33,7 +33,7 @@ router.get('/', async (req, res) => {
   const { mes, sala_id, consultor_id } = req.query;
   const { rol, id: userId, sala_id: userSalaId } = req.user;
 
-  const mesFiltro = mes || new Date().toISOString().slice(0, 7);
+  const mesFiltro = mes || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7);
 
   try {
     const params = [];
@@ -131,7 +131,7 @@ router.get('/detalle/:consultor_id', async (req, res) => {
     return res.status(403).json({ error: 'Sin permiso para ver datos de otro consultor' });
   }
 
-  const mesFiltro = mes || new Date().toISOString().slice(0, 7);
+  const mesFiltro = mes || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7);
 
   try {
     const result = await pool.query(`

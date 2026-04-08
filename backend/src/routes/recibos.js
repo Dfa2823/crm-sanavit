@@ -124,7 +124,7 @@ router.post('/', auth, async (req, res) => {
       INSERT INTO recibos (consecutivo, contrato_id, cuota_id, persona_id, sala_id, forma_pago_id, valor, fecha_pago, usuario_id, referencia_pago, observacion, comprobante, tipo_tarjeta, entidad_tarjeta)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       RETURNING *
-    `, [consecutivo, contrato_id, cuota_id, persona_id, salaId, forma_pago_id, valor, fecha_pago || new Date().toISOString().split('T')[0], userId, referencia_pago, observacion, comprobante || null, tipo_tarjeta || null, entidad_tarjeta || null]);
+    `, [consecutivo, contrato_id, cuota_id, persona_id, salaId, forma_pago_id, valor, fecha_pago || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }), userId, referencia_pago, observacion, comprobante || null, tipo_tarjeta || null, entidad_tarjeta || null]);
 
     // Si hay cuota_id, actualizar el estado de la cuota
     if (cuota_id) {
@@ -135,7 +135,7 @@ router.post('/', auth, async (req, res) => {
         const nuevoEstado = nuevoMontoPagado >= parseFloat(q.monto_esperado) ? 'pagado' : 'parcial';
         await client.query(
           `UPDATE cuotas SET monto_pagado = $1, estado = $2, fecha_pago = $3 WHERE id = $4`,
-          [nuevoMontoPagado, nuevoEstado, fecha_pago || new Date().toISOString().split('T')[0], cuota_id]
+          [nuevoMontoPagado, nuevoEstado, fecha_pago || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }), cuota_id]
         );
       }
     }

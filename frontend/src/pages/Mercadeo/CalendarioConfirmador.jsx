@@ -12,7 +12,7 @@ import client from '../../api/client'
 import { apiPersonas } from '../../api/personas'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../context/AuthContext'
-import { formatFechaSemana, formatFechaCorta, toEcuadorISO } from '../../utils/formatFechaEC'
+import { formatFechaSemana, formatFechaCorta, toEcuadorISO, hoyEC, fechaLocalEC } from '../../utils/formatFechaEC'
 
 // ─── react-big-calendar config ───────────────────────────────────────────────
 
@@ -121,7 +121,7 @@ function DrawerCita({ lead, onClose, onActualizar }) {
     // Init reagendar fields
     if (lead.fecha_cita) {
       const d = new Date(lead.fecha_cita)
-      setNuevaFecha(d.toISOString().split('T')[0])
+      setNuevaFecha(fechaLocalEC(d))
       setNuevaHora(d.toTimeString().slice(0, 5))
     }
     setEditFecha(false)
@@ -423,7 +423,7 @@ function DrawerCita({ lead, onClose, onActualizar }) {
                     <div>
                       <label className="text-xs text-gray-500">Fecha</label>
                       <input type="date" value={nuevaFecha} onChange={e => setNuevaFecha(e.target.value)}
-                        min={new Date().toISOString().split('T')[0]}
+                        min={hoyEC()}
                         className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
                     </div>
                     <div>
@@ -778,7 +778,7 @@ function PendientesVista() {
                           </button>
                           <button
                             onClick={() => {
-                              const f = lead.fecha_cita ? new Date(lead.fecha_cita).toISOString().split('T')[0] : ''
+                              const f = lead.fecha_cita ? fechaLocalEC(lead.fecha_cita) : ''
                               const h = lead.fecha_cita ? new Date(lead.fecha_cita).toTimeString().slice(0,5) : ''
                               setFormReagendar({ fecha_cita: f, hora_cita: h })
                               initFormDatos(lead)
@@ -841,7 +841,7 @@ function PendientesVista() {
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Fecha de la cita *</label>
                 <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                  min={new Date().toISOString().split('T')[0]}
+                  min={hoyEC()}
                   value={formConfirmar.fecha_cita}
                   onChange={e => setFormConfirmar(f => ({ ...f, fecha_cita: e.target.value }))} />
               </div>
@@ -908,7 +908,7 @@ function PendientesVista() {
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Nueva fecha *</label>
                 <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  min={new Date().toISOString().split('T')[0]}
+                  min={hoyEC()}
                   value={formReagendar.fecha_cita}
                   onChange={e => setFormReagendar(f => ({ ...f, fecha_cita: e.target.value }))} />
               </div>
@@ -950,7 +950,7 @@ function IndicadorCitasAsignadas() {
 
   useEffect(() => {
     if (usuario?.rol !== 'confirmador') return
-    const hoy = new Date().toISOString().split('T')[0]
+    const hoy = hoyEC()
     apiLeads.citasCalendario({ inicio: hoy, fin: hoy })
       .then(data => {
         const total = data.length

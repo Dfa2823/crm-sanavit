@@ -53,7 +53,7 @@ function requireAdminOrDirector(req, res, next) {
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/', auth, requireAdminOrDirector, async (req, res) => {
   const { mes, sala_id } = req.query;
-  const mesFiltro = mes || new Date().toISOString().slice(0, 7);
+  const mesFiltro = mes || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7);
   const salaParam = sala_id ? parseInt(sala_id, 10) : null;
 
   try {

@@ -19,7 +19,7 @@ export default function OutsourcingPage() {
   const [editando, setEditando] = useState(null)
   const [form, setForm] = useState({ nombre: '', ciudad: '', contacto_nombre: '', contacto_telefono: '', contacto_email: '', notas: '' })
   const [guardando, setGuardando] = useState(false)
-  const [periodo, setPeriodo] = useState(new Date().toISOString().slice(0, 7))
+  const [periodo, setPeriodo] = useState(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7))
 
   // Estado para carga de leads
   const [leadForm, setLeadForm] = useState({ nombre: '', telefono: '', fecha_cita: '', sala_id: '', patologia: '', observacion: '', outsourcing_empresa_id: '' })
@@ -37,7 +37,7 @@ export default function OutsourcingPage() {
   const [resumen, setResumen] = useState(null)
   const [misLeads, setMisLeads] = useState([])
   const [loadingPanel, setLoadingPanel] = useState(false)
-  const [periodoPanel, setPeriodoPanel] = useState(new Date().toISOString().slice(0, 7))
+  const [periodoPanel, setPeriodoPanel] = useState(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7))
 
   useEffect(() => { if (!esOutsourcing) cargarDatos(); else cargarMiPanel() }, [])
   useEffect(() => { if (tab === 'stats') cargarStats() }, [tab, periodo])

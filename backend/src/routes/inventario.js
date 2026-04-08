@@ -238,7 +238,7 @@ router.post('/movimiento', auth, async (req, res) => {
         usuario_id,
         motivo   || null,
         referencia || null,
-        fecha    || new Date().toISOString().split('T')[0],
+        fecha    || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }),
       ]
     );
 

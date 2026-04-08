@@ -47,7 +47,7 @@ export default function ConsultorPage() {
   const [error, setError]              = useState('')
 
   // Filtros
-  const [mes, setMes]                  = useState(new Date().toISOString().slice(0, 7))
+  const [mes, setMes]                  = useState(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7))
   const [estadoFiltro, setEstadoFiltro] = useState('')
   const [tab, setTab]                  = useState('clientes') // clientes | comisiones
 

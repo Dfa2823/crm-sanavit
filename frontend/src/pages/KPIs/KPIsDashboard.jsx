@@ -241,7 +241,7 @@ function EmptyState({ message = 'No hay datos disponibles', subtitle = '' }) {
 
 export default function KPIsDashboard() {
   const { usuario } = useAuth()
-  const mesActual = new Date().toISOString().slice(0, 7)
+  const mesActual = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7)
 
   const [salas, setSalas]               = useState([])
   const [salaId, setSalaId]             = useState(usuario?.sala_id ? String(usuario.sala_id) : '')

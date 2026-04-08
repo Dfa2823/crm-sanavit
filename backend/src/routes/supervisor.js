@@ -59,7 +59,7 @@ router.get('/tmk', auth, soloSupervisor, async (req, res) => {
     fechaDia = fecha;
   } else {
     const now = new Date();
-    fechaDia = now.toISOString().split('T')[0];
+    fechaDia = now.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
   }
 
   try {
@@ -139,7 +139,7 @@ router.get('/resumen', auth, soloSupervisor, async (req, res) => {
     fechaDia = fecha;
   } else {
     const now = new Date();
-    fechaDia = now.toISOString().split('T')[0];
+    fechaDia = now.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
   }
 
   try {

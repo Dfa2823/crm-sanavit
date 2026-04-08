@@ -3,12 +3,14 @@ const pool = require('../db');
 
 const router = express.Router();
 
-// ── Helper: parsear rango de fechas ──────────────────────────
+// ── Helper: parsear rango de fechas (hora Ecuador) ───────────
 function parseFechas(fecha_inicio, fecha_fin) {
   const hoy = new Date();
-  const primerDiaMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`;
+  const y = hoy.getFullYear();
+  const m = String(hoy.getMonth() + 1).padStart(2, '0');
+  const primerDiaMes = `${y}-${m}-01`;
   const inicio = fecha_inicio || primerDiaMes;
-  const fin    = fecha_fin    || hoy.toISOString().split('T')[0];
+  const fin    = fecha_fin    || hoy.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
   return { inicio, fin };
 }
 

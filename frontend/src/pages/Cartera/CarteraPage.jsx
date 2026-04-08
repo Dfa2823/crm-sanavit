@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { getCartera, getCarteraResumen, getTipificaciones, registrarGestion, getHistorialContrato, getInfoRefinanciacion, refinanciarContrato } from '../../api/cartera'
 import { getSalas, getFormasPago } from '../../api/admin'
-import { toEcuadorISO } from '../../utils/formatFechaEC'
+import { toEcuadorISO, hoyEC } from '../../utils/formatFechaEC'
 import { createRecibo } from '../../api/recibos'
 
 import { fmt } from '../../utils/formatCurrency'
@@ -80,7 +80,7 @@ function exportarCarteraCSV(cuotas) {
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
-  a.href = url; a.download = `cartera-${new Date().toISOString().split('T')[0]}.csv`
+  a.href = url; a.download = `cartera-${hoyEC()}.csv`
   a.click(); URL.revokeObjectURL(url)
 }
 
@@ -355,7 +355,7 @@ function PanelHistorial({ contrato, onClose }) {
 
 // ─────────────────── Panel de Cobro ──────────────────────────────────────────
 function PanelCobro({ cuota, formasPago, onClose, onSaved }) {
-  const hoy = new Date().toISOString().split('T')[0]
+  const hoy = hoyEC()
   const [formaPagoId, setFormaPagoId] = useState('')
   const [monto, setMonto]             = useState(String(cuota.saldo_cuota || ''))
   const [fecha, setFecha]             = useState(hoy)

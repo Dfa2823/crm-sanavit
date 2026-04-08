@@ -11,7 +11,7 @@ function fmt(v) {
 }
 
 function mesActual() {
-  return new Date().toISOString().slice(0, 7)
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7)
 }
 
 // ─── Componentes auxiliares ──────────────────────────────────────────────────

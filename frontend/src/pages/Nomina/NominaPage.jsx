@@ -1030,7 +1030,7 @@ function AsistenciaTab({ salas }) {
   const puedeRegistrar = ['admin', 'director', 'hostess', 'supervisor_cc'].includes(usuario?.rol)
   const esAdmin = ['admin', 'director'].includes(usuario?.rol)
 
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' })
   const mesActual = hoy.slice(0, 7)
 
   const [vista, setVista]         = useState('diaria') // 'diaria' | 'resumen'

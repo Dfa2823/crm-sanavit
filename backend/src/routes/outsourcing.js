@@ -75,7 +75,7 @@ router.get('/stats', async (req, res) => {
   const hoy = new Date();
   const primerMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`;
   const inicio = fecha_inicio || primerMes;
-  const fin = fecha_fin || hoy.toISOString().split('T')[0];
+  const fin = fecha_fin || hoy.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
   const salaFiltro = sala_id || (['admin', 'director'].includes(rol) ? null : userSalaId);
   try {
     const result = await pool.query(`
@@ -337,12 +337,13 @@ router.post('/carga-masiva', upload.single('archivo'), async (req, res) => {
           // Intentar parsear varios formatos
           const parsed = new Date(fechaRaw);
           if (!isNaN(parsed.getTime())) {
-            fechaCita = parsed.toISOString();
+            // Guardar como fecha local Ecuador, no UTC
+            fechaCita = parsed.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }) + 'T09:00:00';
           } else {
             // Intentar DD/MM/YYYY o DD-MM-YYYY
             const match = fechaRaw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
             if (match) {
-              fechaCita = new Date(`${match[3]}-${match[2].padStart(2,'0')}-${match[1].padStart(2,'0')}T09:00:00`).toISOString();
+              fechaCita = `${match[3]}-${match[2].padStart(2,'0')}-${match[1].padStart(2,'0')}T09:00:00`;
             }
           }
         }
@@ -404,7 +405,7 @@ router.get('/salas', async (req, res) => {
 router.get('/mis-leads', async (req, res) => {
   const { id: userId } = req.user;
   const { mes } = req.query;
-  const mesFiltro = mes || new Date().toISOString().slice(0, 7);
+  const mesFiltro = mes || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7);
 
   try {
     const result = await pool.query(`
@@ -462,7 +463,7 @@ router.get('/mis-leads', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 router.get('/mi-resumen', async (req, res) => {
   const { id: userId } = req.user;
-  const mesFiltro = req.query.mes || new Date().toISOString().slice(0, 7);
+  const mesFiltro = req.query.mes || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7);
 
   try {
     // Leads y citas del mes

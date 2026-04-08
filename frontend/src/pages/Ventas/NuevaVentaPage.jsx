@@ -223,7 +223,7 @@ export default function NuevaVentaPage() {
   const fechaDefaultPrimerPago = (() => {
     const d = new Date()
     d.setMonth(d.getMonth() + 1)
-    return d.toISOString().split('T')[0]
+    return d.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' })
   })()
 
   // ── Submit ────────────────────────────────────────────────

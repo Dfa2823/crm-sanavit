@@ -491,8 +491,8 @@ router.patch('/:id/anular', auth, async (req, res) => {
 
     // Hostess/confirmador/consultor solo pueden anular si fue creado hoy
     if (['hostess', 'confirmador', 'consultor'].includes(rol)) {
-      const hoy = new Date().toISOString().split('T')[0];
-      const fechaContrato = new Date(c.fecha_contrato).toISOString().split('T')[0];
+      const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
+      const fechaContrato = new Date(c.fecha_contrato).toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
       if (fechaContrato !== hoy) {
         return res.status(403).json({ error: 'Solo puedes anular contratos creados hoy (caída en mesa)' });
       }

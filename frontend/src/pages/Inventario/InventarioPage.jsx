@@ -11,7 +11,7 @@ function fmt(val) {
 }
 
 function fechaHoy() {
-  return new Date().toISOString().split('T')[0]
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' })
 }
 
 function formatFecha(f) {

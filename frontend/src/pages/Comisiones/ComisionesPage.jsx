@@ -26,7 +26,7 @@ export default function ComisionesPage() {
   const [salas, setSalas]           = useState([])
   const [loading, setLoading]       = useState(true)
   const [error, setError]           = useState('')
-  const [mes, setMes]               = useState(new Date().toISOString().slice(0, 7))
+  const [mes, setMes]               = useState(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7))
   const [salaFiltro, setSalaFiltro] = useState(usuario?.sala_id || '')
 
   // Drawer de detalle

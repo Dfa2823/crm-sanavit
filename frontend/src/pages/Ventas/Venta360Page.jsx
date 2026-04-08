@@ -157,7 +157,7 @@ export default function Venta360Page() {
     cuota_id: '',
     valor: '',
     forma_pago_id: '',
-    fecha_pago: new Date().toISOString().split('T')[0],
+    fecha_pago: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }),
     referencia_pago: '',
     observacion: '',
     tipo_tarjeta: '',
@@ -231,7 +231,7 @@ export default function Venta360Page() {
       })
       addToast(`Pago de $${Number(pago.valor).toLocaleString('es-EC', { minimumFractionDigits: 2 })} registrado`)
       setMostrarPago(false)
-      setPago({ cuota_id: '', valor: '', forma_pago_id: '', fecha_pago: new Date().toISOString().split('T')[0], referencia_pago: '', observacion: '', tipo_tarjeta: '', entidad_tarjeta: '' })
+      setPago({ cuota_id: '', valor: '', forma_pago_id: '', fecha_pago: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }), referencia_pago: '', observacion: '', tipo_tarjeta: '', entidad_tarjeta: '' })
       setComprobante(null); setComprobanteNombre('')
       if (comprobanteRef.current) comprobanteRef.current.value = ''
       cargar()
@@ -387,7 +387,7 @@ export default function Venta360Page() {
           {/* Botón Caída en Mesa — para hostess/confirmador/consultor solo contratos de hoy */}
           {['hostess','confirmador','consultor','admin','director'].includes(usuario?.rol) &&
            contrato.estado === 'activo' &&
-           new Date(contrato.fecha_contrato).toISOString().split('T')[0] === new Date().toISOString().split('T')[0] && (
+           new Date(contrato.fecha_contrato).toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }) === new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }) && (
             <button
               disabled={cambiandoEstado}
               onClick={handleAnularContrato}

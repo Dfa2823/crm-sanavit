@@ -59,6 +59,29 @@ export function toEcuadorISO(localDateStr) {
   return base + '-05:00'
 }
 
+/**
+ * Retorna la fecha de "hoy" en Ecuador como YYYY-MM-DD.
+ * Usa America/Guayaquil explícitamente para evitar desfase UTC.
+ */
+export function hoyEC() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' })
+}
+
+/**
+ * Retorna el mes actual en Ecuador como YYYY-MM.
+ */
+export function mesActualEC() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7)
+}
+
+/**
+ * Convierte una fecha (posiblemente UTC) a YYYY-MM-DD en zona Ecuador.
+ */
+export function fechaLocalEC(fecha) {
+  if (!fecha) return ''
+  return new Date(fecha).toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' })
+}
+
 export function formatFechaSemana(fecha) {
   if (!fecha) return '—'
   return new Date(fecha).toLocaleString('es-EC', {

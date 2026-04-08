@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { apiLeads } from '../../api/leads'
 import { apiPersonas } from '../../api/personas'
-import { toEcuadorISO } from '../../utils/formatFechaEC'
+import { toEcuadorISO, hoyEC } from '../../utils/formatFechaEC'
 
 export default function CapturarLead({ onClose, onGuardado }) {
   const [config, setConfig] = useState({ tipificaciones: [], fuentes: [] })
@@ -256,7 +256,7 @@ export default function CapturarLead({ onClose, onGuardado }) {
                       <input
                         type="date" className="input" required
                         value={lead.fecha_cita}
-                        min={new Date().toISOString().split('T')[0]}
+                        min={hoyEC()}
                         onChange={e => setLead(l => ({ ...l, fecha_cita: e.target.value }))}
                       />
                     </div>
@@ -284,7 +284,7 @@ export default function CapturarLead({ onClose, onGuardado }) {
                       <input
                         type="date" className="input" required
                         value={lead.fecha_rellamar}
-                        min={new Date().toISOString().split('T')[0]}
+                        min={hoyEC()}
                         onChange={e => setLead(l => ({ ...l, fecha_rellamar: e.target.value }))}
                       />
                     </div>

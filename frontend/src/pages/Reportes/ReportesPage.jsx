@@ -9,7 +9,7 @@ import {
 // ─────────────────────────────── Helpers ────────────────────────────────────
 
 function fechaHoy() {
-  return new Date().toISOString().slice(0, 10)
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' })
 }
 
 function primerDiaMes() {
@@ -233,7 +233,7 @@ function exportarCSV(tabActivo, data) {
   const url  = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href  = url
-  link.download = `reporte_${tabActivo}_${new Date().toISOString().split('T')[0]}.csv`
+  link.download = `reporte_${tabActivo}_${fechaHoy()}.csv`
   link.click()
   URL.revokeObjectURL(url)
 }

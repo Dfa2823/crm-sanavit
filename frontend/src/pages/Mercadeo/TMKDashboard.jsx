@@ -437,7 +437,7 @@ export default function TMKDashboard() {
   const [leadDetalle, setLeadDetalle] = useState(null) // lead.id para drawer detalle
   const [lastUpdated, setLastUpdated] = useState(null)
 
-  const hoy = new Date().toISOString().split('T')[0]
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' })
 
   const cargarLeads = useCallback(async () => {
     setLoading(true)

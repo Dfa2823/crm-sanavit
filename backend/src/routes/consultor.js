@@ -71,7 +71,7 @@ router.get('/mis-clientes', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 router.get('/resumen', async (req, res) => {
   const { id: userId } = req.user;
-  const mesFiltro = req.query.mes || new Date().toISOString().slice(0, 7);
+  const mesFiltro = req.query.mes || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7);
 
   try {
     // Ventas del mes y montos
@@ -174,7 +174,7 @@ router.get('/resumen', async (req, res) => {
 router.get('/comisiones', async (req, res) => {
   const { id: userId } = req.user;
   const { mes, estado_comision } = req.query;
-  const mesFiltro = mes || new Date().toISOString().slice(0, 7);
+  const mesFiltro = mes || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7);
 
   try {
     const result = await pool.query(`

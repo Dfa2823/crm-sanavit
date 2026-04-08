@@ -184,7 +184,7 @@ export default function Premanifiesto() {
     fecha: (() => {
       const m = new Date()
       m.setDate(m.getDate() + 1)
-      return m.toISOString().split('T')[0]
+      return m.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' })
     })(),
   })
   const [tabActivo, setTabActivo] = useState('confirmadas')

@@ -1,4 +1,10 @@
 require('dotenv').config();
+
+// ── Timezone Ecuador (UTC-5) ─────────────────────────────────
+// DEBE ir antes de cualquier new Date() para que Node.js
+// use America/Guayaquil en todas las operaciones de fecha.
+process.env.TZ = 'America/Guayaquil';
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
