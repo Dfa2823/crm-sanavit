@@ -430,7 +430,7 @@ router.post('/usuarios/:id/reasignar', requireAdmin, async (req, res) => {
     // Obtener TMKs activos de la misma sala (o todas las salas)
     const tmkSala = (await pool.query('SELECT sala_id FROM usuarios WHERE id = $1', [tmkId])).rows[0]?.sala_id;
     const tmksRes = await pool.query(
-      `SELECT id FROM usuarios u JOIN roles r ON u.rol_id = r.id
+      `SELECT u.id FROM usuarios u JOIN roles r ON u.rol_id = r.id
        WHERE r.nombre = 'tmk' AND u.activo = true AND u.id != $1
          AND ($2::integer IS NULL OR u.sala_id = $2)`,
       [tmkId, tmkSala]
@@ -485,7 +485,7 @@ router.post('/usuarios/:id/reasignar-e-inactivar', requireAdmin, async (req, res
 
     // Obtener TMKs activos de la misma sala
     const tmksRes = await client.query(
-      `SELECT id, nombre FROM usuarios u JOIN roles r ON u.rol_id = r.id
+      `SELECT u.id, u.nombre FROM usuarios u JOIN roles r ON u.rol_id = r.id
        WHERE r.nombre = 'tmk' AND u.activo = true AND u.id != $1
          AND ($2::integer IS NULL OR u.sala_id = $2)`,
       [tmkId, tmkSala]
@@ -498,7 +498,7 @@ router.post('/usuarios/:id/reasignar-e-inactivar', requireAdmin, async (req, res
       if (tmkIds.length === 0) {
         // No hay TMKs disponibles — intentar en TODAS las salas
         const tmksGlobalRes = await client.query(
-          `SELECT id, nombre FROM usuarios u JOIN roles r ON u.rol_id = r.id
+          `SELECT u.id, u.nombre FROM usuarios u JOIN roles r ON u.rol_id = r.id
            WHERE r.nombre = 'tmk' AND u.activo = true AND u.id != $1`,
           [tmkId]
         );
