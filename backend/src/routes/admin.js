@@ -239,11 +239,11 @@ router.post('/usuarios', requireAdmin, async (req, res) => {
   try {
     // Verificar que el username no exista
     const existing = await pool.query(
-      'SELECT id FROM usuarios WHERE username = $1',
+      'SELECT id, nombre, activo FROM usuarios WHERE LOWER(username) = LOWER($1)',
       [username]
     );
     if (existing.rows.length > 0) {
-      return res.status(409).json({ error: 'El username ya existe' });
+      const eu = existing.rows[0]; return res.status(409).json({ error: eu.activo ? 'El username ya existe (' + eu.nombre + ')' : 'El username ya existe como inactivo (' + eu.nombre + '). Reactive el usuario o use otro username.' });
     }
 
     const password_hash = await bcrypt.hash(password, 10);
@@ -288,7 +288,7 @@ router.post('/usuarios', requireAdmin, async (req, res) => {
     res.status(201).json(newUser.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Error al crear usuario' });
+    res.status(500).json({ error: 'Error al crear usuario: ' + (err.detail || err.message || 'Error desconocido') });
   }
 });
 
