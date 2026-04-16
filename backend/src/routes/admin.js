@@ -257,7 +257,7 @@ router.post('/usuarios', requireAdmin, async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8, $9, $10, $11)
       RETURNING id
     `, [
-      nombre, username, password_hash, rol_id, sala_id || null,
+      nombre, username, password_hash, parseInt(rol_id), (sala_id && !isNaN(sala_id)) ? parseInt(sala_id) : null,
       sueldo_base || 0,
       pct_comision_venta !== undefined ? pct_comision_venta : 10,
       pct_comision_cobro || 0,
