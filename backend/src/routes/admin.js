@@ -258,12 +258,12 @@ router.post('/usuarios', requireAdmin, async (req, res) => {
       RETURNING id
     `, [
       nombre, username, password_hash, parseInt(rol_id), (sala_id && !isNaN(sala_id)) ? parseInt(sala_id) : null,
-      sueldo_base || 0,
-      pct_comision_venta !== undefined ? pct_comision_venta : 10,
-      pct_comision_cobro || 0,
-      bono_por_tour || 0,
-      bono_por_cita || 0,
-      pct_desbloqueo !== undefined ? pct_desbloqueo : 30,
+      parseFloat(sueldo_base) || 0,
+      (pct_comision_venta !== undefined && pct_comision_venta !== '') ? parseFloat(pct_comision_venta) : 10,
+      parseFloat(pct_comision_cobro) || 0,
+      parseFloat(bono_por_tour) || 0,
+      parseFloat(bono_por_cita) || 0,
+      (pct_desbloqueo !== undefined && pct_desbloqueo !== '') ? parseFloat(pct_desbloqueo) : 30,
     ]);
 
     const newUser = await pool.query(`
