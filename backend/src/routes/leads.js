@@ -372,46 +372,43 @@ router.post('/', auth, async (req, res) => {
     outsourcing_id,
   } = req.body;
 
-  if (!persona_id || !tipificacion_id || !fuente_id) {
-    return res.status(400).json({ error: 'persona_id, tipificacion_id y fuente_id son requeridos' });
+  if (!persona_id || !fuente_id) {
+    return res.status(400).json({ error: 'persona_id y fuente_id son requeridos' });
   }
 
   const { id: userId, rol, sala_id } = req.user;
 
   try {
-    // Determinar estado inicial
-    const tipRes = await pool.query('SELECT * FROM tipificaciones WHERE id = $1', [tipificacion_id]);
-    if (tipRes.rows.length === 0) {
-      return res.status(400).json({ error: 'Tipificación no válida' });
-    }
-    const tip = tipRes.rows[0];
-
+    // FLUJO: Lead manual SIEMPRE inicia como 'pendiente' (igual que un lead importado)
+    // El TMK lo trabajará luego, le pondrá tipificación, y según eso pasará a tentativa/cancelada/etc.
     let estado = 'pendiente';
-    if (tip.requiere_fecha_cita) {
-      // FLUJO: TMK crea cita → SIEMPRE tentativa → pasa al confirmador → confirmada
-      // Solo admin/director/confirmador/supervisor pueden crear directamente como 'confirmada'
+    let tip = null;
+
+    // Si se envió tipificación (raro, solo desde flujos especiales), validar
+    if (tipificacion_id) {
+      const tipRes = await pool.query('SELECT * FROM tipificaciones WHERE id = $1', [tipificacion_id]);
+      if (tipRes.rows.length === 0) {
+        return res.status(400).json({ error: 'Tipificación no válida' });
+      }
+      tip = tipRes.rows[0];
+
+      // Solo si es admin/director/confirmador y tipifica como Cita, se respeta el estado enviado
       const rolesPuedenConfirmar = ['admin', 'director', 'confirmador', 'supervisor_cc'];
-      if (req.body.estado === 'tentativa' || req.body.estado === 'confirmada') {
-        // Si TMK envía 'confirmada', forzar a 'tentativa' (no puede saltarse al confirmador)
-        if (req.body.estado === 'confirmada' && !rolesPuedenConfirmar.includes(rol)) {
-          estado = 'tentativa';
-        } else {
+      if (tip.requiere_fecha_cita && rolesPuedenConfirmar.includes(rol)) {
+        if (req.body.estado === 'tentativa' || req.body.estado === 'confirmada') {
           estado = req.body.estado;
-        }
-      } else {
-        // Fallback: TMK siempre crea tentativa. Otros roles según tipificación.
-        if (rol === 'tmk' || rol === 'outsourcing') {
-          estado = 'tentativa';
         } else {
           estado = tip.nombre === 'Super tentativa' ? 'tentativa' : 'confirmada';
         }
       }
+      // TMK/outsourcing: el lead queda en 'pendiente' aunque se mande tipificación,
+      // para que pase por el flujo normal de trabajo
     }
 
-    // Auto-asignar confirmador_id si el TMK tiene asignación
+    // Auto-asignar confirmador_id si el TMK tiene asignación (solo si hay tipificación de cita)
     const tmkIdFinal = rol === 'tmk' ? userId : (req.body.tmk_id || userId);
     let confirmadorId = null;
-    if (tip.requiere_fecha_cita) {
+    if (tip && tip.requiere_fecha_cita) {
       const asigRes = await pool.query(
         'SELECT confirmador_id FROM asignacion_tmk_confirmador WHERE tmk_id = $1 AND activo = true',
         [tmkIdFinal]
@@ -433,10 +430,11 @@ router.post('/', auth, async (req, res) => {
       sala_id,
       tmkIdFinal,
       fuente_id,
-      tipificacion_id,
+      tipificacion_id || null,
       patologia,
-      fecha_cita || null,
-      fecha_rellamar || null,
+      // Si lead inicia 'pendiente' (manual), no guardar fecha_cita ni fecha_rellamar
+      estado === 'pendiente' ? null : (fecha_cita || null),
+      estado === 'pendiente' ? null : (fecha_rellamar || null),
       estado,
       observacion,
       outsourcing_id || null,

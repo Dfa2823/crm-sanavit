@@ -86,7 +86,7 @@ export default function CapturarLead({ onClose, onGuardado }) {
       await apiLeads.crear({
         persona_id,
         fuente_id: Number(lead.fuente_id),
-        tipificacion_id: Number(lead.tipificacion_id),
+        tipificacion_id: lead.tipificacion_id ? Number(lead.tipificacion_id) : null,
         patologia: personaEncontrada ? lead.patologia : nuevaPersona.patologia,
         fecha_cita,
         fecha_rellamar,
@@ -233,17 +233,18 @@ export default function CapturarLead({ onClose, onGuardado }) {
               </div>
 
               <div>
-                <label className="label">Tipificación *</label>
+                <label className="label">Tipificación <span className="text-gray-400 text-xs">(opcional)</span></label>
                 <select
-                  className="input" required
+                  className="input"
                   value={lead.tipificacion_id}
                   onChange={e => setLead(l => ({ ...l, tipificacion_id: e.target.value }))}
                 >
-                  <option value="">Seleccionar tipificación...</option>
+                  <option value="">Sin tipificar (lead nuevo)</option>
                   {config.tipificaciones.map(t => (
                     <option key={t.id} value={t.id}>{t.nombre}</option>
                   ))}
                 </select>
+                <p className="text-xs text-gray-500 mt-1">Si no tipificas, el lead queda como nuevo y podrás trabajarlo después.</p>
               </div>
 
               {/* Campos condicionales: CITA */}
