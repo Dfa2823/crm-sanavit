@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { getSalas, getUsuarios, getFormasPago, getFuentes, getTipificaciones } from '../../api/admin'
-import { previewImport, ejecutarImport, descargarDuplicados } from '../../api/importar'
+import { previewImport, ejecutarImport, descargarDuplicados, getHistorialImportaciones, eliminarImportacion } from '../../api/importar'
 import { useEffect } from 'react'
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// --- Helpers ---
 const CAMPOS_CRM = [
   { key: 'nombre_completo', label: 'Nombre Completo',     req: true,  desc: 'Apellidos y Nombres juntos' },
   { key: 'telefono',        label: 'Telefono Celular',    req: true,  desc: 'Celular principal (10 digitos)' },
@@ -27,7 +27,13 @@ function letraColumna(idx) {
   return result
 }
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+function formatFecha(iso) {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  return d.toLocaleDateString('es-EC', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+// --- Componente principal ---
 export default function ImportarPage() {
   const { usuario } = useAuth()
   const fileRef = useRef()
@@ -38,7 +44,7 @@ export default function ImportarPage() {
   const [cargando, setCargando] = useState(false)
   const [error, setError]       = useState('')
 
-  // Estado de mapeo: { nombre_completo: 0, telefono: 1, ... }  — null = no mapeado
+  // Estado de mapeo: { nombre_completo: 0, telefono: 1, ... }  -- null = no mapeado
   const [mapeo, setMapeo] = useState(() =>
     Object.fromEntries(CAMPOS_CRM.map(c => [c.key, null]))
   )
@@ -61,14 +67,33 @@ export default function ImportarPage() {
   const [importando, setImportando] = useState(false)
   const [descargandoDup, setDescargandoDup] = useState(false)
 
+  // Historial
+  const [historial, setHistorial] = useState([])
+  const [cargandoHistorial, setCargandoHistorial] = useState(false)
+  const [eliminandoId, setEliminandoId] = useState(null)
+  const [confirmEliminar, setConfirmEliminar] = useState(null) // importacion a confirmar
+
   useEffect(() => {
     getSalas().then(s => setSalas(Array.isArray(s) ? s : [])).catch(console.error)
     getUsuarios().then(u => setUsuarios(Array.isArray(u) ? u : [])).catch(console.error)
     getFuentes().then(d => setFuentes(Array.isArray(d) ? d.filter(f => f.activo) : [])).catch(console.error)
     getTipificaciones().then(d => setTipificaciones(Array.isArray(d) ? d.filter(t => t.activo) : [])).catch(console.error)
+    cargarHistorial()
   }, [])
 
-  // ── Drag & Drop ────────────────────────────────────────────
+  async function cargarHistorial() {
+    setCargandoHistorial(true)
+    try {
+      const data = await getHistorialImportaciones()
+      setHistorial(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error('Error cargando historial:', err)
+    } finally {
+      setCargandoHistorial(false)
+    }
+  }
+
+  // -- Drag & Drop --
   const [dragging, setDragging] = useState(false)
 
   const handleDrop = useCallback((e) => {
@@ -87,7 +112,7 @@ export default function ImportarPage() {
     setError('')
   }
 
-  // ── Paso 1 → 2: Preview ───────────────────────────────────
+  // -- Paso 1 -> 2: Preview --
   async function handlePreview() {
     if (!archivo) { setError('Selecciona un archivo primero'); return }
     setCargando(true)
@@ -104,15 +129,15 @@ export default function ImportarPage() {
         data.preview[0].forEach((header, idx) => {
           const h = String(header).toLowerCase()
           if (h.includes('nombre') || h.includes('name')) auto.nombre_completo = idx
-          else if (h.includes('celular') || h.includes('movil') || h.includes('móvil')) auto.telefono = idx
-          else if (h.includes('telefono') || h.includes('teléfono') || h.includes('fijo')) {
+          else if (h.includes('celular') || h.includes('movil') || h.includes('movil')) auto.telefono = idx
+          else if (h.includes('telefono') || h.includes('telefono') || h.includes('fijo')) {
             if (auto.telefono === null) auto.telefono = idx
             else auto.telefono2 = idx
           }
           else if (h.includes('ciudad') || h.includes('city')) auto.ciudad = idx
-          else if (h.includes('genero') || h.includes('género') || h.includes('sexo')) auto.genero = idx
-          else if (h.includes('direccion') || h.includes('dirección') || h.includes('address')) auto.direccion = idx
-          else if (h.includes('cedula') || h.includes('cédula') || h.includes('doc')) auto.cedula = idx
+          else if (h.includes('genero') || h.includes('genero') || h.includes('sexo')) auto.genero = idx
+          else if (h.includes('direccion') || h.includes('direccion') || h.includes('address')) auto.direccion = idx
+          else if (h.includes('cedula') || h.includes('cedula') || h.includes('doc')) auto.cedula = idx
         })
         setMapeo(auto)
       }
@@ -124,7 +149,7 @@ export default function ImportarPage() {
     }
   }
 
-  // ── Paso 2 → 3: Validar mapeo ─────────────────────────────
+  // -- Paso 2 -> 3: Validar mapeo --
   function handleValidarMapeo() {
     const faltantes = CAMPOS_CRM.filter(c => c.req && mapeo[c.key] === null).map(c => c.label)
     if (faltantes.length > 0) {
@@ -135,7 +160,7 @@ export default function ImportarPage() {
     setPaso(PASO.CONFIG)
   }
 
-  // ── Paso 3 → 4: Ejecutar importacion ──────────────────────
+  // -- Paso 3 -> 4: Ejecutar importacion --
   async function handleImportar() {
     // Solo sala y fuente son requeridos; tipificacion es opcional
     if (!config.sala_id || !config.fuente_id) {
@@ -157,6 +182,8 @@ export default function ImportarPage() {
       const res = await ejecutarImport(fd)
       setResultado(res)
       setPaso(PASO.RESULTADO)
+      // Refrescar historial despues de importar
+      cargarHistorial()
     } catch (err) {
       setError(err.response?.data?.error || 'Error durante la importacion')
     } finally {
@@ -164,7 +191,7 @@ export default function ImportarPage() {
     }
   }
 
-  // ── Descargar duplicados como Excel ─────────────────────────
+  // -- Descargar duplicados como Excel --
   async function handleDescargarDuplicados() {
     if (!resultado) return
     setDescargandoDup(true)
@@ -189,7 +216,22 @@ export default function ImportarPage() {
     }
   }
 
-  // ── Reset ─────────────────────────────────────────────────
+  // -- Eliminar importacion --
+  async function handleEliminarImportacion(imp) {
+    setEliminandoId(imp.id)
+    try {
+      const res = await eliminarImportacion(imp.id)
+      setConfirmEliminar(null)
+      cargarHistorial()
+      setError('')
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al eliminar la importacion')
+    } finally {
+      setEliminandoId(null)
+    }
+  }
+
+  // -- Reset --
   function resetear() {
     setArchivo(null)
     setPreview(null)
@@ -202,7 +244,7 @@ export default function ImportarPage() {
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  // ── Filas de preview a mostrar (sin encabezado si aplica) ─
+  // -- Filas de preview a mostrar (sin encabezado si aplica) --
   const filasPreview = preview
     ? (tieneEncabezado ? preview.preview.slice(1, 8) : preview.preview.slice(0, 7))
     : []
@@ -216,16 +258,18 @@ export default function ImportarPage() {
 
   const totalDuplicados = (resultado?.duplicados_bd || 0) + (resultado?.duplicados_internos || 0)
 
+  const puedeEliminar = ['admin', 'director'].includes(usuario?.rol)
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
 
-      {/* ── Header ── */}
+      {/* -- Header -- */}
       <div>
         <h1 className="text-2xl font-bold text-gray-800">Importar Base de Datos</h1>
         <p className="text-sm text-gray-500 mt-1">Carga masiva de leads desde archivos Excel (.xlsx)</p>
       </div>
 
-      {/* ── Stepper ── */}
+      {/* -- Stepper -- */}
       <div className="flex items-center gap-2">
         {[
           { n: 1, label: 'Subir archivo' },
@@ -238,14 +282,14 @@ export default function ImportarPage() {
               paso > s.n ? 'bg-teal-600 text-white' :
               paso === s.n ? 'bg-teal-500 text-white ring-2 ring-teal-200' :
               'bg-gray-200 text-gray-500'
-            }`}>{paso > s.n ? '\u2713' : s.n}</div>
+            }`}>{paso > s.n ? '✓' : s.n}</div>
             <span className={`text-xs font-medium hidden sm:block ${paso === s.n ? 'text-teal-700' : 'text-gray-400'}`}>{s.label}</span>
             {i < arr.length - 1 && <div className={`w-8 h-0.5 ${paso > s.n ? 'bg-teal-400' : 'bg-gray-200'}`} />}
           </div>
         ))}
       </div>
 
-      {/* ── Error global ── */}
+      {/* -- Error global -- */}
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex justify-between">
           <span>{error}</span>
@@ -253,9 +297,9 @@ export default function ImportarPage() {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════
+      {/* ====================================================
           PASO 1: Subir archivo
-      ══════════════════════════════════════════════════════ */}
+      ==================================================== */}
       {paso === PASO.UPLOAD && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-5">
           <h2 className="font-semibold text-gray-700">1. Selecciona el archivo Excel</h2>
@@ -309,15 +353,15 @@ export default function ImportarPage() {
               disabled={!archivo || cargando}
               className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-6 py-2.5 rounded-lg text-sm font-medium"
             >
-              {cargando ? 'Leyendo archivo...' : 'Continuar \u2192'}
+              {cargando ? 'Leyendo archivo...' : 'Continuar →'}
             </button>
           </div>
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════
+      {/* ====================================================
           PASO 2: Mapear columnas
-      ══════════════════════════════════════════════════════ */}
+      ==================================================== */}
       {paso === PASO.MAPEO && preview && (
         <div className="space-y-5">
 
@@ -354,7 +398,7 @@ export default function ImportarPage() {
                     <tr className="bg-yellow-50">
                       <td className="px-2 py-1 text-gray-300 italic">hdr</td>
                       {encabezadoPreview.map((v, ci) => (
-                        <td key={ci} className="px-2 py-1 text-yellow-700 font-medium italic whitespace-nowrap">{v || '\u2014'}</td>
+                        <td key={ci} className="px-2 py-1 text-yellow-700 font-medium italic whitespace-nowrap">{v || '—'}</td>
                       ))}
                     </tr>
                   )}
@@ -364,7 +408,7 @@ export default function ImportarPage() {
                     <tr key={ri} className={ri % 2 === 0 ? '' : 'bg-gray-50/50'}>
                       <td className="px-2 py-1 text-gray-300">{ri + 1}</td>
                       {fila.map((v, ci) => (
-                        <td key={ci} className="px-2 py-1 text-gray-700 whitespace-nowrap max-w-[160px] truncate" title={String(v)}>{String(v) || '\u2014'}</td>
+                        <td key={ci} className="px-2 py-1 text-gray-700 whitespace-nowrap max-w-[160px] truncate" title={String(v)}>{String(v) || '—'}</td>
                       ))}
                     </tr>
                   ))}
@@ -425,9 +469,9 @@ export default function ImportarPage() {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════
+      {/* ====================================================
           PASO 3: Configurar importacion
-      ══════════════════════════════════════════════════════ */}
+      ==================================================== */}
       {paso === PASO.CONFIG && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-5">
           <h2 className="font-semibold text-gray-700">3. Configurar importacion</h2>
@@ -529,9 +573,9 @@ export default function ImportarPage() {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════
+      {/* ====================================================
           PASO 4: Resultado
-      ══════════════════════════════════════════════════════ */}
+      ==================================================== */}
       {paso === PASO.RESULTADO && resultado && (
         <div className="space-y-5">
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
@@ -565,6 +609,21 @@ export default function ImportarPage() {
 
             {/* Mensajes detallados */}
             <div className="mt-5 space-y-3">
+              {/* Importacion registrada */}
+              {resultado.importacion_id && (
+                <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-start gap-3">
+                  <span className="text-indigo-500 text-lg mt-0.5">&#9432;</span>
+                  <div>
+                    <p className="text-indigo-800 text-sm font-semibold">
+                      Importacion #{resultado.importacion_id} registrada
+                    </p>
+                    <p className="text-indigo-600 text-xs mt-1">
+                      Puede eliminar este lote completo desde el historial de importaciones (abajo) si hubo un error.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Importados */}
               {resultado.importados > 0 && (
                 <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-start gap-3">
@@ -645,6 +704,170 @@ export default function ImportarPage() {
                   )}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====================================================
+          HISTORIAL DE IMPORTACIONES
+      ==================================================== */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-semibold text-gray-700 text-lg">Historial de Importaciones</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Registro de todas las importaciones realizadas</p>
+          </div>
+          <button
+            onClick={cargarHistorial}
+            disabled={cargandoHistorial}
+            className="text-sm text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1"
+          >
+            {cargandoHistorial ? (
+              <span className="w-4 h-4 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            )}
+            Actualizar
+          </button>
+        </div>
+
+        {cargandoHistorial && historial.length === 0 ? (
+          <div className="text-center py-8 text-gray-400 text-sm">Cargando historial...</div>
+        ) : historial.length === 0 ? (
+          <div className="text-center py-8 text-gray-400 text-sm">No hay importaciones registradas aun</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Archivo</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Sala</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Fuente</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">TMK</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-green-600 uppercase">Import.</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-yellow-600 uppercase">Dup.</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-red-500 uppercase">Err.</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Usuario</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historial.map(imp => (
+                  <tr
+                    key={imp.id}
+                    className={`border-b border-gray-50 hover:bg-gray-50/50 ${imp.eliminado ? 'opacity-60' : ''}`}
+                  >
+                    <td className={`px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap ${imp.eliminado ? 'line-through' : ''}`}>
+                      {formatFecha(imp.created_at)}
+                    </td>
+                    <td className={`px-3 py-2.5 text-xs font-medium text-gray-700 max-w-[180px] truncate ${imp.eliminado ? 'line-through' : ''}`} title={imp.nombre_archivo}>
+                      {imp.nombre_archivo || '-'}
+                    </td>
+                    <td className={`px-3 py-2.5 text-xs text-gray-600 ${imp.eliminado ? 'line-through' : ''}`}>
+                      {imp.sala_nombre || '-'}
+                    </td>
+                    <td className={`px-3 py-2.5 text-xs text-gray-600 ${imp.eliminado ? 'line-through' : ''}`}>
+                      {imp.fuente_nombre || '-'}
+                    </td>
+                    <td className={`px-3 py-2.5 text-xs text-gray-600 ${imp.eliminado ? 'line-through' : ''}`}>
+                      {imp.tmk_nombre || 'Round-robin'}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-center">
+                      <span className="font-bold text-green-700">{imp.total_importados || 0}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-center">
+                      <span className="font-bold text-yellow-600">{imp.total_duplicados || 0}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-center">
+                      <span className="font-bold text-red-500">{imp.total_errores || 0}</span>
+                    </td>
+                    <td className={`px-3 py-2.5 text-xs text-gray-600 ${imp.eliminado ? 'line-through' : ''}`}>
+                      {imp.usuario_nombre || '-'}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      {imp.eliminado ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700" title={`Eliminada por ${imp.eliminado_por_nombre || '?'} el ${formatFecha(imp.eliminado_en)}`}>
+                          Eliminada
+                        </span>
+                      ) : puedeEliminar ? (
+                        <button
+                          onClick={() => setConfirmEliminar(imp)}
+                          disabled={eliminandoId === imp.id}
+                          className="text-xs bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 border border-red-200 px-2.5 py-1 rounded-lg font-medium transition-colors disabled:opacity-50"
+                        >
+                          {eliminandoId === imp.id ? (
+                            <span className="flex items-center gap-1">
+                              <span className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                              Eliminando...
+                            </span>
+                          ) : 'Eliminar lote'}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">-</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ====================================================
+          MODAL DE CONFIRMACION DE ELIMINACION
+      ==================================================== */}
+      {confirmEliminar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-800">Eliminar importacion</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Estas a punto de eliminar <strong>{confirmEliminar.total_importados || 0} leads</strong> de la importacion:
+                </p>
+                <div className="mt-2 bg-gray-50 rounded-lg p-3 text-xs space-y-1">
+                  <p><span className="text-gray-500">Archivo:</span> <strong>{confirmEliminar.nombre_archivo}</strong></p>
+                  <p><span className="text-gray-500">Fecha:</span> {formatFecha(confirmEliminar.created_at)}</p>
+                  <p><span className="text-gray-500">Sala:</span> {confirmEliminar.sala_nombre || '-'}</p>
+                </div>
+                <p className="text-xs text-red-600 font-semibold mt-3">
+                  Esta accion no se puede deshacer. Se eliminaran todos los leads y las personas que no tengan otros registros.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end mt-5">
+              <button
+                onClick={() => setConfirmEliminar(null)}
+                disabled={eliminandoId === confirmEliminar.id}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleEliminarImportacion(confirmEliminar)}
+                disabled={eliminandoId === confirmEliminar.id}
+                className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium disabled:opacity-50 flex items-center gap-2"
+              >
+                {eliminandoId === confirmEliminar.id ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Eliminando...
+                  </>
+                ) : (
+                  'Si, eliminar lote'
+                )}
+              </button>
             </div>
           </div>
         </div>

@@ -7,6 +7,59 @@ const auth    = require('../middleware/auth');
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
+// ── Auto-migrate: tabla importaciones_log ─────────────────────
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS importaciones_log (
+        id SERIAL PRIMARY KEY,
+        nombre_archivo VARCHAR(255),
+        total_procesados INTEGER DEFAULT 0,
+        total_importados INTEGER DEFAULT 0,
+        total_duplicados INTEGER DEFAULT 0,
+        total_errores INTEGER DEFAULT 0,
+        sala_id INTEGER REFERENCES salas(id),
+        fuente_id INTEGER REFERENCES fuentes(id),
+        tmk_id INTEGER,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        eliminado BOOLEAN DEFAULT false,
+        eliminado_por INTEGER REFERENCES usuarios(id),
+        eliminado_en TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    console.log('  ok importaciones_log table ready');
+  } catch (err) {
+    console.error('Error auto-migrate importaciones_log:', err.message);
+  }
+})();
+
+// ── Auto-migrate: columna importacion_id en leads ─────────────
+(async () => {
+  try {
+    await pool.query(`
+      ALTER TABLE leads ADD COLUMN IF NOT EXISTS importacion_id INTEGER REFERENCES importaciones_log(id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_leads_importacion ON leads(importacion_id)
+    `);
+    console.log('  ok leads.importacion_id column ready');
+  } catch (err) {
+    console.error('Error auto-migrate leads.importacion_id:', err.message);
+  }
+})();
+
+// ── Auto-migrate: columnas eliminado en importaciones_log ─────
+(async () => {
+  try {
+    await pool.query(`ALTER TABLE importaciones_log ADD COLUMN IF NOT EXISTS eliminado BOOLEAN DEFAULT false`);
+    await pool.query(`ALTER TABLE importaciones_log ADD COLUMN IF NOT EXISTS eliminado_por INTEGER REFERENCES usuarios(id)`);
+    await pool.query(`ALTER TABLE importaciones_log ADD COLUMN IF NOT EXISTS eliminado_en TIMESTAMPTZ`);
+  } catch (err) {
+    // Ignorar si ya existen
+  }
+})();
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/importar/preview
 // Recibe el archivo, devuelve primeras 20 filas para mapeo de columnas
@@ -17,7 +70,7 @@ router.post('/preview', auth, upload.single('archivo'), async (req, res) => {
     return res.status(403).json({ error: 'Sin permiso para importar bases de datos' });
   }
 
-  if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+  if (!req.file) return res.status(400).json({ error: 'No se recibio ningun archivo' });
 
   try {
     const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellText: true, cellDates: true });
@@ -27,7 +80,7 @@ router.post('/preview', auth, upload.single('archivo'), async (req, res) => {
     // Convertir a array de arrays (filas x columnas)
     const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
 
-    // Filtrar filas completamente vacías
+    // Filtrar filas completamente vacias
     const filas = raw.filter(fila => fila.some(c => c !== null && c !== undefined && String(c).trim() !== ''));
 
     const preview = filas.slice(0, 20);
@@ -50,13 +103,13 @@ router.post('/preview', auth, upload.single('archivo'), async (req, res) => {
     });
   } catch (err) {
     console.error('Preview error:', err);
-    res.status(400).json({ error: 'No se pudo leer el archivo. Asegúrate de que sea un .xlsx o .xls válido.' });
+    res.status(400).json({ error: 'No se pudo leer el archivo. Asegurate de que sea un .xlsx o .xls valido.' });
   }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/importar/ejecutar
-// Ejecuta la importación con el mapeo y configuración del usuario
+// Ejecuta la importacion con el mapeo y configuracion del usuario
 /**
  * @openapi
  * /api/importar/ejecutar:
@@ -91,13 +144,13 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
     return res.status(403).json({ error: 'Sin permiso para importar bases de datos' });
   }
 
-  if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+  if (!req.file) return res.status(400).json({ error: 'No se recibio ningun archivo' });
 
   let config;
   try {
     config = JSON.parse(req.body.config);
   } catch {
-    return res.status(400).json({ error: 'Configuración inválida' });
+    return res.status(400).json({ error: 'Configuracion invalida' });
   }
 
   const {
@@ -117,7 +170,7 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
     return res.status(400).json({ error: 'Debes mapear al menos la columna de nombre' });
   }
   if (mapeo.telefono === null && mapeo.telefono2 === null) {
-    return res.status(400).json({ error: 'Debes mapear al menos una columna de teléfono' });
+    return res.status(400).json({ error: 'Debes mapear al menos una columna de telefono' });
   }
 
   try {
@@ -128,7 +181,17 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
     const filas = raw.filter(f => f.some(c => String(c).trim() !== ''));
     const datos = tiene_encabezado ? filas.slice(1) : filas;
 
-    // Si hay TMK específico, verificar que esté activo
+    const nombreArchivo = req.file?.originalname || 'desconocido';
+
+    // ── Crear registro en importaciones_log ────────────────────
+    const logRes = await pool.query(
+      `INSERT INTO importaciones_log (nombre_archivo, total_procesados, sala_id, fuente_id, tmk_id, usuario_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [nombreArchivo, datos.length, sala_id, fuente_id, tmk_id || null, userId]
+    );
+    const importacionId = logRes.rows[0].id;
+
+    // Si hay TMK especifico, verificar que este activo
     let tmkIds = [];
     let tmkIndex = 0;
     if (tmk_id) {
@@ -136,7 +199,7 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
         'SELECT id, activo FROM usuarios WHERE id = $1', [tmk_id]
       );
       if (tmkCheck.rows.length > 0 && !tmkCheck.rows[0].activo) {
-        return res.status(400).json({ error: 'El TMK seleccionado está inactivo. Seleccione un TMK activo o use distribución automática.' });
+        return res.status(400).json({ error: 'El TMK seleccionado esta inactivo. Seleccione un TMK activo o use distribucion automatica.' });
       }
     } else {
       // Round-robin: solo TMKs ACTIVOS de la sala
@@ -150,7 +213,7 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
       if (tmkIds.length === 0) tmkIds = [userId]; // fallback al importador
     }
 
-    // Verificar tipificación para determinar estado inicial (solo si se proporcionó)
+    // Verificar tipificacion para determinar estado inicial (solo si se proporciono)
     let estadoInicial = 'pendiente';
     if (tipificacion_id) {
       const tipRes = await pool.query('SELECT requiere_fecha_cita FROM tipificaciones WHERE id = $1', [tipificacion_id]);
@@ -166,9 +229,8 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
       duplicados_bd_detalle: [],
       duplicados_internos_detalle: [],
     };
-    const nombreArchivo = req.file?.originalname || 'desconocido';
 
-    // Set para detectar duplicados internos (dentro del archivo) por teléfono normalizado
+    // Set para detectar duplicados internos (dentro del archivo) por telefono normalizado
     const telefonosVistos = new Set();
 
     // Helpers
@@ -181,11 +243,11 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
       if (t.startsWith('+593')) t = '0' + t.slice(4);
       // 593XXXXXXXXX (sin + ni 00) -> 0XXXXXXXXX
       if (t.startsWith('593') && t.length >= 12) t = '0' + t.slice(3);
-      // 9 dígitos sin cero inicial -> agregar 0
+      // 9 digitos sin cero inicial -> agregar 0
       if (/^\d{9}$/.test(t)) t = '0' + t;
-      // Validar: debe tener 10 dígitos y empezar con 0
+      // Validar: debe tener 10 digitos y empezar con 0
       if (/^0\d{9}$/.test(t)) return t;
-      // Teléfono fijo (7-8 dígitos)
+      // Telefono fijo (7-8 digitos)
       if (/^\d{7,8}$/.test(t)) return '0' + t;
       return t.length > 0 ? t : null;
     }
@@ -239,7 +301,7 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
 
         if (!telefono && !telefono2) { stats.errores++; continue; }
 
-        // --- Detección de duplicados internos (dentro del archivo) ---
+        // --- Deteccion de duplicados internos (dentro del archivo) ---
         const telKey = telefono || telefono2;
         if (telefonosVistos.has(telKey)) {
           stats.duplicados_internos++;
@@ -252,10 +314,10 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
           continue;
         }
         telefonosVistos.add(telKey);
-        // También agregar telefono2 si existe
+        // Tambien agregar telefono2 si existe
         if (telefono2 && telefono2 !== telKey) telefonosVistos.add(telefono2);
 
-        // --- Detección de duplicados contra BD (persona existente) ---
+        // --- Deteccion de duplicados contra BD (persona existente) ---
         const telCheck = [telefono, telefono2].filter(Boolean);
         let personaId = null;
         let existQuery = `SELECT id FROM personas WHERE (telefono = ANY($1) OR telefono2 = ANY($1))`;
@@ -300,12 +362,12 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
         const asignadoTmk = tmk_id || tmkIds[tmkIndex % tmkIds.length];
         if (!tmk_id) tmkIndex++;
 
-        // Crear lead (tipificacion_id opcional)
+        // Crear lead con importacion_id
         await pool.query(
-          `INSERT INTO leads (persona_id, sala_id, tmk_id, fuente_id, tipificacion_id, estado, observacion)
-           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          `INSERT INTO leads (persona_id, sala_id, tmk_id, fuente_id, tipificacion_id, estado, observacion, importacion_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
           [personaId, sala_id, asignadoTmk, fuente_id, tipificacion_id || null, estadoInicial,
-           `Importado desde: ${nombreArchivo}`]
+           `Importado desde: ${nombreArchivo}`, importacionId]
         );
 
         stats.importados++;
@@ -322,8 +384,17 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
       }
     }
 
+    // ── Actualizar importaciones_log con totales finales ───────
+    await pool.query(
+      `UPDATE importaciones_log
+       SET total_importados = $1, total_duplicados = $2, total_errores = $3
+       WHERE id = $4`,
+      [stats.importados, stats.duplicados_bd + stats.duplicados_internos, stats.errores, importacionId]
+    );
+
     res.json({
       ok: true,
+      importacion_id: importacionId,
       total_procesadas: datos.length,
       importados: stats.importados,
       duplicados_bd: stats.duplicados_bd,
@@ -344,9 +415,158 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/importar/historial
+// Lista todas las importaciones ordenadas por fecha DESC
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/historial', auth, async (req, res) => {
+  const { rol } = req.user;
+  if (!['admin', 'director', 'supervisor_cc'].includes(rol)) {
+    return res.status(403).json({ error: 'Sin permiso para ver historial de importaciones' });
+  }
+
+  try {
+    const result = await pool.query(`
+      SELECT
+        il.id,
+        il.nombre_archivo,
+        il.total_procesados,
+        il.total_importados,
+        il.total_duplicados,
+        il.total_errores,
+        il.sala_id,
+        s.nombre AS sala_nombre,
+        il.fuente_id,
+        f.nombre AS fuente_nombre,
+        il.tmk_id,
+        tmk.nombre AS tmk_nombre,
+        il.usuario_id,
+        u.nombre AS usuario_nombre,
+        il.eliminado,
+        il.eliminado_por,
+        ue.nombre AS eliminado_por_nombre,
+        il.eliminado_en,
+        il.created_at
+      FROM importaciones_log il
+      LEFT JOIN salas s ON il.sala_id = s.id
+      LEFT JOIN fuentes f ON il.fuente_id = f.id
+      LEFT JOIN usuarios tmk ON il.tmk_id = tmk.id
+      LEFT JOIN usuarios u ON il.usuario_id = u.id
+      LEFT JOIN usuarios ue ON il.eliminado_por = ue.id
+      ORDER BY il.created_at DESC
+      LIMIT 200
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Historial importaciones error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/importar/:id
+// Elimina todos los leads de una importacion y las personas huerfanas
+// ─────────────────────────────────────────────────────────────────────────────
+router.delete('/:id', auth, async (req, res) => {
+  const { rol, id: userId } = req.user;
+  if (!['admin', 'director'].includes(rol)) {
+    return res.status(403).json({ error: 'Solo admin y director pueden eliminar importaciones' });
+  }
+
+  const importacionId = parseInt(req.params.id);
+  if (isNaN(importacionId)) {
+    return res.status(400).json({ error: 'ID de importacion invalido' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verificar que la importacion existe y no fue eliminada
+    const impRes = await client.query(
+      'SELECT id, eliminado, total_importados FROM importaciones_log WHERE id = $1',
+      [importacionId]
+    );
+    if (impRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Importacion no encontrada' });
+    }
+    if (impRes.rows[0].eliminado) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Esta importacion ya fue eliminada' });
+    }
+
+    // 1. Obtener todos los lead_ids con esta importacion
+    const leadsRes = await client.query(
+      'SELECT id, persona_id FROM leads WHERE importacion_id = $1',
+      [importacionId]
+    );
+    const leadIds = leadsRes.rows.map(r => r.id);
+    const personaIds = [...new Set(leadsRes.rows.map(r => r.persona_id))];
+
+    let leadsEliminados = 0;
+    let personasEliminadas = 0;
+
+    if (leadIds.length > 0) {
+      // 2. Eliminar visitas_sala asociadas a estos leads
+      await client.query(
+        'DELETE FROM visitas_sala WHERE lead_id = ANY($1)',
+        [leadIds]
+      );
+
+      // 3. Eliminar lead_observaciones (tiene ON DELETE CASCADE, pero por seguridad)
+      await client.query(
+        'DELETE FROM lead_observaciones WHERE lead_id = ANY($1)',
+        [leadIds]
+      );
+
+      // 4. Eliminar los leads
+      const delLeads = await client.query(
+        'DELETE FROM leads WHERE importacion_id = $1',
+        [importacionId]
+      );
+      leadsEliminados = delLeads.rowCount;
+    }
+
+    if (personaIds.length > 0) {
+      // 5. Eliminar personas huerfanas (que no tengan otros leads)
+      const delPersonas = await client.query(
+        `DELETE FROM personas
+         WHERE id = ANY($1)
+         AND NOT EXISTS (SELECT 1 FROM leads WHERE persona_id = personas.id)`,
+        [personaIds]
+      );
+      personasEliminadas = delPersonas.rowCount;
+    }
+
+    // 6. Marcar la importacion como eliminada
+    await client.query(
+      `UPDATE importaciones_log
+       SET eliminado = true, eliminado_por = $1, eliminado_en = NOW()
+       WHERE id = $2`,
+      [userId, importacionId]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      ok: true,
+      leads_eliminados: leadsEliminados,
+      personas_eliminadas: personasEliminadas,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Eliminar importacion error:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/importar/duplicados/descargar
-// Genera un archivo Excel con los duplicados enviados por query (POST sería mejor
-// pero usamos los datos que el frontend ya tiene del resultado de importación)
+// Genera un archivo Excel con los duplicados enviados por query (POST seria mejor
+// pero usamos los datos que el frontend ya tiene del resultado de importacion)
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/duplicados/descargar', auth, async (req, res) => {
   const { rol } = req.user;

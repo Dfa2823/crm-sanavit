@@ -16,3 +16,9 @@ export const descargarDuplicados = (duplicados_bd_detalle, duplicados_internos_d
     { duplicados_bd_detalle, duplicados_internos_detalle },
     { responseType: 'blob' }
   ).then(r => r.data)
+
+export const getHistorialImportaciones = () =>
+  client.get('/api/importar/historial').then(r => r.data)
+
+export const eliminarImportacion = (id) =>
+  client.delete(`/api/importar/${id}`).then(r => r.data)
