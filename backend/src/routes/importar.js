@@ -128,10 +128,18 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
     const filas = raw.filter(f => f.some(c => String(c).trim() !== ''));
     const datos = tiene_encabezado ? filas.slice(1) : filas;
 
-    // Si hay round-robin, obtener TMKs activos de la sala
+    // Si hay TMK específico, verificar que esté activo
     let tmkIds = [];
     let tmkIndex = 0;
-    if (!tmk_id) {
+    if (tmk_id) {
+      const tmkCheck = await pool.query(
+        'SELECT id, activo FROM usuarios WHERE id = $1', [tmk_id]
+      );
+      if (tmkCheck.rows.length > 0 && !tmkCheck.rows[0].activo) {
+        return res.status(400).json({ error: 'El TMK seleccionado está inactivo. Seleccione un TMK activo o use distribución automática.' });
+      }
+    } else {
+      // Round-robin: solo TMKs ACTIVOS de la sala
       const tmkRes = await pool.query(
         `SELECT u.id FROM usuarios u
          JOIN roles r ON u.rol_id = r.id

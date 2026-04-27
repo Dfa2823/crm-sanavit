@@ -211,7 +211,7 @@ export default function ImportarPage() {
     : null
 
   const tmksDeSala = usuarios.filter(u =>
-    u.rol === 'tmk' && (!config.sala_id || String(u.sala_id) === String(config.sala_id))
+    u.rol === 'tmk' && u.activo && (!config.sala_id || String(u.sala_id) === String(config.sala_id))
   )
 
   const totalDuplicados = (resultado?.duplicados_bd || 0) + (resultado?.duplicados_internos || 0)
