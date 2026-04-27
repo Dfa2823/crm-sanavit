@@ -388,12 +388,23 @@ router.post('/', auth, async (req, res) => {
 
     let estado = 'pendiente';
     if (tip.requiere_fecha_cita) {
-      // Respetar el estado enviado explícitamente por el frontend (tentativa o confirmada)
+      // FLUJO: TMK crea cita → SIEMPRE tentativa → pasa al confirmador → confirmada
+      // Solo admin/director/confirmador/supervisor pueden crear directamente como 'confirmada'
+      const rolesPuedenConfirmar = ['admin', 'director', 'confirmador', 'supervisor_cc'];
       if (req.body.estado === 'tentativa' || req.body.estado === 'confirmada') {
-        estado = req.body.estado;
+        // Si TMK envía 'confirmada', forzar a 'tentativa' (no puede saltarse al confirmador)
+        if (req.body.estado === 'confirmada' && !rolesPuedenConfirmar.includes(rol)) {
+          estado = 'tentativa';
+        } else {
+          estado = req.body.estado;
+        }
       } else {
-        // Fallback: Super tentativa → tentativa, resto → confirmada
-        estado = tip.nombre === 'Super tentativa' ? 'tentativa' : 'confirmada';
+        // Fallback: TMK siempre crea tentativa. Otros roles según tipificación.
+        if (rol === 'tmk' || rol === 'outsourcing') {
+          estado = 'tentativa';
+        } else {
+          estado = tip.nombre === 'Super tentativa' ? 'tentativa' : 'confirmada';
+        }
       }
     }
 
