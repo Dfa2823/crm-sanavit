@@ -499,4 +499,52 @@ router.get('/tmks-disponibles', auth, soloSupervisor, async (req, res) => {
   }
 });
 
+// POST /api/supervisor/reasignar-huerfanos — reasignar leads de TMKs inactivos
+router.post('/reasignar-huerfanos', auth, soloSupervisor, async (req, res) => {
+  try {
+    // Encontrar leads pendientes asignados a TMKs inactivos
+    const huerfanos = await pool.query(`
+      SELECT l.id, l.sala_id
+      FROM leads l
+      JOIN usuarios u ON l.tmk_id = u.id
+      WHERE u.activo = false
+        AND l.estado IN ('pendiente', 'tentativa', 'confirmada')
+    `);
+
+    if (huerfanos.rows.length === 0) {
+      return res.json({ reasignados: 0, message: 'No hay leads huérfanos' });
+    }
+
+    // Obtener TMKs activos por sala
+    const tmksRes = await pool.query(`
+      SELECT u.id, u.sala_id
+      FROM usuarios u JOIN roles r ON u.rol_id = r.id
+      WHERE r.nombre = 'tmk' AND u.activo = true
+      ORDER BY u.id
+    `);
+    const tmksPorSala = {};
+    for (const t of tmksRes.rows) {
+      if (!tmksPorSala[t.sala_id]) tmksPorSala[t.sala_id] = [];
+      tmksPorSala[t.sala_id].push(t.id);
+    }
+
+    let reasignados = 0;
+    const contadores = {}; // round-robin por sala
+    for (const lead of huerfanos.rows) {
+      const tmks = tmksPorSala[lead.sala_id] || Object.values(tmksPorSala).flat();
+      if (tmks.length === 0) continue;
+      if (!contadores[lead.sala_id]) contadores[lead.sala_id] = 0;
+      const nuevoTmk = tmks[contadores[lead.sala_id] % tmks.length];
+      contadores[lead.sala_id]++;
+      await pool.query('UPDATE leads SET tmk_id = $1, updated_at = NOW() WHERE id = $2', [nuevoTmk, lead.id]);
+      reasignados++;
+    }
+
+    res.json({ reasignados, message: `${reasignados} leads reasignados a TMKs activos` });
+  } catch (err) {
+    console.error('Error reasignar huerfanos:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
