@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { getSalas, getUsuarios, getFormasPago, getFuentes, getTipificaciones } from '../../api/admin'
+import { getSalas, getFormasPago, getFuentes, getTipificaciones } from '../../api/admin'
+import { apiUsuarios } from '../../api/usuarios'
 import { previewImport, ejecutarImport, descargarDuplicados, getHistorialImportaciones, eliminarImportacion } from '../../api/importar'
 import { useEffect } from 'react'
 
@@ -75,7 +76,7 @@ export default function ImportarPage() {
 
   useEffect(() => {
     getSalas().then(s => setSalas(Array.isArray(s) ? s : [])).catch(console.error)
-    getUsuarios().then(u => setUsuarios(Array.isArray(u) ? u : [])).catch(console.error)
+    apiUsuarios.listar().then(u => setUsuarios(Array.isArray(u) ? u : [])).catch(console.error)
     getFuentes().then(d => setFuentes(Array.isArray(d) ? d.filter(f => f.activo) : [])).catch(console.error)
     getTipificaciones().then(d => setTipificaciones(Array.isArray(d) ? d.filter(t => t.activo) : [])).catch(console.error)
     cargarHistorial()
