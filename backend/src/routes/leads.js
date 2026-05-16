@@ -379,12 +379,13 @@ router.post('/', auth, async (req, res) => {
   const { id: userId, rol, sala_id } = req.user;
 
   try {
-    // FLUJO: Lead manual SIEMPRE inicia como 'pendiente' (igual que un lead importado)
-    // El TMK lo trabajará luego, le pondrá tipificación, y según eso pasará a tentativa/cancelada/etc.
+    // FLUJO:
+    // - Lead manual SIN tipificar → 'pendiente' (igual que importado, el TMK lo trabajará luego)
+    // - Lead tipificado como Cita/Super tentativa → 'tentativa' (pasa al confirmador)
+    // - Admin/director/confirmador pueden crear directamente como 'confirmada'
     let estado = 'pendiente';
     let tip = null;
 
-    // Si se envió tipificación (raro, solo desde flujos especiales), validar
     if (tipificacion_id) {
       const tipRes = await pool.query('SELECT * FROM tipificaciones WHERE id = $1', [tipificacion_id]);
       if (tipRes.rows.length === 0) {
@@ -392,17 +393,17 @@ router.post('/', auth, async (req, res) => {
       }
       tip = tipRes.rows[0];
 
-      // Solo si es admin/director/confirmador y tipifica como Cita, se respeta el estado enviado
-      const rolesPuedenConfirmar = ['admin', 'director', 'confirmador', 'supervisor_cc'];
-      if (tip.requiere_fecha_cita && rolesPuedenConfirmar.includes(rol)) {
-        if (req.body.estado === 'tentativa' || req.body.estado === 'confirmada') {
+      if (tip.requiere_fecha_cita) {
+        // Roles que pueden saltarse al confirmador y crear directamente como 'confirmada'
+        const rolesPuedenConfirmar = ['admin', 'director', 'confirmador', 'supervisor_cc'];
+        if (rolesPuedenConfirmar.includes(rol) && (req.body.estado === 'tentativa' || req.body.estado === 'confirmada')) {
           estado = req.body.estado;
         } else {
-          estado = tip.nombre === 'Super tentativa' ? 'tentativa' : 'confirmada';
+          // TMK / outsourcing / default: cita queda como 'tentativa' (pasa al confirmador)
+          estado = 'tentativa';
         }
       }
-      // TMK/outsourcing: el lead queda en 'pendiente' aunque se mande tipificación,
-      // para que pase por el flujo normal de trabajo
+      // Si la tipificación no requiere fecha de cita, queda como 'pendiente' (el TMK la trabajará)
     }
 
     // Auto-asignar confirmador_id si el TMK tiene asignación (solo si hay tipificación de cita)
@@ -432,9 +433,8 @@ router.post('/', auth, async (req, res) => {
       fuente_id,
       tipificacion_id || null,
       patologia,
-      // Si lead inicia 'pendiente' (manual), no guardar fecha_cita ni fecha_rellamar
-      estado === 'pendiente' ? null : (fecha_cita || null),
-      estado === 'pendiente' ? null : (fecha_rellamar || null),
+      fecha_cita || null,
+      fecha_rellamar || null,
       estado,
       observacion,
       outsourcing_id || null,
