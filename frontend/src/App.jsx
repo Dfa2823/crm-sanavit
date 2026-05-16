@@ -68,6 +68,16 @@ function AppRoutes() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
 
+        {/* Rutas de impresión SIN AppLayout (no muestran Topbar/Sidebar) */}
+        <Route
+          path="/ventas/:id/imprimir"
+          element={<PrivateRoute><ContratoPrint /></PrivateRoute>}
+        />
+        <Route
+          path="/ventas/:id/acta-entrega"
+          element={<PrivateRoute><ActaEntregaPrint /></PrivateRoute>}
+        />
+
         <Route
           path="/"
           element={
@@ -93,8 +103,6 @@ function AppRoutes() {
           <Route path="ventas" element={<VentasPage />} />
           <Route path="ventas/nueva" element={<NuevaVentaPage />} />
           <Route path="ventas/:id" element={<Venta360Page />} />
-          <Route path="ventas/:id/imprimir" element={<ContratoPrint />} />
-          <Route path="ventas/:id/acta-entrega" element={<ActaEntregaPrint />} />
           <Route path="sac" element={<SACPage />} />
           <Route path="mercadeo/supervisor" element={<SupervisorDashboard />} />
           <Route path="inventario" element={<InventarioPage />} />

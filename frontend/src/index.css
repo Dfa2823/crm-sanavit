@@ -2,6 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Estilos de impresión: ocultar UI no relevante ──────────── */
+@media print {
+  /* Ocultar topbar, sidebar y botones flotantes */
+  header,
+  aside,
+  nav,
+  [class*="Topbar"],
+  [class*="Sidebar"],
+  .no-print,
+  button:not(.print-show) {
+    display: none !important;
+  }
+
+  /* Margen cero para aprovechar A4 */
+  body, html {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  /* Contenido al ancho completo */
+  main, .content, [role="main"] {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
 @layer base {
   html {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
