@@ -394,6 +394,12 @@ router.post('/', auth, async (req, res) => {
       tip = tipRes.rows[0];
 
       if (tip.requiere_fecha_cita) {
+        // VALIDACIÓN: fecha_cita es OBLIGATORIA cuando la tipificación lo requiere
+        if (!fecha_cita) {
+          return res.status(400).json({
+            error: `La tipificación '${tip.nombre}' requiere fecha y hora de cita. Por favor selecciona la fecha antes de guardar.`
+          });
+        }
         // Roles que pueden saltarse al confirmador y crear directamente como 'confirmada'
         const rolesPuedenConfirmar = ['admin', 'director', 'confirmador', 'supervisor_cc'];
         if (rolesPuedenConfirmar.includes(rol) && (req.body.estado === 'tentativa' || req.body.estado === 'confirmada')) {
@@ -485,11 +491,20 @@ router.patch('/:id', auth, async (req, res) => {
     } else {
       estadoFinal = estado;
     }
-    if (tipificacion_id !== undefined && estado === undefined) {
-      const tipCheck = await pool.query('SELECT requiere_fecha_cita FROM tipificaciones WHERE id = $1', [tipificacion_id]);
+    // VALIDACIÓN: Si tipificación requiere fecha de cita, fecha_cita DEBE estar presente
+    if (tipificacion_id !== undefined && tipificacion_id !== null) {
+      const tipCheck = await pool.query('SELECT requiere_fecha_cita, nombre FROM tipificaciones WHERE id = $1', [tipificacion_id]);
       if (tipCheck.rows.length > 0 && tipCheck.rows[0].requiere_fecha_cita) {
-        const leadCheck = await pool.query('SELECT estado FROM leads WHERE id = $1', [req.params.id]);
-        if (leadCheck.rows.length > 0 && leadCheck.rows[0].estado === 'pendiente') {
+        // Verificar que fecha_cita venga en el request O ya esté en el lead
+        const leadCheck = await pool.query('SELECT estado, fecha_cita FROM leads WHERE id = $1', [req.params.id]);
+        const fechaCitaFinal = fecha_cita !== undefined ? fecha_cita : (leadCheck.rows[0]?.fecha_cita);
+        if (!fechaCitaFinal) {
+          return res.status(400).json({
+            error: `La tipificación '${tipCheck.rows[0].nombre}' requiere fecha y hora de cita. Por favor selecciona la fecha antes de guardar.`
+          });
+        }
+        // Si estaba pendiente y se tipifica como cita, pasar a tentativa
+        if (estado === undefined && leadCheck.rows.length > 0 && leadCheck.rows[0].estado === 'pendiente') {
           estadoFinal = 'tentativa';
         }
       }
