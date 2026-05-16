@@ -169,6 +169,9 @@ router.patch('/:id', auth, async (req, res) => {
                   'tipo_documento','num_documento','fecha_nacimiento','genero',
                   'patologia','estado_civil','direccion','situacion_laboral','tipo_seguridad_social'];
 
+  // Campos que deben convertir string vacío a null (fechas y números)
+  const camposNullables = ['fecha_nacimiento', 'edad'];
+
   const updates = [];
   const values = [];
   let idx = 1;
@@ -176,7 +179,12 @@ router.patch('/:id', auth, async (req, res) => {
   for (const field of fields) {
     if (req.body[field] !== undefined) {
       updates.push(`${field} = $${idx}`);
-      values.push(req.body[field]);
+      // Convertir string vacío a null para campos de fecha/número
+      let val = req.body[field];
+      if (camposNullables.includes(field) && (val === '' || val === undefined)) {
+        val = null;
+      }
+      values.push(val);
       idx++;
     }
   }

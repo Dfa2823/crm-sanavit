@@ -90,7 +90,9 @@ function DrawerCita({ lead, onClose, onActualizar }) {
     if (lead.persona_id) {
       setLoadingPersona(true)
       apiPersonas.obtener(lead.persona_id)
-        .then(data => {
+        .then(resp => {
+          // El endpoint retorna { persona: {...}, visita: {...} }
+          const data = resp?.persona || resp
           setPersona(data)
           setFormPersona({
             nombres:        data.nombres        || '',
