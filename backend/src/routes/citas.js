@@ -60,11 +60,17 @@ router.get('/premanifiesto', auth, async (req, res) => {
         ${whereExtra}
     `;
 
-    const [confirmadas, tentativas, canceladas, inasistencias] = await Promise.all([
+    // Incluir TODOS los estados de citas: confirmada, tentativa, cancelada,
+    // inasistencia, tour, no_tour, pendiente. Las citas que ya están en tour/no_tour
+    // se cuentan como confirmadas (ya cumplió la cita).
+    const [confirmadas, tentativas, canceladas, inasistencias, tours, noTours, pendientes] = await Promise.all([
       pool.query(`${baseQuery} AND l.estado = 'confirmada' ORDER BY l.fecha_cita ASC`, params),
       pool.query(`${baseQuery} AND l.estado = 'tentativa' ORDER BY l.fecha_cita ASC`, params),
       pool.query(`${baseQuery} AND l.estado = 'cancelada' ORDER BY l.fecha_cita DESC`, params),
       pool.query(`${baseQuery} AND l.estado = 'inasistencia' ORDER BY l.fecha_cita DESC`, params),
+      pool.query(`${baseQuery} AND l.estado = 'tour' ORDER BY l.fecha_cita ASC`, params),
+      pool.query(`${baseQuery} AND l.estado = 'no_tour' ORDER BY l.fecha_cita ASC`, params),
+      pool.query(`${baseQuery} AND l.estado = 'pendiente' AND l.fecha_cita IS NOT NULL ORDER BY l.fecha_cita ASC`, params),
     ]);
 
     res.json({
@@ -73,11 +79,17 @@ router.get('/premanifiesto', auth, async (req, res) => {
       tentativas: tentativas.rows,
       canceladas: canceladas.rows,
       inasistencias: inasistencias.rows,
+      tours: tours.rows,
+      no_tours: noTours.rows,
+      pendientes: pendientes.rows,
       totales: {
         confirmadas: confirmadas.rows.length,
         tentativas: tentativas.rows.length,
         canceladas: canceladas.rows.length,
         inasistencias: inasistencias.rows.length,
+        tours: tours.rows.length,
+        no_tours: noTours.rows.length,
+        pendientes: pendientes.rows.length,
       },
     });
   } catch (err) {

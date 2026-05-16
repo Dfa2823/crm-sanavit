@@ -7,6 +7,8 @@ const TABS = [
   { key: 'todas',        label: 'Todas',        icon: '📑', color: 'blue' },
   { key: 'confirmadas',  label: 'Confirmadas',  icon: '✅', color: 'green' },
   { key: 'tentativas',   label: 'Tentativas',   icon: '📋', color: 'yellow' },
+  { key: 'tours',        label: 'Tours',        icon: '🎯', color: 'green' },
+  { key: 'no_tours',     label: 'No Tours',     icon: '⚪', color: 'gray' },
   { key: 'canceladas',   label: 'Canceladas',   icon: '❌', color: 'red' },
 ]
 
@@ -199,15 +201,17 @@ export default function Premanifiesto() {
         apiCitas.premanifiesto({ sala_id: filtros.sala_id || undefined, fecha: filtros.fecha }),
         apiUsuarios.salas(),
       ])
-      // Agregar tab "todas" combinando todas las listas
+      // Agregar tab "todas" combinando TODOS los estados
       if (preman) {
         const todas = [
           ...(preman.confirmadas || []),
           ...(preman.tentativas || []),
+          ...(preman.tours || []),
+          ...(preman.no_tours || []),
           ...(preman.canceladas || []),
           ...(preman.inasistencias || []),
+          ...(preman.pendientes || []),
         ].sort((a, b) => {
-          // Ordenar por hora de cita ASC
           const fa = a.fecha_cita || ''
           const fb = b.fecha_cita || ''
           return fa.localeCompare(fb)
