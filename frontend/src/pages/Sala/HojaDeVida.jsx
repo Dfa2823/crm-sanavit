@@ -105,13 +105,24 @@ export default function HojaDeVida() {
   async function guardarDatos() {
     setGuardando(true)
     try {
-      await client.patch(`/api/personas/${id}`, form)
+      // Limpiar payload: strings vacíos a null para campos opcionales (especialmente fechas y números)
+      const payload = {}
+      for (const [k, v] of Object.entries(form)) {
+        // fecha_nacimiento y edad: string vacío => null
+        if ((k === 'fecha_nacimiento' || k === 'edad') && (v === '' || v === undefined)) {
+          payload[k] = null
+        } else {
+          payload[k] = v
+        }
+      }
+      await client.patch(`/api/personas/${id}`, payload)
       setMensaje('✅ Datos guardados correctamente')
       setEditando(false)
       cargar()
     } catch (err) {
       console.error(err)
-      setMensaje('❌ Error al guardar')
+      const errMsg = err?.response?.data?.error || 'Error al guardar'
+      setMensaje('❌ ' + errMsg)
     } finally {
       setGuardando(false)
     }
@@ -295,50 +306,51 @@ export default function HojaDeVida() {
                   <Campo label="Dirección"            valor={persona.direccion               || '—'} span />
                 </div>
               ) : (
-                <div className="space-y-4">
+                <form noValidate className="space-y-4" onSubmit={e => { e.preventDefault(); guardarDatos(); }}>
+                  <div className="text-xs text-gray-500 italic mb-2">Solo Nombres y Teléfono son obligatorios. Los demás campos son opcionales.</div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="label">Nombres</label>
+                      <label className="label">Nombres <span className="text-red-500">*</span></label>
                       <input className="input" value={form.nombres}
                         onChange={e => setForm(f => ({ ...f, nombres: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="label">Apellidos</label>
+                      <label className="label">Apellidos <span className="text-gray-400 text-xs">(opcional)</span></label>
                       <input className="input" value={form.apellidos}
                         onChange={e => setForm(f => ({ ...f, apellidos: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="label">Teléfono</label>
+                      <label className="label">Teléfono <span className="text-red-500">*</span></label>
                       <input className="input" value={form.telefono}
                         onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="label">Teléfono 2</label>
+                      <label className="label">Teléfono 2 <span className="text-gray-400 text-xs">(opcional)</span></label>
                       <input className="input" value={form.telefono2}
                         onChange={e => setForm(f => ({ ...f, telefono2: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="label">Ciudad</label>
+                      <label className="label">Ciudad <span className="text-gray-400 text-xs">(opcional)</span></label>
                       <input className="input" value={form.ciudad}
                         onChange={e => setForm(f => ({ ...f, ciudad: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="label">Edad</label>
+                      <label className="label">Edad <span className="text-gray-400 text-xs">(opcional)</span></label>
                       <input type="number" className="input" value={form.edad}
                         onChange={e => setForm(f => ({ ...f, edad: e.target.value }))} />
                     </div>
                     <div className="col-span-2">
-                      <label className="label">Patología</label>
+                      <label className="label">Patología <span className="text-gray-400 text-xs">(opcional)</span></label>
                       <input className="input" value={form.patologia}
                         onChange={e => setForm(f => ({ ...f, patologia: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="label">Email</label>
+                      <label className="label">Email <span className="text-gray-400 text-xs">(opcional)</span></label>
                       <input type="email" className="input" value={form.email}
                         onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="label">Tipo de documento</label>
+                      <label className="label">Tipo de documento <span className="text-gray-400 text-xs">(opcional)</span></label>
                       <select className="input" value={form.tipo_documento}
                         onChange={e => setForm(f => ({ ...f, tipo_documento: e.target.value }))}>
                         <option value="">Seleccionar...</option>
@@ -346,12 +358,12 @@ export default function HojaDeVida() {
                       </select>
                     </div>
                     <div>
-                      <label className="label">N° de documento</label>
+                      <label className="label">N° de documento <span className="text-gray-400 text-xs">(opcional)</span></label>
                       <input className="input" value={form.num_documento}
                         onChange={e => setForm(f => ({ ...f, num_documento: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="label">Género</label>
+                      <label className="label">Género <span className="text-gray-400 text-xs">(opcional)</span></label>
                       <select className="input" value={form.genero}
                         onChange={e => setForm(f => ({ ...f, genero: e.target.value }))}>
                         <option value="">Seleccionar...</option>
@@ -359,7 +371,7 @@ export default function HojaDeVida() {
                       </select>
                     </div>
                     <div>
-                      <label className="label">Estado civil</label>
+                      <label className="label">Estado civil <span className="text-gray-400 text-xs">(opcional)</span></label>
                       <select className="input" value={form.estado_civil}
                         onChange={e => setForm(f => ({ ...f, estado_civil: e.target.value }))}>
                         <option value="">Seleccionar...</option>
@@ -367,7 +379,7 @@ export default function HojaDeVida() {
                       </select>
                     </div>
                     <div>
-                      <label className="label">Fecha de nacimiento</label>
+                      <label className="label">Fecha de nacimiento <span className="text-gray-400 text-xs">(opcional)</span></label>
                       <input type="date" className="input" value={form.fecha_nacimiento}
                         onChange={e => setForm(f => ({ ...f, fecha_nacimiento: e.target.value }))} />
                     </div>
@@ -394,14 +406,14 @@ export default function HojaDeVida() {
                       onChange={e => setForm(f => ({ ...f, direccion: e.target.value }))} />
                   </div>
                   <div className="flex gap-3 pt-2">
-                    <button onClick={() => setEditando(false)} className="btn-secondary">
+                    <button type="button" onClick={() => setEditando(false)} className="btn-secondary">
                       Cancelar
                     </button>
-                    <button onClick={guardarDatos} disabled={guardando} className="btn-primary">
+                    <button type="button" onClick={guardarDatos} disabled={guardando} className="btn-primary">
                       {guardando ? 'Guardando...' : 'Guardar datos'}
                     </button>
                   </div>
-                </div>
+                </form>
               )}
 
               {/* Placeholder contrato */}
