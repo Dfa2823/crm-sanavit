@@ -187,7 +187,7 @@ export default function Premanifiesto() {
       return m.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' })
     })(),
   })
-  const [tabActivo, setTabActivo] = useState('confirmadas')
+  const [tabActivo, setTabActivo] = useState('tentativas')
   const [loading, setLoading] = useState(true)
 
   const cargar = useCallback(async () => {
@@ -199,6 +199,15 @@ export default function Premanifiesto() {
       ])
       setData(preman)
       setSalas(listaSalas)
+      // Auto-seleccionar el tab con más citas
+      if (preman?.totales) {
+        const tabs = ['confirmadas', 'tentativas', 'canceladas', 'inasistencias']
+        const tabConMas = tabs.reduce((max, t) =>
+          (preman.totales[t] || 0) > (preman.totales[max] || 0) ? t : max,
+          'confirmadas'
+        )
+        setTabActivo(tabConMas)
+      }
     } catch (err) {
       console.error(err)
     } finally {
