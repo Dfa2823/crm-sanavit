@@ -135,8 +135,8 @@ router.post('/lead', async (req, res) => {
   const { nombre, telefono, fecha_cita, sala_id, patologia, observacion, outsourcing_empresa_id } = req.body;
   const outsourcingUserId = req.user.id;
 
-  if (!nombre || !telefono || !fecha_cita || !sala_id) {
-    return res.status(400).json({ error: 'Nombre, teléfono, fecha de cita y sala son requeridos' });
+  if (!nombre || !telefono || !sala_id) {
+    return res.status(400).json({ error: 'Nombre, teléfono y sala son requeridos' });
   }
 
   const telNorm = normalizarTelefono(telefono);
@@ -179,12 +179,17 @@ router.post('/lead', async (req, res) => {
       return res.status(409).json({ error: 'Ya existe un lead con este teléfono en la sala seleccionada' });
     }
 
-    // Crear lead: estado confirmada, tipificacion_id=2 (Cita)
+    // Crear lead:
+    // - Con fecha_cita → tipificacion=Cita, estado='tentativa' (pasa al confirmador)
+    // - Sin fecha_cita → sin tipificación, estado='pendiente' (TMK lo trabajará)
+    const tieneFecha = !!fecha_cita;
+    const tipId = tieneFecha ? 2 : null;
+    const estado = tieneFecha ? 'tentativa' : 'pendiente';
     const result = await pool.query(
       `INSERT INTO leads (persona_id, sala_id, outsourcing_id, tipificacion_id, fecha_cita, patologia, estado, observacion, outsourcing_empresa_id)
-       VALUES ($1,$2,$3,2,$4,$5,'confirmada',$6,$7) RETURNING id`,
-      [personaId, sala_id, outsourcingUserId, fecha_cita, patologia || null,
-       observacion || 'Cargado por outsourcing', outsourcing_empresa_id || null]
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [personaId, sala_id, outsourcingUserId, tipId, fecha_cita || null, patologia || null,
+       estado, observacion || 'Cargado por outsourcing', outsourcing_empresa_id || null]
     );
 
     res.status(201).json({ ok: true, lead_id: result.rows[0].id, mensaje: 'Lead creado exitosamente' });
