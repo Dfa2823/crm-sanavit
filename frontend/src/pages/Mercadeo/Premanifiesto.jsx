@@ -4,12 +4,14 @@ import { apiUsuarios } from '../../api/usuarios'
 import { formatHoraEC } from '../../utils/formatFechaEC'
 
 const TABS = [
+  { key: 'todas',        label: 'Todas',        icon: '📑', color: 'blue' },
   { key: 'confirmadas',  label: 'Confirmadas',  icon: '✅', color: 'green' },
   { key: 'tentativas',   label: 'Tentativas',   icon: '📋', color: 'yellow' },
   { key: 'canceladas',   label: 'Canceladas',   icon: '❌', color: 'red' },
 ]
 
 const TAB_STYLE = {
+  blue:   { active: 'border-blue-500 text-blue-700', badge: 'badge-blue' },
   green:  { active: 'border-green-500 text-green-700', badge: 'badge-green' },
   yellow: { active: 'border-yellow-500 text-yellow-700', badge: 'badge-yellow' },
   red:    { active: 'border-red-500 text-red-700', badge: 'badge-red' },
@@ -187,7 +189,7 @@ export default function Premanifiesto() {
       return m.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' })
     })(),
   })
-  const [tabActivo, setTabActivo] = useState('tentativas')
+  const [tabActivo, setTabActivo] = useState('todas')
   const [loading, setLoading] = useState(true)
 
   const cargar = useCallback(async () => {
@@ -197,17 +199,24 @@ export default function Premanifiesto() {
         apiCitas.premanifiesto({ sala_id: filtros.sala_id || undefined, fecha: filtros.fecha }),
         apiUsuarios.salas(),
       ])
+      // Agregar tab "todas" combinando todas las listas
+      if (preman) {
+        const todas = [
+          ...(preman.confirmadas || []),
+          ...(preman.tentativas || []),
+          ...(preman.canceladas || []),
+          ...(preman.inasistencias || []),
+        ].sort((a, b) => {
+          // Ordenar por hora de cita ASC
+          const fa = a.fecha_cita || ''
+          const fb = b.fecha_cita || ''
+          return fa.localeCompare(fb)
+        })
+        preman.todas = todas
+        preman.totales.todas = todas.length
+      }
       setData(preman)
       setSalas(listaSalas)
-      // Auto-seleccionar el tab con más citas
-      if (preman?.totales) {
-        const tabs = ['confirmadas', 'tentativas', 'canceladas', 'inasistencias']
-        const tabConMas = tabs.reduce((max, t) =>
-          (preman.totales[t] || 0) > (preman.totales[max] || 0) ? t : max,
-          'confirmadas'
-        )
-        setTabActivo(tabConMas)
-      }
     } catch (err) {
       console.error(err)
     } finally {
