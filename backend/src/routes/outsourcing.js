@@ -128,6 +128,68 @@ function toTitleCase(str) {
   return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// Estados "activos": un lead en estos estados bloquea crear otro para la misma
+// persona+sala. En estados terminales (cancelada/inasistencia/no_show) SÍ se
+// permite re-agendar (crear un lead nuevo).
+const ESTADOS_ACTIVOS = ['pendiente', 'tentativa', 'confirmada', 'tour', 'no_tour'];
+
+// Devuelve el lead ACTIVO (no terminal) más reciente de persona+sala, con datos
+// legibles (sala, agente), o null si no hay ninguno que bloquee la creación.
+async function buscarLeadBloqueante(personaId, salaId) {
+  const r = await pool.query(
+    `SELECT l.id, l.estado, l.fecha_cita, l.created_at,
+            s.nombre AS sala_nombre,
+            ou.nombre AS outsourcing_nombre, ou.username AS outsourcing_user
+       FROM leads l
+       LEFT JOIN salas s     ON l.sala_id = s.id
+       LEFT JOIN usuarios ou ON l.outsourcing_id = ou.id
+      WHERE l.persona_id = $1 AND l.sala_id = $2 AND l.estado = ANY($3)
+      ORDER BY l.created_at DESC
+      LIMIT 1`,
+    [personaId, salaId, ESTADOS_ACTIVOS]
+  );
+  return r.rows[0] || null;
+}
+
+// Parsea una celda de fecha (Excel/CSV) a "YYYY-MM-DDT09:00:00" o null.
+// Soporta DD/MM/AAAA, DD-MM-AAAA, AAAA-MM-DD, ISO con hora, serial de Excel y
+// como último recurso Date nativo. El proceso corre con TZ=America/Guayaquil.
+function parsearFechaCita(raw) {
+  if (raw === null || raw === undefined) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  // ISO con hora → respetar tal cual
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) return s;
+
+  // AAAA-MM-DD
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}T09:00:00`;
+
+  // DD/MM/AAAA o DD-MM-AAAA (formato Ecuador); año de 2 dígitos → 20YY
+  m = s.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{2,4})$/);
+  if (m) {
+    const anio = m[3].length === 2 ? `20${m[3]}` : m[3];
+    return `${anio}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}T09:00:00`;
+  }
+
+  // Serial de Excel (días desde 1899-12-30); 25569 = días hasta 1970-01-01
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const serial = parseFloat(s);
+    if (serial > 0 && serial < 100000) {
+      const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10) + 'T09:00:00';
+    }
+  }
+
+  // Último recurso: Date nativo (TZ del proceso = Ecuador)
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return d.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }) + 'T09:00:00';
+  }
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/outsourcing/lead — Crear lead individual desde outsourcing
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,13 +232,22 @@ router.post('/lead', async (req, res) => {
       personaId = pRes.rows[0].id;
     }
 
-    // Verificar duplicado (lead activo en misma sala)
-    const leadExist = await pool.query(
-      'SELECT id FROM leads WHERE persona_id = $1 AND sala_id = $2 LIMIT 1',
-      [personaId, sala_id]
-    );
-    if (leadExist.rows.length > 0) {
-      return res.status(409).json({ error: 'Ya existe un lead con este teléfono en la sala seleccionada' });
+    // Verificar duplicado: solo bloquea si hay un lead ACTIVO (no terminal) en la
+    // misma sala. Si el lead previo está cancelado/inasistencia/no_show, se permite
+    // re-agendar. Devolvemos los datos del lead existente para un mensaje claro.
+    const bloqueante = await buscarLeadBloqueante(personaId, sala_id);
+    if (bloqueante) {
+      return res.status(409).json({
+        error: 'Ya existe una cita activa para este teléfono en esta sala.',
+        lead_existente: {
+          id: bloqueante.id,
+          estado: bloqueante.estado,
+          fecha_cita: bloqueante.fecha_cita,
+          sala: bloqueante.sala_nombre,
+          agente: bloqueante.outsourcing_nombre || bloqueante.outsourcing_user || null,
+          created_at: bloqueante.created_at,
+        },
+      });
     }
 
     // Crear lead:
@@ -256,6 +327,8 @@ router.post('/carga-masiva', upload.single('archivo'), async (req, res) => {
 
     const stats = {
       importados: 0,
+      citas: 0,        // importados CON fecha → estado 'tentativa' (pre-manifiesto)
+      pendientes: 0,   // importados SIN fecha → estado 'pendiente' (cola del TMK)
       duplicados: 0,
       errores: 0,
       detalles_errores: [],
@@ -323,44 +396,40 @@ router.post('/carga-masiva', upload.single('archivo'), async (req, res) => {
           personaId = pRes.rows[0].id;
         }
 
-        // Duplicado en BD
-        const leadExist = await pool.query(
-          'SELECT id FROM leads WHERE persona_id = $1 AND sala_id = $2 LIMIT 1',
-          [personaId, sala_id]
-        );
-        if (leadExist.rows.length > 0) {
+        // Duplicado en BD: solo cuenta como duplicado si hay un lead ACTIVO en la
+        // misma sala (estado no terminal). Si el previo está cancelado/no asistió,
+        // se permite re-cargarlo.
+        const bloqueante = await buscarLeadBloqueante(personaId, sala_id);
+        if (bloqueante) {
           stats.duplicados++;
           if (stats.duplicados_detalle.length < 100) {
-            stats.duplicados_detalle.push({ fila: i + 2, nombre: nombreRaw, telefono: telNorm, motivo: 'Ya existe en la base de datos' });
+            stats.duplicados_detalle.push({
+              fila: i + 2, nombre: nombreRaw, telefono: telNorm,
+              motivo: `Ya existe (estado ${bloqueante.estado}${bloqueante.fecha_cita ? ', cita ' + bloqueante.fecha_cita : ''})`,
+            });
           }
           continue;
         }
 
-        // Parsear fecha si existe
-        let fechaCita = null;
-        if (fechaRaw) {
-          // Intentar parsear varios formatos
-          const parsed = new Date(fechaRaw);
-          if (!isNaN(parsed.getTime())) {
-            // Guardar como fecha local Ecuador, no UTC
-            fechaCita = parsed.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }) + 'T09:00:00';
-          } else {
-            // Intentar DD/MM/YYYY o DD-MM-YYYY
-            const match = fechaRaw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-            if (match) {
-              fechaCita = `${match[3]}-${match[2].padStart(2,'0')}-${match[1].padStart(2,'0')}T09:00:00`;
-            }
-          }
-        }
+        // Parsear fecha (robusto: DD/MM/AAAA, AAAA-MM-DD, serial Excel, etc.)
+        const fechaCita = parsearFechaCita(fechaRaw);
 
-        // Crear lead
+        // Mismo criterio que el alta individual:
+        //   con fecha → cita 'tentativa' (pasa al confirmador / pre-manifiesto)
+        //   sin fecha → 'pendiente' (lo trabaja el TMK). NUNCA 'confirmada' sin fecha,
+        //   porque un lead sin fecha_cita es invisible en todas las vistas por día.
+        const tieneFecha = !!fechaCita;
+        const tipId = tieneFecha ? 2 : null;
+        const estado = tieneFecha ? 'tentativa' : 'pendiente';
+
         await pool.query(
           `INSERT INTO leads (persona_id, sala_id, outsourcing_id, tipificacion_id, fecha_cita, patologia, estado, observacion, outsourcing_empresa_id)
-           VALUES ($1,$2,$3,2,$4,$5,'confirmada',$6,$7)`,
-          [personaId, sala_id, outsourcingUserId, fechaCita, patologiaRaw || null,
-           obsRaw || `Carga masiva: ${nombreArchivo}`, outsourcing_empresa_id || null]
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [personaId, sala_id, outsourcingUserId, tipId, fechaCita, patologiaRaw || null,
+           estado, obsRaw || `Carga masiva: ${nombreArchivo}`, outsourcing_empresa_id || null]
         );
 
+        if (tieneFecha) stats.citas++; else stats.pendientes++;
         stats.importados++;
       } catch (rowErr) {
         stats.errores++;
@@ -378,6 +447,8 @@ router.post('/carga-masiva', upload.single('archivo'), async (req, res) => {
       archivo_nombre: nombreArchivo,
       total_procesadas: datos.length,
       importados: stats.importados,
+      citas: stats.citas,
+      pendientes: stats.pendientes,
       duplicados: stats.duplicados,
       errores: stats.errores,
       detalles_errores: stats.detalles_errores,
