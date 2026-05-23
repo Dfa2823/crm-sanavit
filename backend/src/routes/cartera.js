@@ -355,19 +355,23 @@ router.post('/cuotas/:id/gestion', async (req, res) => {
     return res.status(400).json({ error: 'tipificacion_cartera_id es requerido' });
   }
 
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     // Obtener datos de la cuota para el contrato y persona
-    const cuotaRes = await pool.query(
+    const cuotaRes = await client.query(
       `SELECT cu.contrato_id, c.persona_id FROM cuotas cu JOIN contratos c ON cu.contrato_id = c.id WHERE cu.id = $1`,
       [cuotaId]
     );
     if (cuotaRes.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Cuota no encontrada' });
     }
     const { contrato_id, persona_id } = cuotaRes.rows[0];
 
     // Insertar gestión
-    const insertRes = await pool.query(
+    const insertRes = await client.query(
       `INSERT INTO gestiones_cartera (cuota_id, contrato_id, persona_id, usuario_id, tipificacion_cartera_id, observacion, fecha_rellamar)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
@@ -375,21 +379,26 @@ router.post('/cuotas/:id/gestion', async (req, res) => {
     );
 
     // Obtener nombre de la tipificación
-    const tipRes = await pool.query(
+    const tipRes = await client.query(
       `SELECT nombre FROM tipificaciones_cartera WHERE id = $1`, [tipificacion_cartera_id]
     );
     const tipNombre = tipRes.rows[0]?.nombre || '';
 
     // Actualizar también la cuota con la última tipificación (compatibilidad)
-    await pool.query(
+    await client.query(
       `UPDATE cuotas SET tipificacion_cartera = $1, observacion = $2, fecha_gestion = NOW(), gestionado_por = $3 WHERE id = $4`,
       [tipNombre, observacion || null, req.user.id, cuotaId]
     );
 
+    await client.query('COMMIT');
+
     res.json({ ...insertRes.rows[0], tipificacion_nombre: tipNombre });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('POST /api/cartera/cuotas/:id/gestion error:', err);
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 

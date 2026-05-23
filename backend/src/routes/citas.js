@@ -159,10 +159,14 @@ router.patch('/:lead_id/calificar', auth, async (req, res) => {
     return res.status(400).json({ error: 'Calificación inválida' });
   }
 
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     // Obtener el lead
-    const leadRes = await pool.query('SELECT * FROM leads WHERE id = $1', [lead_id]);
+    const leadRes = await client.query('SELECT * FROM leads WHERE id = $1', [lead_id]);
     if (leadRes.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Lead no encontrado' });
     }
     const lead = leadRes.rows[0];
@@ -170,14 +174,14 @@ router.patch('/:lead_id/calificar', auth, async (req, res) => {
     const hoy = hoyEC();
 
     // Verificar si ya existe visita hoy
-    const visitaExistente = await pool.query(
+    const visitaExistente = await client.query(
       'SELECT id FROM visitas_sala WHERE lead_id = $1 AND fecha = $2::date',
       [lead_id, hoy]
     );
 
     if (visitaExistente.rows.length > 0) {
       // Actualizar visita existente
-      await pool.query(`
+      await client.query(`
         UPDATE visitas_sala
         SET calificacion = $1, hora_llegada = $2, consultor_id = $3,
             acompanante = $4, outsourcing_indicado = $5, updated_at = NOW()
@@ -186,7 +190,7 @@ router.patch('/:lead_id/calificar', auth, async (req, res) => {
           acompanante || null, outsourcing_indicado || null, lead_id, hoy]);
     } else {
       // Crear nueva visita
-      await pool.query(`
+      await client.query(`
         INSERT INTO visitas_sala (
           lead_id, persona_id, sala_id, hora_cita_agendada, hora_llegada,
           calificacion, consultor_id, hostess_id, acompanante, outsourcing_indicado, fecha
@@ -205,14 +209,16 @@ router.patch('/:lead_id/calificar', auth, async (req, res) => {
     }
 
     // Actualizar estado del lead
-    await pool.query(
+    await client.query(
       'UPDATE leads SET estado = $1, updated_at = NOW() WHERE id = $2',
       [nuevoEstado, lead_id]
     );
 
+    await client.query('COMMIT');
+
     res.json({ message: 'Calificación registrada', estado: nuevoEstado });
 
-    // Webhook: tour_registrado (fire-and-forget, solo si es TOUR)
+    // Webhook: tour_registrado (fire-and-forget tras COMMIT, solo si es TOUR)
     if (calificacion === 'TOUR') {
       dispararWebhook('tour_registrado', {
         lead_id: parseInt(lead_id),
@@ -222,8 +228,11 @@ router.patch('/:lead_id/calificar', auth, async (req, res) => {
       });
     }
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: 'Error al calificar visita' });
+  } finally {
+    client.release();
   }
 });
 
