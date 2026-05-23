@@ -180,11 +180,19 @@ export default function OutsourcingPage() {
         sala_id: Number(leadForm.sala_id),
         outsourcing_empresa_id: leadForm.outsourcing_empresa_id ? Number(leadForm.outsourcing_empresa_id) : null,
       })
-      setSuccess('Lead creado exitosamente. Aparecera en el pre-manifiesto de las hostess.')
+      setSuccess('Cita tentativa creada. Pasa al confirmador y aparece en el pre-manifiesto del dia de la cita. Revisa "Mi Panel".')
       setLeadForm({ nombre: '', telefono: '', fecha_cita: '', sala_id: leadForm.sala_id, patologia: '', observacion: '', outsourcing_empresa_id: leadForm.outsourcing_empresa_id })
-      setTimeout(() => setSuccess(null), 4000)
+      setTimeout(() => setSuccess(null), 6000)
+      // Refrescar Mi Panel para confirmar que el lead llego a la base de datos
+      if (esOutsourcing) cargarMiPanel()
     } catch (e) {
-      setError(e.response?.data?.error || 'Error al crear lead')
+      const existente = e.response?.data?.lead_existente
+      if (existente) {
+        const f = existente.fecha_cita ? formatDate(existente.fecha_cita) : 'sin fecha'
+        setError(`Ya existe una cita activa para este telefono en ${existente.sala || 'esta sala'} (estado: ${existente.estado}, fecha: ${f}${existente.agente ? `, agente: ${existente.agente}` : ''}). Si esa cita ya no aplica, marcala como cancelada para poder re-agendar.`)
+      } else {
+        setError(e.response?.data?.error || 'Error al crear lead')
+      }
     } finally {
       setGuardandoLead(false)
     }
@@ -428,7 +436,7 @@ export default function OutsourcingPage() {
           {/* ── Formulario individual ── */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-1">Carga individual</h2>
-            <p className="text-sm text-gray-500 mb-4">Registra una cita manualmente. El lead quedara con estado "confirmada" y aparecera en el pre-manifiesto.</p>
+            <p className="text-sm text-gray-500 mb-4">Registra una cita manualmente. El lead queda como cita "tentativa", pasa al confirmador y aparece en el pre-manifiesto del dia de la cita.</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
@@ -603,7 +611,9 @@ export default function OutsourcingPage() {
 
                 {resultado.importados > 0 && (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">
-                    Se importaron {resultado.importados} citas desde "{resultado.archivo_nombre}". Apareceran en el pre-manifiesto de las hostess.
+                    Se importaron {resultado.importados} leads desde "{resultado.archivo_nombre}".
+                    {resultado.citas > 0 && ` ${resultado.citas} con fecha (citas tentativas, aparecen en el pre-manifiesto del dia de la cita).`}
+                    {resultado.pendientes > 0 && ` ${resultado.pendientes} sin fecha (quedan pendientes para que el TMK los llame y agende).`}
                   </div>
                 )}
 
