@@ -223,21 +223,28 @@ router.post('/calcular', auth, requireAdminOrDirector, async (req, res) => {
       return res.json({ mensaje: 'No hay comisiones para calcular en este periodo', liquidaciones: [] });
     }
 
-    // INSERT ... ON CONFLICT DO UPDATE solo si estado = 'pendiente'
-    const insertPromises = filas.map(row =>
-      pool.query(`
-        INSERT INTO liquidaciones (consultor_id, sala_id, mes, monto_comision, contratos_count, estado)
-        VALUES ($1, $2, $3, $4, $5, 'pendiente')
-        ON CONFLICT (consultor_id, mes) DO UPDATE
-          SET monto_comision   = EXCLUDED.monto_comision,
-              contratos_count  = EXCLUDED.contratos_count,
-              sala_id          = EXCLUDED.sala_id
-          WHERE liquidaciones.estado = 'pendiente'
-        RETURNING id
-      `, [row.usuario_id, row.sala_id, mes, Math.round(row.monto_comision * 100) / 100, row.contratos_count])
-    );
-
-    await Promise.all(insertPromises);
+    // INSERT ... ON CONFLICT DO UPDATE solo si estado = 'pendiente' (atómico: una transacción)
+    const liqClient = await pool.connect();
+    try {
+      await liqClient.query('BEGIN');
+      for (const row of filas) {
+        await liqClient.query(`
+          INSERT INTO liquidaciones (consultor_id, sala_id, mes, monto_comision, contratos_count, estado)
+          VALUES ($1, $2, $3, $4, $5, 'pendiente')
+          ON CONFLICT (consultor_id, mes) DO UPDATE
+            SET monto_comision   = EXCLUDED.monto_comision,
+                contratos_count  = EXCLUDED.contratos_count,
+                sala_id          = EXCLUDED.sala_id
+            WHERE liquidaciones.estado = 'pendiente'
+        `, [row.usuario_id, row.sala_id, mes, Math.round(row.monto_comision * 100) / 100, row.contratos_count]);
+      }
+      await liqClient.query('COMMIT');
+    } catch (e) {
+      await liqClient.query('ROLLBACK');
+      throw e;
+    } finally {
+      liqClient.release();
+    }
 
     // Retornar lista actualizada del mes
     const lista = await pool.query(`
@@ -470,7 +477,7 @@ router.get('/:id/detalle', auth, requireAdminOrDirector, async (req, res) => {
       resumen: {
         total_comision: Math.round(totalComision * 100) / 100,
         total_suspendido: Math.round(totalSuspendido * 100) / 100,
-        neto_comision: Math.round((totalComision) * 100) / 100,
+        neto_comision: Math.round((totalComision - totalSuspendido) * 100) / 100,
       },
     });
   } catch (err) {
@@ -539,20 +546,28 @@ router.patch('/:id/suspender', auth, requireAdminOrDirector, async (req, res) =>
       ? Math.round(parseFloat(contrato.total_pagado_base) * pctComision / 100 * 100) / 100
       : 0;
 
-    // Insertar o reactivar suspensión
-    await pool.query(`
-      INSERT INTO comisiones_suspendidas (liquidacion_id, contrato_id, usuario_id, monto_comision, motivo, suspendido_por, activo)
-      VALUES ($1, $2, $3, $4, $5, $6, true)
-      ON CONFLICT (liquidacion_id, contrato_id) DO UPDATE SET
-        activo = true,
-        motivo = EXCLUDED.motivo,
-        monto_comision = EXCLUDED.monto_comision,
-        suspendido_por = EXCLUDED.suspendido_por,
-        fecha = NOW()
-    `, [id, contrato_id, liq.consultor_id, montoComision, motivo || null, req.user.id]);
-
-    // Recalcular monto_comision de la liquidación restando suspensiones activas
-    await recalcularMontoLiquidacion(id);
+    // Insertar/reactivar suspensión y recalcular el monto de forma atómica
+    const suspClient = await pool.connect();
+    try {
+      await suspClient.query('BEGIN');
+      await suspClient.query(`
+        INSERT INTO comisiones_suspendidas (liquidacion_id, contrato_id, usuario_id, monto_comision, motivo, suspendido_por, activo)
+        VALUES ($1, $2, $3, $4, $5, $6, true)
+        ON CONFLICT (liquidacion_id, contrato_id) DO UPDATE SET
+          activo = true,
+          motivo = EXCLUDED.motivo,
+          monto_comision = EXCLUDED.monto_comision,
+          suspendido_por = EXCLUDED.suspendido_por,
+          fecha = NOW()
+      `, [id, contrato_id, liq.consultor_id, montoComision, motivo || null, req.user.id]);
+      await recalcularMontoLiquidacion(id, suspClient);
+      await suspClient.query('COMMIT');
+    } catch (e) {
+      await suspClient.query('ROLLBACK');
+      throw e;
+    } finally {
+      suspClient.release();
+    }
 
     res.json({ ok: true, mensaje: 'Comisión suspendida correctamente' });
   } catch (err) {
@@ -584,17 +599,26 @@ router.patch('/:id/reactivar', auth, requireAdminOrDirector, async (req, res) =>
       return res.status(400).json({ error: 'No se puede reactivar comisiones de una liquidación pagada' });
     }
 
-    // Desactivar la suspensión
-    const result = await pool.query(
-      `UPDATE comisiones_suspendidas SET activo = false WHERE liquidacion_id = $1 AND contrato_id = $2 AND activo = true RETURNING *`,
-      [id, contrato_id]
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'No se encontró suspensión activa para este contrato' });
+    // Desactivar la suspensión y recalcular de forma atómica
+    const reactClient = await pool.connect();
+    try {
+      await reactClient.query('BEGIN');
+      const result = await reactClient.query(
+        `UPDATE comisiones_suspendidas SET activo = false WHERE liquidacion_id = $1 AND contrato_id = $2 AND activo = true RETURNING *`,
+        [id, contrato_id]
+      );
+      if (result.rows.length === 0) {
+        await reactClient.query('ROLLBACK');
+        return res.status(404).json({ error: 'No se encontró suspensión activa para este contrato' });
+      }
+      await recalcularMontoLiquidacion(id, reactClient);
+      await reactClient.query('COMMIT');
+    } catch (e) {
+      await reactClient.query('ROLLBACK');
+      throw e;
+    } finally {
+      reactClient.release();
     }
-
-    // Recalcular monto_comision de la liquidación
-    await recalcularMontoLiquidacion(id);
 
     res.json({ ok: true, mensaje: 'Comisión reactivada correctamente' });
   } catch (err) {
@@ -604,8 +628,8 @@ router.patch('/:id/reactivar', auth, requireAdminOrDirector, async (req, res) =>
 });
 
 // ─── Helper: recalcular monto_comision descontando suspendidas ───────────────
-async function recalcularMontoLiquidacion(liquidacionId) {
-  const liqRes = await pool.query(
+async function recalcularMontoLiquidacion(liquidacionId, db = pool) {
+  const liqRes = await db.query(
     `SELECT l.*, u.pct_comision_venta, u.pct_desbloqueo
      FROM liquidaciones l
      JOIN usuarios u ON l.consultor_id = u.id
@@ -618,7 +642,7 @@ async function recalcularMontoLiquidacion(liquidacionId) {
   const pctDesbloqueo = parseFloat(liq.pct_desbloqueo || 30);
 
   // Obtener total comisión bruta (sobre monto base, sin intereses)
-  const totalRes = await pool.query(`
+  const totalRes = await db.query(`
     SELECT COALESCE(SUM(
       CASE
         WHEN COALESCE(pagado.total, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
@@ -643,7 +667,7 @@ async function recalcularMontoLiquidacion(liquidacionId) {
   const comisionBruta = parseFloat(totalRes.rows[0].comision_bruta || 0);
 
   // Obtener total suspendido
-  const suspRes = await pool.query(
+  const suspRes = await db.query(
     `SELECT COALESCE(SUM(monto_comision), 0) AS total_suspendido
      FROM comisiones_suspendidas
      WHERE liquidacion_id = $1 AND activo = true`,
@@ -653,7 +677,7 @@ async function recalcularMontoLiquidacion(liquidacionId) {
 
   const nuevoMonto = Math.round((comisionBruta - totalSuspendido) * 100) / 100;
 
-  await pool.query(
+  await db.query(
     `UPDATE liquidaciones SET monto_comision = $1 WHERE id = $2`,
     [Math.max(nuevoMonto, 0), liquidacionId]
   );

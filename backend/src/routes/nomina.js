@@ -556,9 +556,12 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
       });
     }
 
-    // 4. INSERT o UPDATE si estado = 'borrador'
-    for (const r of resultados) {
-      await pool.query(`
+    // 4. INSERT o UPDATE si estado = 'borrador' (atómico: todo o nada en una transacción)
+    const nominaClient = await pool.connect();
+    try {
+      await nominaClient.query('BEGIN');
+      for (const r of resultados) {
+      await nominaClient.query(`
         INSERT INTO nomina_mensual (
           usuario_id, sala_id, mes, tipo_liquidacion,
           sueldo_base_config, pct_comision_venta_config, pct_desbloqueo_config,
@@ -609,6 +612,13 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
         r.aporte_iess, r.total_ingresos, r.total_deducciones, r.neto_a_pagar,
         r.desglose_semanal_tmk ? JSON.stringify(r.desglose_semanal_tmk) : null,
       ]);
+      }
+      await nominaClient.query('COMMIT');
+    } catch (e) {
+      await nominaClient.query('ROLLBACK');
+      throw e;
+    } finally {
+      nominaClient.release();
     }
 
     // 5. Retornar lista actualizada

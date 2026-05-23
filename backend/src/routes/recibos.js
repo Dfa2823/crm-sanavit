@@ -11,6 +11,21 @@ const router = express.Router();
     await pool.query(`ALTER TABLE recibos ADD COLUMN IF NOT EXISTS comprobante TEXT`);
     await pool.query(`ALTER TABLE recibos ADD COLUMN IF NOT EXISTS tipo_tarjeta VARCHAR(20)`);
     await pool.query(`ALTER TABLE recibos ADD COLUMN IF NOT EXISTS entidad_tarjeta VARCHAR(50)`);
+    // Contador propio de recibos por sala (independiente de serial_contrato).
+    await pool.query(`ALTER TABLE salas ADD COLUMN IF NOT EXISTS serial_recibo INTEGER DEFAULT 0`);
+    // Backfill colisión-seguro: siembra el contador con el máximo serial ya usado en
+    // consecutivos existentes (patrón PREFIX-RC-N). Idempotente: solo sube, nunca baja.
+    await pool.query(`
+      UPDATE salas s SET serial_recibo = sub.maxserial
+      FROM (
+        SELECT sala_id,
+               MAX( NULLIF(regexp_replace(consecutivo, '^.*-RC-', ''), '')::int ) AS maxserial
+        FROM recibos
+        WHERE consecutivo ~ '-RC-[0-9]+$' AND sala_id IS NOT NULL
+        GROUP BY sala_id
+      ) sub
+      WHERE s.id = sub.sala_id AND s.serial_recibo < sub.maxserial
+    `);
   } catch (err) {
     console.error('Recibos migration warning:', err.message);
   }
@@ -107,16 +122,19 @@ router.post('/', auth, async (req, res) => {
     let consecutivo = null;
     if (salaId) {
       const salaResult = await client.query(
-        'SELECT prefijo_contrato, serial_contrato FROM salas WHERE id = $1 FOR UPDATE',
+        'SELECT prefijo_contrato, serial_recibo FROM salas WHERE id = $1 FOR UPDATE',
         [salaId]
       );
       if (salaResult.rows.length > 0) {
-        const { prefijo_contrato, serial_contrato } = salaResult.rows[0];
-        const nuevoSerial = (serial_contrato || 0) + 1;
-        // Usamos serial_contrato como base para recibos también (simplificado)
+        const { prefijo_contrato, serial_recibo } = salaResult.rows[0];
+        const nuevoSerial = (serial_recibo || 0) + 1;
+        // Incremento del contador propio de recibos bajo el lock FOR UPDATE de la sala
+        // (serializa recibos concurrentes y evita la colisión de consecutivo UNIQUE).
+        await client.query(
+          'UPDATE salas SET serial_recibo = $1 WHERE id = $2',
+          [nuevoSerial, salaId]
+        );
         consecutivo = `${prefijo_contrato}-RC-${nuevoSerial}`;
-        // No actualizamos serial_contrato — solo contratos lo hacen
-        // En producción debería haber una tabla consecutivos separada
       }
     }
 
@@ -128,7 +146,7 @@ router.post('/', auth, async (req, res) => {
 
     // Si hay cuota_id, actualizar el estado de la cuota
     if (cuota_id) {
-      const cuota = await client.query('SELECT * FROM cuotas WHERE id = $1', [cuota_id]);
+      const cuota = await client.query('SELECT * FROM cuotas WHERE id = $1 FOR UPDATE', [cuota_id]);
       if (cuota.rows.length > 0) {
         const q = cuota.rows[0];
         const nuevoMontoPagado = parseFloat(q.monto_pagado || 0) + parseFloat(valor);

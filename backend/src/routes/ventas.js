@@ -324,7 +324,10 @@ router.post('/', auth, async (req, res) => {
   // Si se envía fecha_primer_pago, usar su día; si no, día 1 del mes siguiente
   const dia_pago = (() => {
     if (fecha_primer_pago) {
-      return new Date(fecha_primer_pago).getDate();
+      // Derivar el día del string evita el desfase UTC de new Date() sobre una fecha
+      // solo-fecha (mismo criterio que el loop de cuotas más abajo).
+      const parts = String(fecha_primer_pago).split('-').map(Number);
+      return parts[2] || 1;
     }
     return 1; // primer día del mes siguiente por defecto
   })();
