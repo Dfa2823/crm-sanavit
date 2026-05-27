@@ -235,93 +235,251 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
     );
     const escalasTmk = escalasRes.rows;
 
+    // ─────────────────────────────────────────────────────────────────────
+    // PRE-CÁLCULO BATCH: en lugar de ~10 queries por usuario (N+1), se ejecuta
+    // cada agregación UNA sola vez agrupada por la dimensión de usuario y se
+    // guarda en Maps keyed por usuario_id. El loop lee de los Maps.
+    // Las tasas por-usuario (pct_desbloqueo / pct_comision_venta /
+    // pct_comision_cobro) se toman directamente de usuarios u en el SQL.
+    // Cada query usa los MISMOS filtros, sub-joins y expresiones que la versión
+    // por-usuario para garantizar resultados numéricamente idénticos.
+    // ─────────────────────────────────────────────────────────────────────
+
+    // 2a (batch). Comisión por ventas + contratos desbloqueados — group by consultor_id
+    const cvAllRes = await pool.query(`
+      SELECT
+        c.consultor_id AS usuario_id,
+        COALESCE(SUM(CASE
+          WHEN COALESCE(pagado.total_base, 0) / NULLIF(c.monto_total, 0) * 100 >= u.pct_desbloqueo
+          THEN COALESCE(pagado.total_base, 0) * u.pct_comision_venta / 100
+          ELSE 0
+        END), 0)::numeric AS comision_ventas,
+        COUNT(CASE
+          WHEN COALESCE(pagado.total_base, 0) / NULLIF(c.monto_total, 0) * 100 >= u.pct_desbloqueo
+          THEN 1
+        END)::integer AS contratos_desbloqueados
+      FROM contratos c
+      JOIN usuarios u ON c.consultor_id = u.id
+      LEFT JOIN (
+        SELECT r.contrato_id,
+               SUM(r.valor) AS total,
+               SUM(r.valor) - COALESCE((SELECT SUM(COALESCE(cu.monto_interes, 0)) FROM cuotas cu WHERE cu.contrato_id = r.contrato_id AND cu.estado = 'pagado'), 0) AS total_base
+        FROM recibos r WHERE r.estado = 'activo'
+        GROUP BY r.contrato_id
+      ) pagado ON pagado.contrato_id = c.id
+      WHERE TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $1
+        AND c.estado NOT IN ('cancelado')
+        AND c.consultor_id IS NOT NULL
+      GROUP BY c.consultor_id
+    `, [mes]);
+    const cvMap = new Map();
+    for (const r of cvAllRes.rows) cvMap.set(r.usuario_id, r);
+
+    // 2b (batch). Comisión por cobros de cartera — group by asesor_cartera_id
+    const ccAllRes = await pool.query(`
+      SELECT c.asesor_cartera_id AS usuario_id,
+        COALESCE(SUM(r.valor), 0) * u.pct_comision_cobro / 100 AS comision_cobros
+      FROM recibos r
+      JOIN contratos c ON r.contrato_id = c.id
+      JOIN usuarios u ON c.asesor_cartera_id = u.id
+      WHERE TO_CHAR(r.fecha_pago, 'YYYY-MM') = $1
+        AND r.estado = 'activo'
+        AND c.asesor_cartera_id IS NOT NULL
+      GROUP BY c.asesor_cartera_id, u.pct_comision_cobro
+    `, [mes]);
+    const ccMap = new Map();
+    for (const r of ccAllRes.rows) ccMap.set(r.usuario_id, r);
+
+    // 2c (batch). Bono por tours — dos fuentes independientes (consultor_id y tmk_id).
+    // Se mantienen separadas en dos Maps y se suman al leer, replicando exactamente
+    // las dos subconsultas COUNT(*) de la versión por-usuario.
+    const toursConsultorRes = await pool.query(`
+      SELECT consultor_id AS usuario_id, COUNT(*)::integer AS tours_count
+      FROM visitas_sala
+      WHERE TO_CHAR(fecha, 'YYYY-MM') = $1
+        AND calificacion = 'TOUR'
+        AND consultor_id IS NOT NULL
+      GROUP BY consultor_id
+    `, [mes]);
+    const toursConsultorMap = new Map();
+    for (const r of toursConsultorRes.rows) toursConsultorMap.set(r.usuario_id, parseInt(r.tours_count) || 0);
+
+    const toursTmkRes = await pool.query(`
+      SELECT l.tmk_id AS usuario_id, COUNT(*)::integer AS tours_count
+      FROM leads l
+      JOIN visitas_sala vs ON vs.lead_id = l.id
+      WHERE l.tmk_id IS NOT NULL
+        AND TO_CHAR(vs.fecha, 'YYYY-MM') = $1
+        AND vs.calificacion = 'TOUR'
+      GROUP BY l.tmk_id
+    `, [mes]);
+    const toursTmkMap = new Map();
+    for (const r of toursTmkRes.rows) toursTmkMap.set(r.usuario_id, parseInt(r.tours_count) || 0);
+
+    // 2d (batch). Bono por citas confirmadas — group by confirmador_id
+    const citaAllRes = await pool.query(`
+      SELECT confirmador_id AS usuario_id, COUNT(*)::integer AS citas_count
+      FROM leads
+      WHERE confirmador_id IS NOT NULL
+        AND TO_CHAR(COALESCE(fecha_cita, created_at), 'YYYY-MM') = $1
+        AND estado IN ('confirmada', 'tour', 'venta')
+      GROUP BY confirmador_id
+    `, [mes]);
+    const citaMap = new Map();
+    for (const r of citaAllRes.rows) citaMap.set(r.usuario_id, parseInt(r.citas_count) || 0);
+
+    // 2e (batch). Metas mensuales — keyed por usuario_id (lookup directo del mes)
+    const metaAllRes = await pool.query(
+      `SELECT usuario_id, meta_contratos, meta_ventas_monto, meta_tours, bono_cumplimiento
+       FROM metas_mensuales WHERE mes = $1`,
+      [mes]
+    );
+    const metaMap = new Map();
+    for (const r of metaAllRes.rows) metaMap.set(r.usuario_id, r);
+
+    // 2e (batch). Contratos reales del mes (para validar meta) — group by consultor_id
+    const realContratosAllRes = await pool.query(
+      `SELECT consultor_id AS usuario_id,
+              COUNT(*)::integer AS total,
+              COALESCE(SUM(monto_total), 0)::numeric AS monto
+       FROM contratos
+       WHERE TO_CHAR(fecha_contrato,'YYYY-MM') = $1 AND estado NOT IN ('cancelado')
+         AND consultor_id IS NOT NULL
+       GROUP BY consultor_id`,
+      [mes]
+    );
+    const realContratosMap = new Map();
+    for (const r of realContratosAllRes.rows) realContratosMap.set(r.usuario_id, r);
+
+    // 2f (batch). Asistencia — días trabajados — group by usuario_id
+    const asistAllRes = await pool.query(`
+      SELECT usuario_id, COUNT(*)::integer AS dias_trabajados
+      FROM asistencia
+      WHERE TO_CHAR(fecha, 'YYYY-MM') = $1
+        AND estado IN ('presente', 'tardanza')
+      GROUP BY usuario_id
+    `, [mes]);
+    const asistMap = new Map();
+    for (const r of asistAllRes.rows) asistMap.set(r.usuario_id, parseInt(r.dias_trabajados) || 0);
+
+    // 2g (batch). Comisión por abonos a cartera de meses anteriores — group by consultor_id.
+    // Replica SUM(r.valor) - SUM(intereses de cuotas del set DISTINCT de contratos del
+    // consultor). Como contrato_id → un único consultor, el DISTINCT por-consultor
+    // equivale al DISTINCT(consultor_id, contrato_id) global → resultado idéntico.
+    const abonosAllRes = await pool.query(`
+      WITH abono_recibos AS (
+        SELECT c.consultor_id AS usuario_id, SUM(r.valor) AS total_recibos
+        FROM recibos r
+        JOIN contratos c ON r.contrato_id = c.id
+        WHERE TO_CHAR(r.fecha_pago, 'YYYY-MM') = $1
+          AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') != $1
+          AND r.estado = 'activo'
+          AND c.estado NOT IN ('cancelado')
+          AND c.consultor_id IS NOT NULL
+        GROUP BY c.consultor_id
+      ),
+      abono_contratos AS (
+        SELECT DISTINCT c2.consultor_id AS usuario_id, r2.contrato_id
+        FROM recibos r2
+        JOIN contratos c2 ON r2.contrato_id = c2.id
+        WHERE TO_CHAR(r2.fecha_pago, 'YYYY-MM') = $1
+          AND TO_CHAR(c2.fecha_contrato, 'YYYY-MM') != $1
+          AND r2.estado = 'activo'
+          AND c2.estado NOT IN ('cancelado')
+          AND c2.consultor_id IS NOT NULL
+      ),
+      abono_interes AS (
+        SELECT ac.usuario_id, SUM(COALESCE(cu.monto_interes, 0)) AS interes
+        FROM abono_contratos ac
+        JOIN cuotas cu ON cu.contrato_id = ac.contrato_id
+        WHERE cu.estado = 'pagado'
+          AND TO_CHAR(cu.updated_at, 'YYYY-MM') = $1
+        GROUP BY ac.usuario_id
+      )
+      SELECT ar.usuario_id,
+        COALESCE(ar.total_recibos - COALESCE(ai.interes, 0), 0) * u.pct_comision_venta / 100 AS comision_abonos
+      FROM abono_recibos ar
+      JOIN usuarios u ON ar.usuario_id = u.id
+      LEFT JOIN abono_interes ai ON ai.usuario_id = ar.usuario_id
+    `, [mes]);
+    const abonosMap = new Map();
+    for (const r of abonosAllRes.rows) abonosMap.set(r.usuario_id, r);
+
+    // 2g-bis (batch). Arrastre de cartera TMK — group by l.tmk_id
+    const arrastreTmkAllRes = await pool.query(`
+      SELECT l.tmk_id AS usuario_id,
+        COALESCE(SUM(r.valor), 0) * u.pct_comision_cobro / 100 AS comision_arrastre_tmk
+      FROM recibos r
+      JOIN contratos c ON r.contrato_id = c.id
+      LEFT JOIN visitas_sala vs ON c.visita_sala_id = vs.id
+      LEFT JOIN leads l ON vs.lead_id = l.id
+      JOIN usuarios u ON l.tmk_id = u.id
+      WHERE l.tmk_id IS NOT NULL
+        AND TO_CHAR(r.fecha_pago, 'YYYY-MM') = $1
+        AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') != $1
+        AND r.estado = 'activo'
+        AND c.estado NOT IN ('cancelado')
+      GROUP BY l.tmk_id, u.pct_comision_cobro
+    `, [mes]);
+    const arrastreTmkMap = new Map();
+    for (const r of arrastreTmkAllRes.rows) arrastreTmkMap.set(r.usuario_id, r);
+
+    // 2h (batch). Comisión por ventas reactivadas — group by consultor_id
+    const reactivAllRes = await pool.query(`
+      SELECT c.consultor_id AS usuario_id,
+        COALESCE(SUM(COALESCE(pagado.total, 0)) * u.pct_comision_venta / 100, 0) AS comision_react
+      FROM contratos c
+      JOIN usuarios u ON c.consultor_id = u.id
+      LEFT JOIN (SELECT contrato_id, SUM(valor) AS total FROM recibos WHERE estado='activo' GROUP BY contrato_id) pagado ON pagado.contrato_id = c.id
+      WHERE TO_CHAR(c.updated_at, 'YYYY-MM') = $1
+        AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') != $1
+        AND c.estado = 'activo'
+        AND c.consultor_id IS NOT NULL
+      GROUP BY c.consultor_id
+    `, [mes]);
+    const reactivMap = new Map();
+    for (const r of reactivAllRes.rows) reactivMap.set(r.usuario_id, r);
+
+    // 2c-bis (batch). Tours TMK por semana (fechas crudas) — group by l.tmk_id.
+    // Se recolectan las fechas de tour por TMK en un Map de arrays; el loop
+    // agrupa por semana en JS exactamente igual que antes.
+    const toursSemAllRes = await pool.query(`
+      SELECT l.tmk_id AS usuario_id, vs.fecha::date AS fecha_tour
+      FROM leads l
+      JOIN visitas_sala vs ON vs.lead_id = l.id
+      WHERE l.tmk_id IS NOT NULL
+        AND TO_CHAR(vs.fecha, 'YYYY-MM') = $1
+        AND vs.calificacion = 'TOUR'
+    `, [mes]);
+    const toursSemMap = new Map();
+    for (const r of toursSemAllRes.rows) {
+      if (!toursSemMap.has(r.usuario_id)) toursSemMap.set(r.usuario_id, []);
+      toursSemMap.get(r.usuario_id).push(r);
+    }
+
     const resultados = [];
 
     for (const u of usuariosRes.rows) {
-      // 2a. Comisión por ventas (si es consultor con contratos del mes)
-      // REQ2: Comisión sobre monto BASE (sin intereses). Se resta monto_interes de cuotas pagadas.
-      const cvRes = await pool.query(`
-        SELECT
-          COALESCE(SUM(CASE
-            WHEN COALESCE(pagado.total_base, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
-            THEN COALESCE(pagado.total_base, 0) * $4 / 100
-            ELSE 0
-          END), 0)::numeric AS comision_ventas,
-          COUNT(CASE
-            WHEN COALESCE(pagado.total_base, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
-            THEN 1
-          END)::integer AS contratos_desbloqueados
-        FROM contratos c
-        LEFT JOIN (
-          SELECT r.contrato_id,
-                 SUM(r.valor) AS total,
-                 SUM(r.valor) - COALESCE((SELECT SUM(COALESCE(cu.monto_interes, 0)) FROM cuotas cu WHERE cu.contrato_id = r.contrato_id AND cu.estado = 'pagado'), 0) AS total_base
-          FROM recibos r WHERE r.estado = 'activo'
-          GROUP BY r.contrato_id
-        ) pagado ON pagado.contrato_id = c.id
-        WHERE c.consultor_id = $1
-          AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $2
-          AND c.estado NOT IN ('cancelado')
-      `, [u.id, mes, u.pct_desbloqueo, u.pct_comision_venta]);
+      // 2a. Comisión por ventas (lectura desde cvMap, batch agrupado por consultor_id)
+      const cvRow = cvMap.get(u.id);
 
-      // 2b. Comisión por cobros de cartera
-      const ccRes = await pool.query(`
-        SELECT COALESCE(SUM(r.valor), 0) * $3 / 100 AS comision_cobros
-        FROM recibos r
-        JOIN contratos c ON r.contrato_id = c.id
-        WHERE c.asesor_cartera_id = $1
-          AND TO_CHAR(r.fecha_pago, 'YYYY-MM') = $2
-          AND r.estado = 'activo'
-      `, [u.id, mes, u.pct_comision_cobro]);
+      // 2b. Comisión por cobros de cartera (lectura desde ccMap, batch por asesor_cartera_id)
+      const ccRow = ccMap.get(u.id);
 
-      // 2c. Bono por tours
-      // - Consultor/hostess: visitas donde consultor_id = u.id con calificacion TOUR
-      // - TMK: leads donde tmk_id = u.id que tuvieron visita con calificacion TOUR
-      const tourRes = await pool.query(`
-        SELECT (
-          -- Tours como consultor en sala
-          (SELECT COUNT(*) FROM visitas_sala
-           WHERE TO_CHAR(fecha, 'YYYY-MM') = $2
-             AND calificacion = 'TOUR'
-             AND consultor_id = $1)
-          +
-          -- Tours como TMK (lead propio que llegó a sala como TOUR)
-          (SELECT COUNT(*) FROM leads l
-           JOIN visitas_sala vs ON vs.lead_id = l.id
-           WHERE l.tmk_id = $1
-             AND TO_CHAR(vs.fecha, 'YYYY-MM') = $2
-             AND vs.calificacion = 'TOUR')
-        )::integer AS tours_count
-      `, [u.id, mes]);
+      // 2c. Bono por tours = tours como consultor + tours como TMK (dos Maps batch sumados)
+      const tours_count = (toursConsultorMap.get(u.id) || 0) + (toursTmkMap.get(u.id) || 0);
 
-      // 2d. Bono por citas confirmadas (confirmador)
-      const citaRes = await pool.query(`
-        SELECT COUNT(*)::integer AS citas_count
-        FROM leads
-        WHERE confirmador_id = $1
-          AND TO_CHAR(COALESCE(fecha_cita, created_at), 'YYYY-MM') = $2
-          AND estado IN ('confirmada', 'tour', 'venta')
-      `, [u.id, mes]);
+      // 2d. Bono por citas confirmadas (lectura desde citaMap, batch por confirmador_id)
+      const citas_count = citaMap.get(u.id) || 0;
 
-      // 2e. Verificar meta mensual para bono_meta
+      // 2e. Verificar meta mensual para bono_meta (lectura desde metaMap / realContratosMap)
       let bono_meta = 0;
-      const metaRes = await pool.query(
-        `SELECT meta_contratos, meta_ventas_monto, meta_tours, bono_cumplimiento
-         FROM metas_mensuales WHERE usuario_id = $1 AND mes = $2`,
-        [u.id, mes]
-      );
-      if (metaRes.rows.length > 0) {
-        const meta = metaRes.rows[0];
-        const realContratosRes = await pool.query(
-          `SELECT COUNT(*)::integer AS total,
-                  COALESCE(SUM(monto_total), 0)::numeric AS monto
-           FROM contratos
-           WHERE consultor_id = $1 AND TO_CHAR(fecha_contrato,'YYYY-MM') = $2 AND estado NOT IN ('cancelado')`,
-          [u.id, mes]
-        );
-        const realTours = parseInt(tourRes.rows[0].tours_count) || 0;
-        const realContratos = parseInt(realContratosRes.rows[0].total) || 0;
-        const realMonto = parseFloat(realContratosRes.rows[0].monto) || 0;
+      const meta = metaMap.get(u.id);
+      if (meta) {
+        const realContratosRow = realContratosMap.get(u.id);
+        const realTours = tours_count;
+        const realContratos = parseInt(realContratosRow?.total) || 0;
+        const realMonto = parseFloat(realContratosRow?.monto) || 0;
         const checks = [];
         if (Number(meta.meta_contratos) > 0)    checks.push(realContratos >= Number(meta.meta_contratos));
         if (Number(meta.meta_ventas_monto) > 0)  checks.push(realMonto >= Number(meta.meta_ventas_monto));
@@ -331,14 +489,8 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
         }
       }
 
-      // 2f. Asistencia — calcular días trabajados y garantizado
-      const asistRes = await pool.query(`
-        SELECT COUNT(*)::integer AS dias_trabajados
-        FROM asistencia
-        WHERE usuario_id = $1 AND TO_CHAR(fecha, 'YYYY-MM') = $2
-          AND estado IN ('presente', 'tardanza')
-      `, [u.id, mes]);
-      const dias_trabajados = parseInt(asistRes.rows[0]?.dias_trabajados) || 0;
+      // 2f. Asistencia — días trabajados (lectura desde asistMap, batch por usuario_id)
+      const dias_trabajados = asistMap.get(u.id) || 0;
 
       // Días laborables del mes (L-V aproximado)
       const [anio, mesNum] = mes.split('-').map(Number);
@@ -349,63 +501,14 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
         if (dow !== 0 && dow !== 6) dias_laborables++;
       }
 
-      // 2g. Comisión por abonos a cartera de meses anteriores (consultor)
-      // REQ2: Comisión sobre monto base (sin intereses). Se descuenta la porción de interés
-      // proporcional a los pagos del período sobre contratos de meses anteriores.
-      const abonosRes = await pool.query(`
-        SELECT COALESCE(
-          SUM(r.valor) - COALESCE((
-            SELECT SUM(COALESCE(cu.monto_interes, 0))
-            FROM cuotas cu
-            WHERE cu.contrato_id IN (
-              SELECT DISTINCT r2.contrato_id FROM recibos r2
-              JOIN contratos c2 ON r2.contrato_id = c2.id
-              WHERE c2.consultor_id = $1
-                AND TO_CHAR(r2.fecha_pago, 'YYYY-MM') = $2
-                AND TO_CHAR(c2.fecha_contrato, 'YYYY-MM') != $2
-                AND r2.estado = 'activo'
-                AND c2.estado NOT IN ('cancelado')
-            )
-            AND cu.estado = 'pagado'
-            AND TO_CHAR(cu.updated_at, 'YYYY-MM') = $2
-          ), 0)
-        , 0) * $3 / 100 AS comision_abonos
-        FROM recibos r
-        JOIN contratos c ON r.contrato_id = c.id
-        WHERE c.consultor_id = $1
-          AND TO_CHAR(r.fecha_pago, 'YYYY-MM') = $2
-          AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') != $2
-          AND r.estado = 'activo'
-          AND c.estado NOT IN ('cancelado')
-      `, [u.id, mes, u.pct_comision_venta]);
+      // 2g. Comisión por abonos a cartera de meses anteriores (lectura desde abonosMap)
+      const abonosRow = abonosMap.get(u.id);
 
-      // 2g-bis. Arrastre de cartera para TMK: recibos pagados en el período
-      // sobre contratos de meses anteriores cuyo lead original pertenecía a este TMK.
-      // Traza: recibos → contratos → visita_sala → leads → tmk_id
-      // Solo se paga si el usuario tiene pct_comision_cobro > 0 y está activo.
-      const arrastreTmkRes = await pool.query(`
-        SELECT COALESCE(SUM(r.valor), 0) * $3 / 100 AS comision_arrastre_tmk
-        FROM recibos r
-        JOIN contratos c ON r.contrato_id = c.id
-        LEFT JOIN visitas_sala vs ON c.visita_sala_id = vs.id
-        LEFT JOIN leads l ON vs.lead_id = l.id
-        WHERE l.tmk_id = $1
-          AND TO_CHAR(r.fecha_pago, 'YYYY-MM') = $2
-          AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') != $2
-          AND r.estado = 'activo'
-          AND c.estado NOT IN ('cancelado')
-      `, [u.id, mes, u.pct_comision_cobro]);
+      // 2g-bis. Arrastre de cartera para TMK (lectura desde arrastreTmkMap, batch por tmk_id)
+      const arrastreTmkRow = arrastreTmkMap.get(u.id);
 
-      // 2h. Comisión por ventas reactivadas en el período
-      const reactivRes = await pool.query(`
-        SELECT COALESCE(SUM(COALESCE(pagado.total, 0)) * $3 / 100, 0) AS comision_react
-        FROM contratos c
-        LEFT JOIN (SELECT contrato_id, SUM(valor) AS total FROM recibos WHERE estado='activo' GROUP BY contrato_id) pagado ON pagado.contrato_id = c.id
-        WHERE c.consultor_id = $1
-          AND TO_CHAR(c.updated_at, 'YYYY-MM') = $2
-          AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') != $2
-          AND c.estado = 'activo'
-      `, [u.id, mes, u.pct_comision_venta]);
+      // 2h. Comisión por ventas reactivadas (lectura desde reactivMap, batch por consultor_id)
+      const reactivRow = reactivMap.get(u.id);
 
       // 3. Calcular totales
       const sueldo_base_cfg      = parseFloat(u.sueldo_base);
@@ -413,17 +516,15 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
       const garantizado          = dias_trabajados > 0
         ? parseFloat((sueldo_base_cfg * dias_trabajados / Math.max(dias_laborables, 1)).toFixed(2))
         : sueldo_base_cfg; // Si no hay asistencia registrada, paga completo
-      const comision_venta_recurrente = parseFloat(cvRes.rows[0].comision_ventas) || 0;
-      const comision_abonos_cartera   = parseFloat(abonosRes.rows[0]?.comision_abonos) || 0;
-      const comision_reactivaciones   = parseFloat(reactivRes.rows[0]?.comision_react) || 0;
+      const comision_venta_recurrente = parseFloat(cvRow?.comision_ventas) || 0;
+      const comision_abonos_cartera   = parseFloat(abonosRow?.comision_abonos) || 0;
+      const comision_reactivaciones   = parseFloat(reactivRow?.comision_react) || 0;
       const comision_ventas      = comision_venta_recurrente + comision_abonos_cartera + comision_reactivaciones;
-      const contratos_desbloq    = parseInt(cvRes.rows[0].contratos_desbloqueados) || 0;
+      const contratos_desbloq    = parseInt(cvRow?.contratos_desbloqueados) || 0;
       // Cobros de cartera: asesor_cartera + arrastre TMK (pagos de clientes viejos en este corte)
-      const comision_cobros_asesor = parseFloat(ccRes.rows[0].comision_cobros) || 0;
-      const comision_arrastre_tmk  = parseFloat(arrastreTmkRes.rows[0]?.comision_arrastre_tmk) || 0;
+      const comision_cobros_asesor = parseFloat(ccRow?.comision_cobros) || 0;
+      const comision_arrastre_tmk  = parseFloat(arrastreTmkRow?.comision_arrastre_tmk) || 0;
       const comision_cobros        = parseFloat((comision_cobros_asesor + comision_arrastre_tmk).toFixed(2));
-      const tours_count          = parseInt(tourRes.rows[0].tours_count) || 0;
-      const citas_count          = parseInt(citaRes.rows[0].citas_count) || 0;
 
       // ─── Cálculo de bono_tours: escalas semanales para TMK ─────────────
       let bono_tours = 0;
@@ -447,17 +548,8 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           }
         }
 
-        // Contar tours TMK por semana
-        const toursSemRes = await pool.query(`
-          SELECT vs.fecha::date AS fecha_tour
-          FROM leads l
-          JOIN visitas_sala vs ON vs.lead_id = l.id
-          WHERE l.tmk_id = $1
-            AND TO_CHAR(vs.fecha, 'YYYY-MM') = $2
-            AND vs.calificacion = 'TOUR'
-        `, [u.id, mes]);
-
-        for (const row of toursSemRes.rows) {
+        // Contar tours TMK por semana (lectura desde toursSemMap, batch por tmk_id)
+        for (const row of (toursSemMap.get(u.id) || [])) {
           const ft = new Date(row.fecha_tour);
           const dow = ft.getDay();
           const diffToMon = dow === 0 ? -6 : 1 - dow;
