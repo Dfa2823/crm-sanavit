@@ -385,6 +385,12 @@ router.post('/', auth, async (req, res) => {
   // Outsourcing: atribuir el lead a quien lo crea, para que lo vea en sus vistas.
   const outsourcingIdFinal = rol === 'outsourcing' ? userId : (outsourcing_id || null);
 
+  // Backstop: un lead de outsourcing nunca debe quedar sin sala (sería invisible en
+  // recepción/premanifiesto, que filtran por sala). Refuerza el selector del frontend.
+  if (rol === 'outsourcing' && !salaFinal) {
+    return res.status(400).json({ error: 'Selecciona la sala de la cita.' });
+  }
+
   try {
     // FLUJO:
     // - Lead manual SIN tipificar → 'pendiente' (igual que importado, el TMK lo trabajará luego)
