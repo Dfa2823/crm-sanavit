@@ -15,6 +15,8 @@ const router = express.Router();
     await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bono_por_tour NUMERIC(10,2) DEFAULT 0');
     await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bono_por_cita NUMERIC(10,2) DEFAULT 0');
     await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS pct_desbloqueo NUMERIC(5,2) DEFAULT 30.00');
+    // Empresa de outsourcing a la que pertenece un usuario rol outsourcing (para stats por empresa)
+    await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS outsourcing_empresa_id INTEGER REFERENCES outsourcing_empresas(id)');
     // Columna para asignar asesor de cartera a un contrato
     await pool.query('ALTER TABLE contratos ADD COLUMN IF NOT EXISTS asesor_cartera_id INTEGER REFERENCES usuarios(id)');
 

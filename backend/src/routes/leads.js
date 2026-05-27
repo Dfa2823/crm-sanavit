@@ -432,12 +432,20 @@ router.post('/', auth, async (req, res) => {
       }
     }
 
+    // Empresa de outsourcing del usuario (para estadísticas por empresa)
+    let outsourcingEmpresaIdFinal = null;
+    if (rol === 'outsourcing') {
+      const ur = await pool.query('SELECT outsourcing_empresa_id FROM usuarios WHERE id = $1', [userId]);
+      outsourcingEmpresaIdFinal = ur.rows[0]?.outsourcing_empresa_id || null;
+    }
+
     const result = await pool.query(`
       INSERT INTO leads (
         persona_id, sala_id, tmk_id, fuente_id, tipificacion_id,
-        patologia, fecha_cita, fecha_rellamar, estado, observacion, outsourcing_id, confirmador_id
+        patologia, fecha_cita, fecha_rellamar, estado, observacion, outsourcing_id, confirmador_id,
+        outsourcing_empresa_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING id
     `, [
       persona_id,
@@ -452,6 +460,7 @@ router.post('/', auth, async (req, res) => {
       observacion,
       outsourcingIdFinal,
       confirmadorId,
+      outsourcingEmpresaIdFinal,
     ]);
 
     const newLead = await pool.query(`

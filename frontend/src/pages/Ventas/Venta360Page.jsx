@@ -692,7 +692,7 @@ export default function Venta360Page() {
                             return (
                               <div className="flex flex-col items-center gap-1">
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Parcial {cantDesp}/{cantTotal}</span>
-                                {['admin', 'director', 'inventario'].includes(usuario?.rol) && (
+                                {['admin', 'director', 'inventario', 'hostess'].includes(usuario?.rol) && (
                                   <button disabled={despachando.has(p.id)} onClick={() => handleDespachar(p.id)}
                                     className="text-xs px-2 py-0.5 bg-teal-600 hover:bg-teal-700 text-white rounded-full disabled:opacity-60 font-medium">
                                     {despachando.has(p.id) ? '...' : `📦 Despachar (${pendiente})`}
@@ -701,7 +701,7 @@ export default function Venta360Page() {
                               </div>
                             )
                           }
-                          return ['admin', 'director', 'inventario'].includes(usuario?.rol) ? (
+                          return ['admin', 'director', 'inventario', 'hostess'].includes(usuario?.rol) ? (
                             <button disabled={despachando.has(p.id)} onClick={() => handleDespachar(p.id)}
                               className="text-xs px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-full disabled:opacity-60 font-medium">
                               {despachando.has(p.id) ? '...' : `📦 Despachar${cantTotal > 1 ? ` (${cantTotal})` : ''}`}
