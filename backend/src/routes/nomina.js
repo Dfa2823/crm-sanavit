@@ -243,12 +243,12 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
       const cvRes = await pool.query(`
         SELECT
           COALESCE(SUM(CASE
-            WHEN COALESCE(pagado.total, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
+            WHEN COALESCE(pagado.total_base, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
             THEN COALESCE(pagado.total_base, 0) * $4 / 100
             ELSE 0
           END), 0)::numeric AS comision_ventas,
           COUNT(CASE
-            WHEN COALESCE(pagado.total, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
+            WHEN COALESCE(pagado.total_base, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
             THEN 1
           END)::integer AS contratos_desbloqueados
         FROM contratos c

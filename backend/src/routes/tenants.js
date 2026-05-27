@@ -4,13 +4,18 @@ const pool = require('../db');
 const router = express.Router();
 
 /**
- * Endpoints de administración de tenants.
- * En producción deberían estar protegidos por un rol "superadmin".
- * Por ahora solo se registran detrás de authMiddleware.
+ * Endpoints de administración de tenants. Protegidos por rol admin/director
+ * (además del authMiddleware con el que se montan).
  */
+function soloAdmin(req, res, next) {
+  if (!req.user || !['admin', 'director'].includes(req.user.rol)) {
+    return res.status(403).json({ error: 'Requiere rol admin o director' });
+  }
+  next();
+}
 
 // GET /api/admin/tenants — listar todos los tenants
-router.get('/', async (req, res) => {
+router.get('/', soloAdmin, async (req, res) => {
   try {
     const { rows } = await pool.query(
       'SELECT id, nombre, slug, logo_url, config, activo, created_at FROM tenants ORDER BY id'
@@ -23,7 +28,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/admin/tenants — crear tenant
-router.post('/', async (req, res) => {
+router.post('/', soloAdmin, async (req, res) => {
   const { nombre, slug, logo_url, config } = req.body;
 
   if (!nombre || !slug) {
@@ -48,7 +53,7 @@ router.post('/', async (req, res) => {
 });
 
 // PATCH /api/admin/tenants/:id — editar tenant
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', soloAdmin, async (req, res) => {
   const { id } = req.params;
   const { nombre, slug, logo_url, config, activo } = req.body;
 

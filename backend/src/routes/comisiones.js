@@ -81,14 +81,14 @@ router.get('/', async (req, res) => {
         s.nombre                        AS sala_nombre,
         COUNT(DISTINCT c.id)            AS total_contratos,
         COUNT(DISTINCT CASE
-          WHEN COALESCE(r.total_cobrado, 0) / NULLIF(c.monto_total, 0) * 100 >= COALESCE(u.pct_desbloqueo, 30)
+          WHEN COALESCE(r.total_base, 0) / NULLIF(c.monto_total, 0) * 100 >= COALESCE(u.pct_desbloqueo, 30)
           THEN c.id END)                AS contratos_desbloqueados,
         COALESCE(SUM(c.monto_total), 0) AS cartera_total,
         COALESCE(SUM(r.total_cobrado), 0) AS total_cobrado,
         COALESCE(SUM(
           CASE
-            WHEN COALESCE(r.total_cobrado, 0) / NULLIF(c.monto_total, 0) * 100 >= COALESCE(u.pct_desbloqueo, 30)
-            THEN r.total_cobrado * COALESCE(u.pct_comision_venta, 10) / 100
+            WHEN COALESCE(r.total_base, 0) / NULLIF(c.monto_total, 0) * 100 >= COALESCE(u.pct_desbloqueo, 30)
+            THEN r.total_base * COALESCE(u.pct_comision_venta, 10) / 100
             ELSE 0
           END
         ), 0)                           AS comision_calculada
@@ -97,10 +97,13 @@ router.get('/', async (req, res) => {
       JOIN contratos c ON c.consultor_id = u.id AND c.estado = 'activo'
       LEFT JOIN salas s ON c.sala_id = s.id
       LEFT JOIN (
-        SELECT contrato_id, SUM(valor) AS total_cobrado
-        FROM recibos
-        WHERE estado = 'activo'
-        GROUP BY contrato_id
+        SELECT rr.contrato_id,
+               SUM(rr.valor) AS total_cobrado,
+               SUM(rr.valor) - COALESCE((SELECT SUM(cu.monto_interes) FROM cuotas cu
+                  WHERE cu.contrato_id = rr.contrato_id AND cu.estado = 'pagado'), 0) AS total_base
+        FROM recibos rr
+        WHERE rr.estado = 'activo'
+        GROUP BY rr.contrato_id
       ) r ON r.contrato_id = c.id
       WHERE ro.nombre = 'consultor'
         AND u.activo = true

@@ -116,7 +116,7 @@ router.post('/calcular', auth, requireAdminOrDirector, async (req, res) => {
         COUNT(c.id)::integer AS contratos_count,
         COALESCE(SUM(
           CASE
-            WHEN (COALESCE(pagado.total, 0) / NULLIF(c.monto_total, 0) * 100) >= COALESCE(u.pct_desbloqueo, 30)
+            WHEN (COALESCE(pagado.total_base, 0) / NULLIF(c.monto_total, 0) * 100) >= COALESCE(u.pct_desbloqueo, 30)
             THEN COALESCE(pagado.total_base, 0) * COALESCE(u.pct_comision_venta, 10) / 100
             ELSE 0
           END
@@ -541,7 +541,7 @@ router.patch('/:id/suspender', auth, requireAdminOrDirector, async (req, res) =>
       return res.status(404).json({ error: 'Contrato no encontrado' });
     }
     const contrato = cRes.rows[0];
-    const pctPagado = parseFloat(contrato.total_pagado) / parseFloat(contrato.monto_total || 1) * 100;
+    const pctPagado = parseFloat(contrato.total_pagado_base) / parseFloat(contrato.monto_total || 1) * 100;
     const montoComision = pctPagado >= pctDesbloqueo
       ? Math.round(parseFloat(contrato.total_pagado_base) * pctComision / 100 * 100) / 100
       : 0;
@@ -645,7 +645,7 @@ async function recalcularMontoLiquidacion(liquidacionId, db = pool) {
   const totalRes = await db.query(`
     SELECT COALESCE(SUM(
       CASE
-        WHEN COALESCE(pagado.total, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
+        WHEN COALESCE(pagado.total_base, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
         THEN COALESCE(pagado.total_base, 0) * $4 / 100
         ELSE 0
       END

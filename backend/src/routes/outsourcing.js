@@ -3,7 +3,17 @@ const multer  = require('multer');
 const XLSX    = require('xlsx');
 const pool = require('../db');
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = /\.(xlsx|xls|csv)$/i.test(file.originalname || '') ||
+      ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+       'application/vnd.ms-excel', 'text/csv', 'application/csv'].includes(file.mimetype);
+    if (ok) return cb(null, true);
+    cb(new Error('Solo se permiten archivos .xlsx, .xls o .csv'));
+  },
+});
 
 // Auto-migrate: agregar outsourcing_empresa_id a leads si no existe
 (async () => { try { await pool.query(`
@@ -25,6 +35,9 @@ router.get('/empresas', async (req, res) => {
 
 // POST /api/outsourcing/empresas — crear empresa
 router.post('/empresas', async (req, res) => {
+  if (!['admin', 'director'].includes(req.user.rol)) {
+    return res.status(403).json({ error: 'Requiere rol admin o director' });
+  }
   const { nombre, contacto_nombre, contacto_telefono, contacto_email, ciudad, notas } = req.body;
   if (!nombre) return res.status(400).json({ error: 'El nombre es requerido' });
   try {
@@ -42,6 +55,9 @@ router.post('/empresas', async (req, res) => {
 
 // PATCH /api/outsourcing/empresas/:id — actualizar empresa
 router.patch('/empresas/:id', async (req, res) => {
+  if (!['admin', 'director'].includes(req.user.rol)) {
+    return res.status(403).json({ error: 'Requiere rol admin o director' });
+  }
   const { nombre, contacto_nombre, contacto_telefono, contacto_email, ciudad, notas, activo } = req.body;
   try {
     const updates = [];

@@ -64,7 +64,15 @@ app.use((req, res, next) => {
 
 // Servir archivos estáticos (documentos subidos)
 const path = require('path');
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
+  setHeaders: (res, filePath) => {
+    // Imágenes y PDF pueden verse inline; el resto se fuerza a descarga (anti-XSS).
+    const ext = path.extname(filePath).toLowerCase();
+    const inline = ['.pdf', '.jpg', '.jpeg', '.png', '.webp', '.gif'];
+    if (!inline.includes(ext)) res.setHeader('Content-Disposition', 'attachment');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+  },
+}));
 
 // ── Swagger / OpenAPI docs ────────────────────────────────
 const { setupSwagger } = require('./swagger');
