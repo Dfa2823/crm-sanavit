@@ -1,16 +1,9 @@
 import { useState, useEffect } from 'react'
 import { apiLeads } from '../../api/leads'
 import { apiPersonas } from '../../api/personas'
-import { apiUsuarios } from '../../api/usuarios'
-import { useAuth } from '../../context/AuthContext'
 import { toEcuadorISO, hoyEC } from '../../utils/formatFechaEC'
 
 export default function CapturarLead({ onClose, onGuardado }) {
-  const { usuario } = useAuth()
-  // Usuarios sin sala asignada (p.ej. outsourcing) deben elegir la sala del lead.
-  const necesitaSala = !usuario?.sala_id
-  const [salas, setSalas] = useState([])
-  const [salaId, setSalaId] = useState('')
   const [config, setConfig] = useState({ tipificaciones: [], fuentes: [] })
   const [busquedaTel, setBusquedaTel] = useState('')
   const [personaEncontrada, setPersonaEncontrada] = useState(null)
@@ -33,10 +26,6 @@ export default function CapturarLead({ onClose, onGuardado }) {
   useEffect(() => {
     apiLeads.configuracion().then(setConfig).catch(console.error)
   }, [])
-
-  useEffect(() => {
-    if (necesitaSala) apiUsuarios.salas().then(setSalas).catch(console.error)
-  }, [necesitaSala])
 
   // Seleccionar tipificación para mostrar campos extra
   const tipSeleccionada = config.tipificaciones.find(
@@ -65,10 +54,6 @@ export default function CapturarLead({ onClose, onGuardado }) {
   async function handleGuardar(e) {
     e.preventDefault()
     setError('')
-    if (necesitaSala && !salaId) {
-      setError('Selecciona la sala para esta cita.')
-      return
-    }
     setGuardando(true)
 
     try {
@@ -106,7 +91,6 @@ export default function CapturarLead({ onClose, onGuardado }) {
         fecha_cita,
         fecha_rellamar,
         observacion: lead.observacion,
-        sala_id: salaId ? Number(salaId) : undefined,
       })
 
       onGuardado()
@@ -233,23 +217,6 @@ export default function CapturarLead({ onClose, onGuardado }) {
             {/* SECCIÓN 2: Datos del lead */}
             <div className="p-4 bg-gray-50 rounded-xl space-y-3">
               <h3 className="font-semibold text-gray-700 text-sm">2. Información del lead</h3>
-
-              {necesitaSala && (
-                <div>
-                  <label className="label">Sala *</label>
-                  <select
-                    className="input" required
-                    value={salaId}
-                    onChange={e => setSalaId(e.target.value)}
-                  >
-                    <option value="">Seleccionar sala...</option>
-                    {salas.map(s => (
-                      <option key={s.id} value={s.id}>{s.nombre}{s.ciudad ? ` (${s.ciudad})` : ''}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">Tu usuario no tiene sala fija; elige a qué sala va este lead.</p>
-                </div>
-              )}
 
               <div>
                 <label className="label">Fuente del lead *</label>
