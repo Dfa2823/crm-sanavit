@@ -370,13 +370,20 @@ router.post('/', auth, async (req, res) => {
     fecha_rellamar,
     observacion,
     outsourcing_id,
+    sala_id: salaIdBody,
   } = req.body;
 
   if (!persona_id || !fuente_id) {
     return res.status(400).json({ error: 'persona_id y fuente_id son requeridos' });
   }
 
-  const { id: userId, rol, sala_id } = req.user;
+  const { id: userId, rol, sala_id: userSalaId } = req.user;
+  // Sala del lead: la elegida en el formulario (body) si viene; si no, la del usuario.
+  const salaFinal = (salaIdBody !== undefined && salaIdBody !== null && salaIdBody !== '')
+    ? salaIdBody
+    : (userSalaId || null);
+  // Outsourcing: atribuir el lead a quien lo crea, para que lo vea en sus vistas.
+  const outsourcingIdFinal = rol === 'outsourcing' ? userId : (outsourcing_id || null);
 
   try {
     // FLUJO:
@@ -434,7 +441,7 @@ router.post('/', auth, async (req, res) => {
       RETURNING id
     `, [
       persona_id,
-      sala_id,
+      salaFinal,
       tmkIdFinal,
       fuente_id,
       tipificacion_id || null,
@@ -443,7 +450,7 @@ router.post('/', auth, async (req, res) => {
       fecha_rellamar || null,
       estado,
       observacion,
-      outsourcing_id || null,
+      outsourcingIdFinal,
       confirmadorId,
     ]);
 
