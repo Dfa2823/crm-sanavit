@@ -624,14 +624,32 @@ const fs = require('fs');
 const uploadDir = path.join(__dirname, '../../uploads/documentos');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
+// Tipos permitidos: la extensión se deriva del mimetype (no se confía en originalname)
+const TIPOS_DOC_PERMITIDOS = {
+  'application/pdf': '.pdf',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'application/vnd.ms-excel': '.xls',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/msword': '.doc',
+};
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
+    const ext = TIPOS_DOC_PERMITIDOS[file.mimetype] || '';
     cb(null, `doc_${req.params.id}_${Date.now()}${ext}`);
   },
 });
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    if (TIPOS_DOC_PERMITIDOS[file.mimetype]) return cb(null, true);
+    cb(new Error('Tipo de archivo no permitido (solo PDF, imágenes y Office)'));
+  },
+});
 
 // GET /api/ventas/:id/documentos
 router.get('/:id/documentos', auth, async (req, res) => {

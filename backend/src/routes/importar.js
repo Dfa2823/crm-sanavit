@@ -5,7 +5,17 @@ const pool    = require('../db');
 const auth    = require('../middleware/auth');
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = /\.(xlsx|xls|csv)$/i.test(file.originalname || '') ||
+      ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+       'application/vnd.ms-excel', 'text/csv', 'application/csv'].includes(file.mimetype);
+    if (ok) return cb(null, true);
+    cb(new Error('Solo se permiten archivos .xlsx, .xls o .csv'));
+  },
+});
 
 // ── Auto-migrate: tabla importaciones_log ─────────────────────
 (async () => {
