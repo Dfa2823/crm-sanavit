@@ -23,7 +23,7 @@ export default function OutsourcingPage() {
   const [periodo, setPeriodo] = useState(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7))
 
   // Estado para carga de leads
-  const [leadForm, setLeadForm] = useState({ nombre: '', telefono: '', fecha_cita: '', sala_id: '', patologia: '', observacion: '', outsourcing_empresa_id: '' })
+  const [leadForm, setLeadForm] = useState({ nombre: '', telefono: '', fecha_cita: '', sala_id: '', patologia: '', observacion: '', outsourcing_empresa_id: '', num_documento: '', direccion: '' })
   const [guardandoLead, setGuardandoLead] = useState(false)
 
   // Estado para carga masiva
@@ -166,9 +166,13 @@ export default function OutsourcingPage() {
 
   // ── Crear lead individual ──
   async function guardarLead() {
-    const { nombre, telefono, fecha_cita, sala_id } = leadForm
+    const { nombre, telefono, fecha_cita, sala_id, num_documento, direccion } = leadForm
     if (!nombre.trim() || !telefono.trim() || !fecha_cita || !sala_id) {
       setError('Nombre, telefono, fecha de cita y sala son requeridos')
+      return
+    }
+    if (!num_documento.trim() || !direccion.trim()) {
+      setError('Cedula y direccion son requeridas')
       return
     }
     setGuardandoLead(true)
@@ -181,7 +185,7 @@ export default function OutsourcingPage() {
         outsourcing_empresa_id: leadForm.outsourcing_empresa_id ? Number(leadForm.outsourcing_empresa_id) : null,
       })
       setSuccess('Cita tentativa creada. Pasa al confirmador y aparece en el pre-manifiesto del dia de la cita. Revisa "Mi Panel".')
-      setLeadForm({ nombre: '', telefono: '', fecha_cita: '', sala_id: leadForm.sala_id, patologia: '', observacion: '', outsourcing_empresa_id: leadForm.outsourcing_empresa_id })
+      setLeadForm({ nombre: '', telefono: '', fecha_cita: '', sala_id: leadForm.sala_id, patologia: '', observacion: '', outsourcing_empresa_id: leadForm.outsourcing_empresa_id, num_documento: '', direccion: '' })
       setTimeout(() => setSuccess(null), 6000)
       // Refrescar Mi Panel para confirmar que el lead llego a la base de datos
       if (esOutsourcing) cargarMiPanel()
@@ -491,6 +495,28 @@ export default function OutsourcingPage() {
                 </select>
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cedula *</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={13}
+                  value={leadForm.num_documento}
+                  onChange={e => setLeadForm(p => ({ ...p, num_documento: e.target.value }))}
+                  placeholder="0992675476"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Direccion / Barrio *</label>
+                <input
+                  type="text"
+                  value={leadForm.direccion}
+                  onChange={e => setLeadForm(p => ({ ...p, direccion: e.target.value }))}
+                  placeholder="Av. Amazonas N12 — La Mariscal"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                />
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Patologia</label>
                 <input
                   type="text"
@@ -515,7 +541,7 @@ export default function OutsourcingPage() {
             <div className="mt-4 flex justify-end">
               <button
                 onClick={guardarLead}
-                disabled={guardandoLead || !leadForm.nombre.trim() || !leadForm.telefono.trim() || !leadForm.fecha_cita || !leadForm.sala_id}
+                disabled={guardandoLead || !leadForm.nombre.trim() || !leadForm.telefono.trim() || !leadForm.fecha_cita || !leadForm.sala_id || !leadForm.num_documento.trim() || !leadForm.direccion.trim()}
                 className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
               >
                 {guardandoLead ? 'Guardando...' : 'Guardar lead'}

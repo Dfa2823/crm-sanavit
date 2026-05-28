@@ -210,11 +210,15 @@ function parsearFechaCita(raw) {
 // POST /api/outsourcing/lead — Crear lead individual desde outsourcing
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/lead', async (req, res) => {
-  const { nombre, telefono, fecha_cita, sala_id, patologia, observacion, outsourcing_empresa_id } = req.body;
+  const { nombre, telefono, fecha_cita, sala_id, patologia, observacion,
+          outsourcing_empresa_id, num_documento, direccion } = req.body;
   const outsourcingUserId = req.user.id;
 
   if (!nombre || !telefono || !sala_id) {
     return res.status(400).json({ error: 'Nombre, teléfono y sala son requeridos' });
+  }
+  if (!num_documento || !direccion) {
+    return res.status(400).json({ error: 'Cédula y dirección son requeridas' });
   }
 
   const telNorm = normalizarTelefono(telefono);
@@ -223,12 +227,30 @@ router.post('/lead', async (req, res) => {
   try {
     // Buscar o crear persona
     const existing = await pool.query(
-      'SELECT id FROM personas WHERE telefono = $1 OR telefono2 = $1 LIMIT 1', [telNorm]
+      'SELECT id, num_documento, direccion FROM personas WHERE telefono = $1 OR telefono2 = $1 LIMIT 1',
+      [telNorm]
     );
 
     let personaId;
     if (existing.rows.length > 0) {
       personaId = existing.rows[0].id;
+      // Completar solo los campos que esten vacios en DB; dato viejo NO se sobrescribe.
+      const sets = [];
+      const vals = [];
+      let idx = 1;
+      if (!existing.rows[0].num_documento && num_documento) {
+        sets.push(`num_documento = $${idx++}`); vals.push(num_documento);
+      }
+      if (!existing.rows[0].direccion && direccion) {
+        sets.push(`direccion = $${idx++}`); vals.push(direccion);
+      }
+      if (sets.length > 0) {
+        vals.push(personaId);
+        await pool.query(
+          `UPDATE personas SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${idx}`,
+          vals
+        );
+      }
     } else {
       const partes = nombre.trim().split(/\s+/).filter(Boolean);
       let nombres, apellidos;
@@ -241,9 +263,10 @@ router.post('/lead', async (req, res) => {
         nombres = nombre.trim(); apellidos = '';
       }
       const pRes = await pool.query(
-        `INSERT INTO personas (nombres, apellidos, telefono, patologia)
-         VALUES ($1,$2,$3,$4) RETURNING id`,
-        [toTitleCase(nombres), toTitleCase(apellidos), telNorm, patologia || null]
+        `INSERT INTO personas (nombres, apellidos, telefono, patologia, num_documento, direccion)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [toTitleCase(nombres), toTitleCase(apellidos), telNorm,
+         patologia || null, num_documento, direccion]
       );
       personaId = pRes.rows[0].id;
     }
