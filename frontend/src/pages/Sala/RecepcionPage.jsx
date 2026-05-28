@@ -1,14 +1,34 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiCitas } from '../../api/citas'
 import { apiPersonas } from '../../api/personas'
 import { apiUsuarios } from '../../api/usuarios'
-import { formatHoraEC } from '../../utils/formatFechaEC'
+import { formatHoraEC, hoyEC, formatFechaCorta } from '../../utils/formatFechaEC'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import LastUpdated from '../../components/UI/LastUpdated'
 
-function exportarManifiestoPDF(citas, hoyStr) {
+// "2026-05-28" -> "28/05/2026"
+function ymdToDMY(s) {
+  if (!s || s.length < 10) return s || ''
+  const [y, m, d] = s.split('-')
+  return `${d}/${m}/${y}`
+}
+
+// Suma dias a un YYYY-MM-DD sin pasar por timezone del navegador
+function addDaysISO(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  dt.setUTCDate(dt.getUTCDate() + n)
+  return dt.toISOString().slice(0, 10)
+}
+
+// Primer dia del mes que contiene iso
+function primerDiaMesISO(iso) {
+  return iso.slice(0, 7) + '-01'
+}
+
+function exportarManifiestoPDF(citas, titulo) {
   if (!citas.length) return
   const filas = citas.map(c => `
     <tr>
@@ -27,7 +47,7 @@ function exportarManifiestoPDF(citas, hoyStr) {
   const sinCal  = citas.filter(c => !c.calificacion).length
 
   const html = `<!DOCTYPE html><html lang="es"><head>
-    <meta charset="UTF-8"><title>Manifiesto del Día</title>
+    <meta charset="UTF-8"><title>Manifiesto</title>
     <style>
       body { font-family: Arial, sans-serif; font-size: 9px; color: #222; margin: 0; }
       h1 { font-size: 14px; margin: 0 0 2px; }
@@ -42,7 +62,7 @@ function exportarManifiestoPDF(citas, hoyStr) {
       small { color: #9ca3af; }
       @page { margin: 1cm; size: A4 landscape; }
     </style></head><body>
-    <h1>Manifiesto del Día — ${hoyStr}</h1>
+    <h1>Manifiesto — ${titulo}</h1>
     <p class="sub">Generado el ${new Date().toLocaleString('es-EC')} — ${citas.length} citas</p>
     <div class="stats">
       <div class="stat">${tours} <span>TOUR</span></div>
@@ -64,7 +84,7 @@ function exportarManifiestoPDF(citas, hoyStr) {
   setTimeout(() => { w.print(); w.close() }, 600)
 }
 
-function exportarManifiestoCSV(citas) {
+function exportarManifiestoCSV(citas, desde, hasta) {
   if (!citas.length) return
   const cols = ['Nombres', 'Apellidos', 'Teléfono', 'Ciudad', 'Edad', 'Hora cita', 'Hora llegada', 'Consultor', 'TMK', 'Call Center', 'Calificación', 'Estado', 'Acompañante']
   const rows = citas.map(c => [
@@ -89,7 +109,9 @@ function exportarManifiestoCSV(citas) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `manifiesto-${new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' })}.csv`
+  a.download = desde === hasta
+    ? `manifiesto-${desde}.csv`
+    : `manifiesto-${desde}_${hasta}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -127,11 +149,16 @@ export default function RecepcionPage() {
   const [guardando, setGuardando] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
 
+  // Filtro de rango (default = hoy en Ecuador)
+  const today = hoyEC()
+  const [desde, setDesde] = useState(today)
+  const [hasta, setHasta] = useState(today)
+
   const cargar = useCallback(async () => {
     setLoading(true)
     try {
       const [citasHoy, listaCons] = await Promise.all([
-        apiCitas.hoy({ sala_id: usuario.sala_id }),
+        apiCitas.hoy({ sala_id: usuario.sala_id, desde, hasta }),
         apiUsuarios.listar({ sala_id: usuario.sala_id, rol: 'consultor' }),
       ])
       setCitas(citasHoy)
@@ -140,9 +167,16 @@ export default function RecepcionPage() {
     } finally {
       setLoading(false)
     }
-  }, [usuario])
+  }, [usuario, desde, hasta])
 
   useEffect(() => { cargar() }, [cargar])
+
+  // Atajos de rango
+  function setRango(d, h) { setDesde(d); setHasta(h) }
+  function rangoHoy()       { setRango(today, today) }
+  function rangoAyer()      { const y = addDaysISO(today, -1); setRango(y, y) }
+  function rangoUlt7Dias()  { setRango(addDaysISO(today, -6), today) }
+  function rangoEsteMes()   { setRango(primerDiaMesISO(today), today) }
 
   // Búsqueda de persona (buscador de clientes sin cita)
   useEffect(() => {
@@ -181,6 +215,13 @@ export default function RecepcionPage() {
   const hoyStr = new Date().toLocaleDateString('es-EC', {
     weekday: 'long', day: 'numeric', month: 'long'
   })
+
+  // Titulo dinamico del bloque de citas segun el rango seleccionado
+  const tituloRango = useMemo(() => {
+    if (desde === hasta && desde === today) return 'Citas de hoy'
+    if (desde === hasta) return `Citas del ${ymdToDMY(desde)}`
+    return `Citas del ${ymdToDMY(desde)} al ${ymdToDMY(hasta)}`
+  }, [desde, hasta, today])
 
   const tours    = citas.filter(c => c.calificacion === 'TOUR').length
   const noTours  = citas.filter(c => c.calificacion === 'NO_TOUR').length
@@ -243,30 +284,60 @@ export default function RecepcionPage() {
         )}
       </div>
 
-      {/* Lista de citas del día */}
+      {/* Lista de citas del día (o rango) */}
       <div className="card overflow-hidden">
         <div className="card-header">
           <div>
-            <h2 className="font-semibold text-gray-700">Citas de hoy</h2>
+            <h2 className="font-semibold text-gray-700">{tituloRango}</h2>
             <p className="text-xs text-gray-400 capitalize">{hoyStr}</p>
             <LastUpdated timestamp={lastUpdated} />
           </div>
           <div className="flex gap-2">
             <button onClick={cargar} className="btn-secondary btn-sm">🔄 Actualizar</button>
             <button
-              onClick={() => exportarManifiestoPDF(citas, hoyStr)}
+              onClick={() => exportarManifiestoPDF(citas, tituloRango)}
               disabled={!citas.length}
               className="btn btn-sm border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               🖨️ PDF
             </button>
             <button
-              onClick={() => exportarManifiestoCSV(citas)}
+              onClick={() => exportarManifiestoCSV(citas, desde, hasta)}
               disabled={!citas.length}
               className="btn btn-sm border border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               📄 CSV
             </button>
+          </div>
+        </div>
+
+        {/* Filtro de rango */}
+        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/60 flex flex-wrap items-end gap-3">
+          <div className="flex flex-col">
+            <label className="text-xs text-gray-500 mb-1">Desde</label>
+            <input
+              type="date"
+              className="input py-1.5 text-sm"
+              value={desde}
+              max={hasta}
+              onChange={e => setDesde(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-xs text-gray-500 mb-1">Hasta</label>
+            <input
+              type="date"
+              className="input py-1.5 text-sm"
+              value={hasta}
+              min={desde}
+              onChange={e => setHasta(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button onClick={rangoHoy} className="btn-secondary btn-sm">Hoy</button>
+            <button onClick={rangoAyer} className="btn-secondary btn-sm">Ayer</button>
+            <button onClick={rangoUlt7Dias} className="btn-secondary btn-sm">Últimos 7 días</button>
+            <button onClick={rangoEsteMes} className="btn-secondary btn-sm">Este mes</button>
           </div>
         </div>
 
@@ -282,7 +353,11 @@ export default function RecepcionPage() {
             <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center mb-5">
               <svg className="w-10 h-10 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
             </div>
-            <p className="text-sm font-medium text-gray-500">Sin citas registradas para hoy</p>
+            <p className="text-sm font-medium text-gray-500">
+              {desde === hasta && desde === today
+                ? 'Sin citas registradas para hoy'
+                : 'Sin citas en el rango seleccionado'}
+            </p>
             <p className="text-xs text-gray-400 mt-1.5">Las citas del manifiesto apareceran aqui</p>
           </div>
         ) : (
@@ -310,7 +385,9 @@ export default function RecepcionPage() {
                     </td>
                     <td className="text-sm font-mono text-gray-700">
                       {cita.fecha_cita
-                        ? formatHoraEC(cita.fecha_cita)
+                        ? (desde === hasta
+                            ? formatHoraEC(cita.fecha_cita)
+                            : formatFechaCorta(cita.fecha_cita))
                         : '—'}
                     </td>
                     <td className="text-sm font-mono text-gray-600">
