@@ -127,6 +127,7 @@ const ESTADO_LABEL = {
   tour:        { label: '🟢 TOUR',       cls: 'badge-green' },
   no_tour:     { label: '🔴 NO TOUR',    cls: 'badge-red' },
   inasistencia:{ label: '🚫 Inasistencia', cls: 'badge-gray' },
+  pendiente:   { label: '⏸️ Sin cita',   cls: 'badge-gray' },
 }
 
 export default function RecepcionPage() {
@@ -381,7 +382,12 @@ export default function RecepcionPage() {
                       <div className="font-medium text-gray-800">
                         {cita.nombres} {cita.apellidos}
                       </div>
-                      <div className="text-xs text-gray-400">{cita.ciudad} · {cita.edad} años</div>
+                      <div className="text-xs text-gray-400">
+                        {cita.ciudad} · {cita.edad} años
+                        {!cita.fecha_cita && cita.tipificacion_nombre && (
+                          <span className="ml-2 text-amber-600">· {cita.tipificacion_nombre}</span>
+                        )}
+                      </div>
                     </td>
                     <td className="text-sm font-mono text-gray-700">
                       {cita.fecha_cita

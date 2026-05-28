@@ -149,17 +149,32 @@ router.get('/hoy', auth, async (req, res) => {
         LIMIT 1
       ) vs ON true
       LEFT JOIN usuarios uc ON vs.consultor_id = uc.id
-      WHERE (l.fecha_cita AT TIME ZONE 'America/Guayaquil')::date
-            BETWEEN $1::date AND $2::date
+      WHERE (
+            -- Lead con cita en el rango (caso normal)
+            (
+              (l.fecha_cita AT TIME ZONE 'America/Guayaquil')::date
+                BETWEEN $1::date AND $2::date
+              AND l.estado IN ('confirmada', 'tentativa', 'tour', 'no_tour', 'inasistencia')
+            )
+            OR
+            -- Lead sin fecha de cita capturado en el rango (ej. tipificacion
+            -- "Ya asistio" o similar) — la hostess debe verlo para revisar/agendar
+            (
+              l.fecha_cita IS NULL
+              AND l.estado = 'pendiente'
+              AND (l.created_at AT TIME ZONE 'America/Guayaquil')::date
+                  BETWEEN $1::date AND $2::date
+            )
+          )
         AND ($3::integer IS NULL OR l.sala_id = $3)
-        AND l.estado IN ('confirmada', 'tentativa', 'tour', 'no_tour', 'inasistencia')
       ORDER BY
-        CASE l.estado
-          WHEN 'tentativa' THEN 0
-          WHEN 'confirmada' THEN 1
-          ELSE 2
+        CASE
+          WHEN l.estado = 'pendiente'  THEN 0
+          WHEN l.estado = 'tentativa'  THEN 1
+          WHEN l.estado = 'confirmada' THEN 2
+          ELSE 3
         END,
-        l.fecha_cita ASC
+        COALESCE(l.fecha_cita, l.created_at) ASC
     `, [desdeStr, hastaStr, salaId]);
 
     res.json(result.rows);
