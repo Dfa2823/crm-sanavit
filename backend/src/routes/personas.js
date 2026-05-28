@@ -52,6 +52,7 @@ router.get('/', auth, async (req, res) => {
       result = await pool.query(`
         SELECT id, nombres, apellidos, telefono, telefono2, email, ciudad, edad,
                tipo_documento, num_documento, situacion_laboral, patologia,
+               direccion,
                created_at
         FROM personas
         WHERE nombres ILIKE $1 OR apellidos ILIKE $1
@@ -66,6 +67,7 @@ router.get('/', auth, async (req, res) => {
       result = await pool.query(`
         SELECT id, nombres, apellidos, telefono, telefono2, email, ciudad, edad,
                tipo_documento, num_documento, situacion_laboral, patologia,
+               direccion,
                created_at
         FROM personas
         ORDER BY created_at DESC

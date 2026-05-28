@@ -17,7 +17,9 @@ export default function CapturarLead({ onClose, onGuardado }) {
   const [buscando, setBuscando] = useState(false)
 
   const [nuevaPersona, setNuevaPersona] = useState({
-    nombres: '', apellidos: '', telefono: '', telefono2: '', ciudad: '', patologia: '',
+    nombres: '', apellidos: '', telefono: '', telefono2: '',
+    ciudad: '', patologia: '',
+    num_documento: '', direccion: '',
   })
 
   const [lead, setLead] = useState({
@@ -83,8 +85,23 @@ export default function CapturarLead({ onClose, onGuardado }) {
           telefono2: nuevaPersona.telefono2 || undefined,
           ciudad: nuevaPersona.ciudad,
           patologia: nuevaPersona.patologia,
+          num_documento: nuevaPersona.num_documento,
+          direccion: nuevaPersona.direccion,
         })
         persona_id = p.id
+      } else {
+        // Persona existente: completar solo campos vacios en DB con los del form.
+        // Dato viejo NO se sobrescribe.
+        const patch = {}
+        if (!personaEncontrada.num_documento && nuevaPersona.num_documento) {
+          patch.num_documento = nuevaPersona.num_documento
+        }
+        if (!personaEncontrada.direccion && nuevaPersona.direccion) {
+          patch.direccion = nuevaPersona.direccion
+        }
+        if (Object.keys(patch).length > 0) {
+          await apiPersonas.actualizar(persona_id, patch)
+        }
       }
 
       // Construir fecha_cita y fecha_rellamar completos
@@ -166,11 +183,44 @@ export default function CapturarLead({ onClose, onGuardado }) {
 
               {/* Persona encontrada */}
               {personaEncontrada && (
-                <div className="p-3 bg-green-100 border border-green-300 rounded-lg">
-                  <p className="text-green-800 text-sm font-medium">
-                    ✅ Cliente encontrado: {personaEncontrada.nombres} {personaEncontrada.apellidos}
-                  </p>
-                  <p className="text-green-600 text-xs">{personaEncontrada.ciudad} · {personaEncontrada.email}</p>
+                <div className="p-3 bg-green-100 border border-green-300 rounded-lg space-y-3">
+                  <div>
+                    <p className="text-green-800 text-sm font-medium">
+                      ✅ Cliente encontrado: {personaEncontrada.nombres} {personaEncontrada.apellidos}
+                    </p>
+                    <p className="text-green-600 text-xs">{personaEncontrada.ciudad} · {personaEncontrada.email}</p>
+                  </div>
+                  {(!personaEncontrada.num_documento || !personaEncontrada.direccion) && (
+                    <div className="border-t border-green-300 pt-3 space-y-3">
+                      <p className="text-xs text-green-800 font-medium">
+                        Completar datos faltantes del cliente:
+                      </p>
+                      {!personaEncontrada.num_documento && (
+                        <div>
+                          <label className="label">Cédula *</label>
+                          <input
+                            className="input" required
+                            type="text" inputMode="numeric" maxLength={13}
+                            placeholder="0992675476"
+                            value={nuevaPersona.num_documento}
+                            onChange={e => setNuevaPersona(p => ({ ...p, num_documento: e.target.value }))}
+                          />
+                        </div>
+                      )}
+                      {!personaEncontrada.direccion && (
+                        <div>
+                          <label className="label">Dirección / Barrio *</label>
+                          <input
+                            className="input" required
+                            type="text"
+                            placeholder="Av. Amazonas N12 — La Mariscal"
+                            value={nuevaPersona.direccion}
+                            onChange={e => setNuevaPersona(p => ({ ...p, direccion: e.target.value }))}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -216,6 +266,26 @@ export default function CapturarLead({ onClose, onGuardado }) {
                       <option value="">Seleccionar...</option>
                       {ciudadesEcuador.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
+                  </div>
+                  <div>
+                    <label className="label">Cédula *</label>
+                    <input
+                      className="input" required
+                      type="text" inputMode="numeric" maxLength={13}
+                      placeholder="0992675476"
+                      value={nuevaPersona.num_documento}
+                      onChange={e => setNuevaPersona(p => ({ ...p, num_documento: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Dirección / Barrio *</label>
+                    <input
+                      className="input" required
+                      type="text"
+                      placeholder="Av. Amazonas N12 — La Mariscal"
+                      value={nuevaPersona.direccion}
+                      onChange={e => setNuevaPersona(p => ({ ...p, direccion: e.target.value }))}
+                    />
                   </div>
                   <div>
                     <label className="label">Motivo / Patología</label>
