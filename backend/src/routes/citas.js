@@ -98,14 +98,30 @@ router.get('/premanifiesto', auth, async (req, res) => {
   }
 });
 
-// GET /api/citas/hoy?sala_id=X
-// Citas de hoy para la vista de Recepción (Hostess)
+// GET /api/citas/hoy?sala_id=X&desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+// Citas para la vista de Recepción (Hostess). Sin desde/hasta = hoy.
 router.get('/hoy', auth, async (req, res) => {
-  const { sala_id } = req.query;
-  const { sala_id: userSalaId, rol, id: userId } = req.user;
+  const { sala_id, desde, hasta } = req.query;
+  const { sala_id: userSalaId } = req.user;
   const salaId = sala_id || userSalaId;
 
   const hoy = hoyEC();
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const desdeStr = desde || hoy;
+  const hastaStr = hasta || desde || hoy;
+
+  if (!ISO_DATE.test(desdeStr) || !ISO_DATE.test(hastaStr)) {
+    return res.status(400).json({ error: 'Fechas deben tener formato YYYY-MM-DD' });
+  }
+  if (desdeStr > hastaStr) {
+    return res.status(400).json({ error: 'Rango inválido: desde > hasta' });
+  }
+  // Límite de 62 días para evitar consultas pesadas accidentales
+  const msDia = 86400000;
+  const dias = Math.round((Date.parse(hastaStr) - Date.parse(desdeStr)) / msDia) + 1;
+  if (dias > 62) {
+    return res.status(400).json({ error: 'Rango máximo 62 días' });
+  }
 
   try {
     const result = await pool.query(`
@@ -124,18 +140,32 @@ router.get('/hoy', auth, async (req, res) => {
       LEFT JOIN fuentes f ON l.fuente_id = f.id
       LEFT JOIN tipificaciones t ON l.tipificacion_id = t.id
       LEFT JOIN usuarios u ON l.tmk_id = u.id
-      LEFT JOIN visitas_sala vs ON vs.lead_id = l.id AND vs.fecha = $1::date
+      LEFT JOIN LATERAL (
+        SELECT id, hora_llegada, calificacion, hora_cita_agendada,
+               consultor_id, acompanante
+        FROM visitas_sala
+        WHERE lead_id = l.id
+        ORDER BY fecha DESC, id DESC
+        LIMIT 1
+      ) vs ON true
       LEFT JOIN usuarios uc ON vs.consultor_id = uc.id
-      WHERE DATE(l.fecha_cita AT TIME ZONE 'America/Guayaquil') = $1
-        AND ($2::integer IS NULL OR l.sala_id = $2)
+      WHERE (l.fecha_cita AT TIME ZONE 'America/Guayaquil')::date
+            BETWEEN $1::date AND $2::date
+        AND ($3::integer IS NULL OR l.sala_id = $3)
         AND l.estado IN ('confirmada', 'tentativa', 'tour', 'no_tour', 'inasistencia')
-      ORDER BY l.fecha_cita ASC
-    `, [hoy, salaId]);
+      ORDER BY
+        CASE l.estado
+          WHEN 'tentativa' THEN 0
+          WHEN 'confirmada' THEN 1
+          ELSE 2
+        END,
+        l.fecha_cita ASC
+    `, [desdeStr, hastaStr, salaId]);
 
     res.json(result.rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Error al obtener citas de hoy' });
+    res.status(500).json({ error: 'Error al obtener citas' });
   }
 });
 
