@@ -62,6 +62,8 @@ function LeadDetailDrawer({ leadId, tipificaciones, onClose, onActualizado }) {
         edad:      leadData.edad       || '',
         email:     leadData.email      || '',
         patologia: leadData.patologia  || '',
+        num_documento: leadData.num_documento || '',
+        direccion:     leadData.direccion     || '',
       })
       setForm({
         estado: leadData.estado || '',
@@ -212,8 +214,10 @@ function LeadDetailDrawer({ leadId, tipificaciones, onClose, onActualizado }) {
                     <div><span className="text-gray-500">Tel:</span> <span className="font-mono">{lead.telefono}</span></div>
                     <div><span className="text-gray-500">Tel 2:</span> <span className="font-mono">{lead.telefono2 || '-'}</span></div>
                     <div><span className="text-gray-500">Ciudad:</span> {lead.ciudad || '-'}</div>
-                    <div><span className="text-gray-500">Email:</span> {lead.email || '-'}</div>
+                    <div><span className="text-gray-500">Cedula:</span> <span className="font-mono">{lead.num_documento || '-'}</span></div>
                     <div><span className="text-gray-500">Edad:</span> {lead.edad || '-'}</div>
+                    <div className="col-span-2"><span className="text-gray-500">Direccion:</span> {lead.direccion || '-'}</div>
+                    <div><span className="text-gray-500">Email:</span> {lead.email || '-'}</div>
                     <div className="col-span-2"><span className="text-gray-500">Patologia:</span> {lead.patologia || '-'}</div>
                   </div>
                 ) : (
@@ -249,11 +253,23 @@ function LeadDetailDrawer({ leadId, tipificaciones, onClose, onActualizado }) {
                         onChange={e => setFormPersona(f => ({ ...f, edad: e.target.value }))} />
                     </div>
                     <div>
+                      <label className="text-xs text-gray-500">Cedula</label>
+                      <input className="input text-sm" inputMode="numeric" maxLength={13}
+                        value={formPersona.num_documento}
+                        onChange={e => setFormPersona(f => ({ ...f, num_documento: e.target.value }))} />
+                    </div>
+                    <div>
                       <label className="text-xs text-gray-500">Email</label>
                       <input type="email" className="input text-sm" value={formPersona.email}
                         onChange={e => setFormPersona(f => ({ ...f, email: e.target.value }))} />
                     </div>
-                    <div>
+                    <div className="col-span-2">
+                      <label className="text-xs text-gray-500">Direccion / Barrio</label>
+                      <input className="input text-sm" placeholder="Av. Amazonas N12 — La Mariscal"
+                        value={formPersona.direccion}
+                        onChange={e => setFormPersona(f => ({ ...f, direccion: e.target.value }))} />
+                    </div>
+                    <div className="col-span-2">
                       <label className="text-xs text-gray-500">Patologia</label>
                       <input className="input text-sm" value={formPersona.patologia}
                         onChange={e => setFormPersona(f => ({ ...f, patologia: e.target.value }))} />
