@@ -197,9 +197,9 @@ export default function CapturarLead({ onClose, onGuardado }) {
                       </p>
                       {!personaEncontrada.num_documento && (
                         <div>
-                          <label className="label">Cédula *</label>
+                          <label className="label">Cédula <span className="text-gray-400 font-normal">(opcional)</span></label>
                           <input
-                            className="input" required
+                            className="input"
                             type="text" inputMode="numeric" maxLength={13}
                             placeholder="0992675476"
                             value={nuevaPersona.num_documento}
@@ -209,9 +209,9 @@ export default function CapturarLead({ onClose, onGuardado }) {
                       )}
                       {!personaEncontrada.direccion && (
                         <div>
-                          <label className="label">Dirección / Barrio *</label>
+                          <label className="label">Dirección / Barrio <span className="text-gray-400 font-normal">(opcional)</span></label>
                           <input
-                            className="input" required
+                            className="input"
                             type="text"
                             placeholder="Av. Amazonas N12 — La Mariscal"
                             value={nuevaPersona.direccion}
@@ -268,9 +268,9 @@ export default function CapturarLead({ onClose, onGuardado }) {
                     </select>
                   </div>
                   <div>
-                    <label className="label">Cédula *</label>
+                    <label className="label">Cédula <span className="text-gray-400 font-normal">(opcional)</span></label>
                     <input
-                      className="input" required
+                      className="input"
                       type="text" inputMode="numeric" maxLength={13}
                       placeholder="0992675476"
                       value={nuevaPersona.num_documento}
@@ -278,9 +278,9 @@ export default function CapturarLead({ onClose, onGuardado }) {
                     />
                   </div>
                   <div>
-                    <label className="label">Dirección / Barrio *</label>
+                    <label className="label">Dirección / Barrio <span className="text-gray-400 font-normal">(opcional)</span></label>
                     <input
-                      className="input" required
+                      className="input"
                       type="text"
                       placeholder="Av. Amazonas N12 — La Mariscal"
                       value={nuevaPersona.direccion}
