@@ -157,11 +157,12 @@ router.get('/hoy', auth, async (req, res) => {
               AND l.estado IN ('confirmada', 'tentativa', 'tour', 'no_tour', 'inasistencia')
             )
             OR
-            -- Lead sin fecha de cita capturado en el rango (ej. tipificacion
-            -- "Ya asistio" o similar) — la hostess debe verlo para revisar/agendar
+            -- Solo tipificacion "Ya asistio" (cliente que dice que ya llego);
+            -- otros 'pendiente' sin fecha son trabajo del TMK y NO van en recepcion
             (
               l.fecha_cita IS NULL
               AND l.estado = 'pendiente'
+              AND t.nombre = 'Ya asistió'
               AND (l.created_at AT TIME ZONE 'America/Guayaquil')::date
                   BETWEEN $1::date AND $2::date
             )
