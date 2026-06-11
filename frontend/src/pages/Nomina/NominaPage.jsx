@@ -734,6 +734,156 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
                           </div>
                         </div>
 
+                        {/* Desglose del neto a pagar — por qué se le paga cada peso */}
+                        <div className="border-2 border-teal-200 bg-teal-50/40 rounded-xl p-3">
+                          <p className="text-xs font-bold text-teal-700 uppercase tracking-wide mb-2">
+                            Por qué se le paga este monto · Desglose del neto
+                          </p>
+                          <div className="text-xs">
+                            <table className="w-full">
+                              <tbody>
+                                <tr className="border-b border-teal-100">
+                                  <td className="py-1.5 text-gray-600 uppercase text-[10px] font-semibold" colSpan={3}>Ingresos</td>
+                                </tr>
+                                <tr className="border-b border-teal-50">
+                                  <td className="py-1 text-gray-700">Garantizado (sueldo base × días trabajados / laborables)</td>
+                                  <td className="py-1 text-gray-500 text-right pr-3">{emp.dias_trabajados}/{emp.dias_laborables} días · base ${fmt(emp.sueldo_base_config)}</td>
+                                  <td className="py-1 text-right font-medium w-24">${fmt(emp.garantizado)}</td>
+                                </tr>
+                                {emp.comision_ventas > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Comisión por ventas (sin interés)</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">
+                                      {(emp.contratos_del_mes || []).filter(c => !c.suspendida && c.estado === 'desbloqueada').length} contrato(s) desbloqueado(s) al {emp.pct_desbloqueo}% · {emp.pct_comision_venta}% sobre la base
+                                    </td>
+                                    <td className="py-1 text-right font-medium">${fmt(emp.comision_ventas)}</td>
+                                  </tr>
+                                )}
+                                {emp.comision_cobros > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Comisión por cobros</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">
+                                      {(emp.recibos_cobrados || []).length} recibo(s) cobrado(s) en {emp.mes}
+                                    </td>
+                                    <td className="py-1 text-right font-medium">${fmt(emp.comision_cobros)}</td>
+                                  </tr>
+                                )}
+                                {emp.comision_venta_recurrente > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Comisión venta recurrente</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">renovaciones de clientes activos</td>
+                                    <td className="py-1 text-right font-medium">${fmt(emp.comision_venta_recurrente)}</td>
+                                  </tr>
+                                )}
+                                {emp.comision_abonos_cartera > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Comisión abonos cartera</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">cobranza sobre contratos arrastre · {emp.pct_comision_cobro}%</td>
+                                    <td className="py-1 text-right font-medium">${fmt(emp.comision_abonos_cartera)}</td>
+                                  </tr>
+                                )}
+                                {(emp.contratos_arrastre || []).length > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Comisión por arrastre (contratos viejos con pago este mes)</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">
+                                      {(emp.contratos_arrastre || []).length} contrato(s) anterior(es)
+                                    </td>
+                                    <td className="py-1 text-right font-medium">${fmt((emp.contratos_arrastre || []).reduce((a, c) => a + Number(c.comision_arrastre || 0), 0))}</td>
+                                  </tr>
+                                )}
+                                {emp.comision_reactivaciones > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Comisión por reactivaciones</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">clientes reactivados</td>
+                                    <td className="py-1 text-right font-medium">${fmt(emp.comision_reactivaciones)}</td>
+                                  </tr>
+                                )}
+                                {emp.comision_arrastre_tmk > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Comisión arrastre TMK</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">comisión de leads del TMK que cerraron este mes</td>
+                                    <td className="py-1 text-right font-medium">${fmt(emp.comision_arrastre_tmk)}</td>
+                                  </tr>
+                                )}
+                                {emp.bono_tours > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Bono por tours</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">
+                                      {emp.tours_count} tour(s) {emp.rol === 'tmk' ? 'por escala semanal TMK' : 'registrados como consultor'}
+                                    </td>
+                                    <td className="py-1 text-right font-medium">${fmt(emp.bono_tours)}</td>
+                                  </tr>
+                                )}
+                                {emp.bono_citas > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Bono por citas</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">{emp.citas_count} cita(s) agendada(s)</td>
+                                    <td className="py-1 text-right font-medium">${fmt(emp.bono_citas)}</td>
+                                  </tr>
+                                )}
+                                {emp.bono_meta > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Bono por meta alcanzada</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">cumplimiento de objetivo del mes</td>
+                                    <td className="py-1 text-right font-medium">${fmt(emp.bono_meta)}</td>
+                                  </tr>
+                                )}
+                                {emp.otros_ingresos > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Otros ingresos</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">{emp.observaciones || '—'}</td>
+                                    <td className="py-1 text-right font-medium">${fmt(emp.otros_ingresos)}</td>
+                                  </tr>
+                                )}
+                                <tr className="border-b-2 border-teal-300 bg-teal-100/40">
+                                  <td className="py-1.5 font-semibold text-teal-800">Total ingresos (bruto)</td>
+                                  <td></td>
+                                  <td className="py-1.5 text-right font-bold text-teal-800">${fmt(emp.total_ingresos)}</td>
+                                </tr>
+
+                                <tr>
+                                  <td className="pt-3 pb-1 text-gray-600 uppercase text-[10px] font-semibold" colSpan={3}>Deducciones</td>
+                                </tr>
+                                {emp.aporte_iess > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Aporte IESS (9.45%)</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">sobre sueldo base</td>
+                                    <td className="py-1 text-right font-medium text-red-600">-${fmt(emp.aporte_iess)}</td>
+                                  </tr>
+                                )}
+                                {emp.anticipo > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Anticipo</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">descuento por anticipo del mes</td>
+                                    <td className="py-1 text-right font-medium text-red-600">-${fmt(emp.anticipo)}</td>
+                                  </tr>
+                                )}
+                                {emp.otras_deducciones > 0 && (
+                                  <tr className="border-b border-teal-50">
+                                    <td className="py-1 text-gray-700">Otras deducciones</td>
+                                    <td className="py-1 text-gray-500 text-right pr-3">{emp.observaciones || '—'}</td>
+                                    <td className="py-1 text-right font-medium text-red-600">-${fmt(emp.otras_deducciones)}</td>
+                                  </tr>
+                                )}
+                                <tr className="border-b-2 border-red-200 bg-red-50/40">
+                                  <td className="py-1.5 font-semibold text-red-700">Total deducciones</td>
+                                  <td></td>
+                                  <td className="py-1.5 text-right font-bold text-red-700">-${fmt(emp.total_deducciones)}</td>
+                                </tr>
+
+                                <tr className="bg-teal-600">
+                                  <td className="py-2 text-white font-bold text-sm pl-2">NETO A PAGAR</td>
+                                  <td></td>
+                                  <td className="py-2 text-white font-bold text-sm text-right pr-2">${fmt(emp.neto_a_pagar)}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                          <p className="text-[10px] text-teal-600 mt-2 italic">
+                            ↓ Cada concepto está justificado en las tablas detalladas más abajo (recibos, tours, citas, cuotas por contrato).
+                          </p>
+                        </div>
+
                         {/* Contratos del mes */}
                         {contratos.length > 0 && (
                           <div>
