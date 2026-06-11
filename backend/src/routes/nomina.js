@@ -980,7 +980,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
   try {
     // 1. Obtener nóminas del mes
     const nominaRes = await pool.query(`
-      SELECT n.*, u.nombre AS usuario_nombre, u.username, u.email,
+      SELECT n.*, u.nombre AS usuario_nombre, u.username, NULL::text AS email,
         COALESCE(u.sueldo_base, 0)::numeric AS sueldo_base_usuario,
         COALESCE(u.pct_comision_venta, 10)::numeric AS pct_comision_venta,
         COALESCE(u.pct_desbloqueo, 30)::numeric AS pct_desbloqueo,
@@ -1196,7 +1196,7 @@ router.post('/notificar/:nomina_id', requireAdminOrDirector, async (req, res) =>
   try {
     // Verificar que la nómina existe y está aprobada o pagada
     const nominaRes = await pool.query(`
-      SELECT n.*, u.nombre AS usuario_nombre, u.email
+      SELECT n.*, u.nombre AS usuario_nombre, NULL::text AS email
       FROM nomina_mensual n
       JOIN usuarios u ON n.usuario_id = u.id
       WHERE n.id = $1
