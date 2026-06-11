@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import * as XLSX from 'xlsx'
 import { getNomina, calcularNomina, updateNomina, getReporteNomina, getReporteValidacion, notificarNomina, getAsistenciaDia, registrarAsistenciaBulk, getResumenMensual, suspenderComisionNomina, reactivarComisionNomina } from '../../api/nomina'
 import { getSalas } from '../../api/admin'
 import { useAuth } from '../../context/AuthContext'
@@ -445,6 +446,155 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
     }
   }
 
+  // Export XLSX multi-hoja con detalle uno-a-uno (tours, recibos, cuotas, citas)
+  function exportarXLSXValidacion() {
+    if (!data.length) return
+    const wb = XLSX.utils.book_new()
+
+    const toDate = (v) => (v ? String(v).slice(0, 10) : '')
+    const empCols = (emp) => [emp.usuario_nombre, emp.rol_label || emp.rol, emp.sala_nombre || '']
+
+    // Hoja 1: Resumen — 1 fila por empleado
+    const resumen = [[
+      'Empleado', 'Rol', 'Sala',
+      'Sueldo base', 'Dias trab.', 'Dias laborables', 'Garantizado',
+      '% Com. Venta', '% Desbloqueo',
+      'Com. Ventas', 'Com. Cobros',
+      'Com. Venta Recurrente', 'Com. Abonos Cartera', 'Com. Reactivaciones', 'Com. Arrastre TMK',
+      'Bono Tours', '# Tours', 'Bono Citas', '# Citas', 'Bono Meta',
+      'Otros Ingresos', 'Total Ingresos',
+      'IESS', 'Anticipo', 'Otras Ded.', 'Total Deducciones',
+      'NETO A PAGAR', 'Estado nomina', 'Observaciones',
+    ]]
+    data.forEach(emp => {
+      resumen.push([
+        ...empCols(emp),
+        Number(emp.sueldo_base_config || 0),
+        Number(emp.dias_trabajados || 0), Number(emp.dias_laborables || 0),
+        Number(emp.garantizado || 0),
+        Number(emp.pct_comision_venta || 0), Number(emp.pct_desbloqueo || 0),
+        Number(emp.comision_ventas || 0), Number(emp.comision_cobros || 0),
+        Number(emp.comision_venta_recurrente || 0), Number(emp.comision_abonos_cartera || 0),
+        Number(emp.comision_reactivaciones || 0), Number(emp.comision_arrastre_tmk || 0),
+        Number(emp.bono_tours || 0), Number(emp.tours_count || 0),
+        Number(emp.bono_citas || 0), Number(emp.citas_count || 0),
+        Number(emp.bono_meta || 0),
+        Number(emp.otros_ingresos || 0), Number(emp.total_ingresos || 0),
+        Number(emp.aporte_iess || 0), Number(emp.anticipo || 0),
+        Number(emp.otras_deducciones || 0), Number(emp.total_deducciones || 0),
+        Number(emp.neto_a_pagar || 0), emp.estado_nomina || '',
+        emp.observaciones || '',
+      ])
+    })
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumen), 'Resumen')
+
+    // Hoja 2: Desglose del neto — 1 fila por (empleado, concepto > 0)
+    const desglose = [['Empleado', 'Rol', 'Sala', 'Tipo', 'Concepto', 'Justificacion', 'Monto']]
+    data.forEach(emp => {
+      const e = empCols(emp)
+      const push = (tipo, concepto, just, monto) => {
+        if (Number(monto || 0) === 0 && tipo !== 'Subtotal' && tipo !== 'Neto') return
+        desglose.push([...e, tipo, concepto, just, Number(monto || 0)])
+      }
+      push('Ingreso', 'Garantizado', `${emp.dias_trabajados}/${emp.dias_laborables} dias x base $${Number(emp.sueldo_base_config||0).toFixed(2)}`, emp.garantizado)
+      const desbloqueados = (emp.contratos_del_mes || []).filter(c => !c.suspendida && c.estado === 'desbloqueada').length
+      push('Ingreso', 'Comision por ventas', `${desbloqueados} contrato(s) desbloqueado(s) al ${emp.pct_desbloqueo}% · ${emp.pct_comision_venta}% sobre la base`, emp.comision_ventas)
+      push('Ingreso', 'Comision por cobros', `${(emp.recibos_cobrados || []).length} recibo(s)`, emp.comision_cobros)
+      push('Ingreso', 'Com. venta recurrente', 'renovaciones', emp.comision_venta_recurrente)
+      push('Ingreso', 'Com. abonos cartera', `${emp.pct_comision_cobro || 0}% sobre cobros`, emp.comision_abonos_cartera)
+      const totalArr = (emp.contratos_arrastre || []).reduce((a, c) => a + Number(c.comision_arrastre || 0), 0)
+      if (totalArr > 0) push('Ingreso', 'Comision por arrastre', `${(emp.contratos_arrastre || []).length} contrato(s) anterior(es)`, totalArr)
+      push('Ingreso', 'Com. reactivaciones', 'clientes reactivados', emp.comision_reactivaciones)
+      push('Ingreso', 'Com. arrastre TMK', 'leads TMK cerrados este mes', emp.comision_arrastre_tmk)
+      push('Ingreso', 'Bono tours', `${emp.tours_count || 0} tour(s)`, emp.bono_tours)
+      push('Ingreso', 'Bono citas', `${emp.citas_count || 0} cita(s) agendada(s)`, emp.bono_citas)
+      push('Ingreso', 'Bono meta', 'cumplimiento de objetivo', emp.bono_meta)
+      push('Ingreso', 'Otros ingresos', emp.observaciones || '', emp.otros_ingresos)
+      push('Subtotal', 'Total ingresos', '', emp.total_ingresos)
+      push('Deduccion', 'Aporte IESS', '9.45% sobre sueldo base', emp.aporte_iess)
+      push('Deduccion', 'Anticipo', 'descuento del mes', emp.anticipo)
+      push('Deduccion', 'Otras deducciones', emp.observaciones || '', emp.otras_deducciones)
+      push('Subtotal', 'Total deducciones', '', emp.total_deducciones)
+      push('Neto', 'NETO A PAGAR', '', emp.neto_a_pagar)
+    })
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(desglose), 'Desglose del neto')
+
+    // Hoja 3: Contratos del mes
+    const contratosMes = [['Empleado', 'Rol', 'Sala', 'Nº Contrato', 'Cliente', 'Monto Total', 'Monto Pagado', '% Pagado', 'Base (sin int.)', 'Comision', 'Estado comision', 'Suspendida', 'Motivo suspension']]
+    data.forEach(emp => (emp.contratos_del_mes || []).forEach(c => {
+      contratosMes.push([
+        ...empCols(emp),
+        c.numero_contrato, c.cliente || '',
+        Number(c.monto_total || 0), Number(c.monto_pagado || 0),
+        Number(c.pct_pagado || 0), Number(c.monto_base || 0),
+        Number(c.comision_calculada || 0), c.estado || '',
+        c.suspendida ? 'Si' : 'No', c.motivo_suspension || '',
+      ])
+    }))
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(contratosMes), 'Contratos del mes')
+
+    // Hoja 4: Arrastres (contratos anteriores con pago este mes)
+    const arrastres = [['Empleado', 'Rol', 'Sala', 'Nº Contrato', 'Cliente', 'Fecha contrato', 'Monto Total', 'Pagado este mes', 'Base (sin int.)', 'Comision arrastre']]
+    data.forEach(emp => (emp.contratos_arrastre || []).forEach(c => {
+      arrastres.push([
+        ...empCols(emp),
+        c.numero_contrato, c.cliente || '',
+        toDate(c.fecha_contrato),
+        Number(c.monto_total || 0), Number(c.monto_pagado_mes || 0),
+        Number(c.monto_base_pagado_mes || 0), Number(c.comision_arrastre || 0),
+      ])
+    }))
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(arrastres), 'Arrastres')
+
+    // Hoja 5: Cuotas — todas las cuotas de los contratos mostrados
+    const cuotas = [['Empleado', 'Rol', 'Sala', 'Tipo', 'Nº Contrato', 'Cliente', 'Cuota #', 'Vence', 'Pagada', 'Esperado', 'Pagado', 'Interes', 'Estado']]
+    data.forEach(emp => {
+      const push = (tipo, c) => (c.cuotas || []).forEach(cu => cuotas.push([
+        ...empCols(emp), tipo, c.numero_contrato, c.cliente || '',
+        cu.numero, toDate(cu.fecha_vencimiento), toDate(cu.fecha_pago),
+        Number(cu.monto_esperado || 0), Number(cu.monto_pagado || 0),
+        Number(cu.monto_interes || 0), cu.estado || '',
+      ]))
+      ;(emp.contratos_del_mes || []).forEach(c => push('Mes', c))
+      ;(emp.contratos_arrastre || []).forEach(c => push('Arrastre', c))
+    })
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cuotas), 'Cuotas')
+
+    // Hoja 6: Recibos cobrados
+    const recibos = [['Empleado (cobrador)', 'Rol', 'Sala', 'Consecutivo', 'Fecha pago', 'Nº Contrato', 'Cliente', 'Forma de pago', 'Valor']]
+    data.forEach(emp => (emp.recibos_cobrados || []).forEach(r => {
+      recibos.push([
+        ...empCols(emp),
+        r.consecutivo || `R-${r.id}`, toDate(r.fecha_pago),
+        r.numero_contrato || '', r.cliente || '',
+        r.forma_pago || '', Number(r.valor || 0),
+      ])
+    }))
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(recibos), 'Recibos')
+
+    // Hoja 7: Tours uno a uno
+    const tours = [['Empleado (consultor)', 'Rol', 'Sala empleado', 'Fecha', 'Cliente', 'Sala del tour']]
+    data.forEach(emp => (emp.tours_detalle || []).forEach(t => {
+      tours.push([
+        ...empCols(emp),
+        toDate(t.fecha), t.cliente || '', t.sala_nombre || '',
+      ])
+    }))
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tours), 'Tours')
+
+    // Hoja 8: Citas agendadas (TMK)
+    const citas = [['Empleado (TMK)', 'Rol', 'Sala empleado', 'Fecha cita', 'Cliente', 'Sala de la cita', 'Estado']]
+    data.forEach(emp => (emp.citas_detalle || []).forEach(l => {
+      citas.push([
+        ...empCols(emp),
+        toDate(l.fecha_cita), l.cliente || '', l.sala_nombre || '', l.estado || '',
+      ])
+    }))
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(citas), 'Citas')
+
+    XLSX.writeFile(wb, `reporte_validacion_nomina_${mes}.xlsx`)
+  }
+
   function exportarExcel() {
     // Generar CSV con desglose completo (compatible con Excel)
     const filas = []
@@ -614,9 +764,13 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
             <p className="text-sm text-gray-500">Periodo: {mes} - Desglose detallado por empleado y contratos</p>
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={exportarXLSXValidacion} disabled={loading || data.length === 0}
+              className="bg-teal-600 hover:bg-teal-700 text-white disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold">
+              Exportar XLSX detallado
+            </button>
             <button onClick={exportarExcel} disabled={loading || data.length === 0}
               className="border border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-medium">
-              Exportar Excel
+              Exportar CSV
             </button>
             <button onClick={exportarPDFValidacion} disabled={loading || data.length === 0}
               className="border border-blue-300 text-blue-700 hover:bg-blue-50 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-medium">
