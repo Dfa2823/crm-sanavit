@@ -367,7 +367,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
                 AND c2.estado NOT IN ('cancelado')
             )
             AND cu.estado = 'pagado'
-            AND TO_CHAR(cu.updated_at, 'YYYY-MM') = $2
+            AND TO_CHAR(cu.fecha_pago, 'YYYY-MM') = $2
           ), 0)
         , 0) * $3 / 100 AS comision_abonos
         FROM recibos r
@@ -1081,7 +1081,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
                    FROM cuotas cu
                    WHERE cu.contrato_id = r.contrato_id
                      AND cu.estado = 'pagado'
-                     AND TO_CHAR(cu.updated_at, 'YYYY-MM') = $2
+                     AND TO_CHAR(cu.fecha_pago, 'YYYY-MM') = $2
                  ), 0) AS total_base_mes
           FROM recibos r
           WHERE r.estado = 'activo'
