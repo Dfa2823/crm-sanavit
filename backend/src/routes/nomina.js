@@ -1041,8 +1041,8 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
           cs.motivo AS motivo_suspension
         FROM contratos c
         LEFT JOIN (
-          SELECT l.id, l.nombre FROM leads l
-        ) cl ON cl.id = c.lead_id
+          SELECT p.id, p.nombres || ' ' || COALESCE(p.apellidos, '') AS nombre FROM personas p
+        ) cl ON cl.id = c.persona_id
         LEFT JOIN (
           SELECT r.contrato_id,
                  SUM(r.valor) AS total,
@@ -1071,8 +1071,8 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
           ROUND(COALESCE(pagos_mes.total_base_mes, 0) * $3 / 100, 2) AS comision_arrastre
         FROM contratos c
         LEFT JOIN (
-          SELECT l.id, l.nombre FROM leads l
-        ) cl ON cl.id = c.lead_id
+          SELECT p.id, p.nombres || ' ' || COALESCE(p.apellidos, '') AS nombre FROM personas p
+        ) cl ON cl.id = c.persona_id
         LEFT JOIN (
           SELECT r.contrato_id,
                  SUM(r.valor) AS total_mes,
