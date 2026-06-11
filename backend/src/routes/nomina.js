@@ -1095,13 +1095,88 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
         ORDER BY c.fecha_contrato
       `, [uid, mes, parseFloat(nom.pct_comision_venta)]);
 
-      // 4. Desglose semanal TMK (ya almacenado en nomina)
+      // 4. Cuotas de los contratos relevantes (mes + arrastre) — UN solo query
+      const contratosIds = [
+        ...contratosRes.rows.map(r => r.id),
+        ...arrastresRes.rows.map(r => r.id),
+      ];
+      const cuotasMap = {};
+      if (contratosIds.length > 0) {
+        const cuotasRes = await pool.query(`
+          SELECT id, contrato_id, numero_cuota,
+                 monto_esperado, monto_pagado,
+                 fecha_vencimiento, fecha_pago, estado,
+                 COALESCE(monto_interes, 0) AS monto_interes
+          FROM cuotas
+          WHERE contrato_id = ANY($1::integer[])
+          ORDER BY contrato_id, numero_cuota
+        `, [contratosIds]);
+        for (const cu of cuotasRes.rows) {
+          if (!cuotasMap[cu.contrato_id]) cuotasMap[cu.contrato_id] = [];
+          cuotasMap[cu.contrato_id].push({
+            numero: cu.numero_cuota,
+            monto_esperado: Number(cu.monto_esperado || 0),
+            monto_pagado: Number(cu.monto_pagado || 0),
+            fecha_vencimiento: cu.fecha_vencimiento,
+            fecha_pago: cu.fecha_pago,
+            estado: cu.estado,
+            monto_interes: Number(cu.monto_interes || 0),
+          });
+        }
+      }
+
+      // 5. Recibos cobrados por el empleado en el mes (detalle de cobros)
+      const recibosRes = await pool.query(`
+        SELECT r.id, r.consecutivo, r.fecha_pago, r.valor, r.cuota_id,
+               r.contrato_id, c.numero_contrato,
+               p.nombres || ' ' || COALESCE(p.apellidos, '') AS cliente,
+               fp.nombre AS forma_pago_nombre
+        FROM recibos r
+        LEFT JOIN contratos c ON c.id = r.contrato_id
+        LEFT JOIN personas p ON p.id = r.persona_id
+        LEFT JOIN formas_pago fp ON fp.id = r.forma_pago_id
+        WHERE r.usuario_id = $1
+          AND TO_CHAR(r.fecha_pago, 'YYYY-MM') = $2
+          AND r.estado = 'activo'
+        ORDER BY r.fecha_pago DESC, r.id DESC
+      `, [uid, mes]);
+
+      // 6. Tours del mes para el empleado (consultor)
+      const toursRes = await pool.query(`
+        SELECT vs.id, vs.fecha, vs.calificacion,
+               p.nombres || ' ' || COALESCE(p.apellidos, '') AS cliente,
+               s.nombre AS sala_nombre
+        FROM visitas_sala vs
+        LEFT JOIN personas p ON p.id = vs.persona_id
+        LEFT JOIN salas s ON s.id = vs.sala_id
+        WHERE vs.consultor_id = $1
+          AND vs.calificacion = 'TOUR'
+          AND TO_CHAR(vs.fecha, 'YYYY-MM') = $2
+        ORDER BY vs.fecha DESC, vs.id DESC
+      `, [uid, mes]);
+
+      // 7. Citas (leads) agendadas por el empleado en el mes (TMK)
+      const citasRes = await pool.query(`
+        SELECT l.id, l.fecha_cita, l.estado,
+               p.nombres || ' ' || COALESCE(p.apellidos, '') AS cliente,
+               s.nombre AS sala_nombre
+        FROM leads l
+        LEFT JOIN personas p ON p.id = l.persona_id
+        LEFT JOIN salas s ON s.id = l.sala_id
+        WHERE l.tmk_id = $1
+          AND l.fecha_cita IS NOT NULL
+          AND TO_CHAR(l.fecha_cita, 'YYYY-MM') = $2
+          AND l.estado IN ('confirmada','tentativa','tour','no_tour','inasistencia')
+        ORDER BY l.fecha_cita DESC, l.id DESC
+      `, [uid, mes]);
+
+      // 8. Desglose semanal TMK (ya almacenado en nomina)
       let desglose_semanal = nom.desglose_semanal_tmk;
       if (typeof desglose_semanal === 'string') {
         try { desglose_semanal = JSON.parse(desglose_semanal); } catch { desglose_semanal = null; }
       }
 
-      // 5. Armar registro de reporte
+      // 9. Armar registro de reporte
       reporte.push({
         nomina_id: nom.id,
         usuario_id: uid,
@@ -1135,6 +1210,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
           estado: c.estado_comision,
           suspendida: !!c.suspension_id,
           motivo_suspension: c.motivo_suspension || null,
+          cuotas: cuotasMap[c.id] || [],
         })),
         comision_venta_recurrente: Number(nom.comision_venta_recurrente || 0),
 
@@ -1148,6 +1224,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
           monto_pagado_mes: Number(c.monto_pagado_mes),
           monto_base_pagado_mes: Number(c.monto_base_pagado_mes),
           comision_arrastre: Number(c.comision_arrastre),
+          cuotas: cuotasMap[c.id] || [],
         })),
         comision_abonos_cartera: Number(nom.comision_abonos_cartera || 0),
         comision_reactivaciones: Number(nom.comision_reactivaciones || 0),
@@ -1176,6 +1253,31 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
         otras_deducciones: Number(nom.otras_deducciones || 0),
         total_deducciones: Number(nom.total_deducciones || 0),
         neto_a_pagar: Number(nom.neto_a_pagar || 0),
+
+        // Detalle uno a uno
+        recibos_cobrados: recibosRes.rows.map(r => ({
+          id: r.id,
+          consecutivo: r.consecutivo,
+          fecha_pago: r.fecha_pago,
+          valor: Number(r.valor || 0),
+          numero_contrato: r.numero_contrato || (r.contrato_id ? `C-${r.contrato_id}` : null),
+          cliente: r.cliente,
+          forma_pago: r.forma_pago_nombre,
+          cuota_id: r.cuota_id,
+        })),
+        tours_detalle: toursRes.rows.map(t => ({
+          id: t.id,
+          fecha: t.fecha,
+          cliente: t.cliente,
+          sala_nombre: t.sala_nombre,
+        })),
+        citas_detalle: citasRes.rows.map(l => ({
+          id: l.id,
+          fecha_cita: l.fecha_cita,
+          estado: l.estado,
+          cliente: l.cliente,
+          sala_nombre: l.sala_nombre,
+        })),
       });
     }
 

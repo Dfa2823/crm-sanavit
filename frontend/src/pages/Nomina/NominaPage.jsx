@@ -874,6 +874,153 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
                           </div>
                         )}
 
+                        {/* Recibos cobrados por el empleado en el mes */}
+                        {(emp.recibos_cobrados || []).length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-2">
+                              Recibos cobrados ({emp.recibos_cobrados.length})
+                            </p>
+                            <div className="overflow-x-auto rounded-lg border border-emerald-100">
+                              <table className="w-full text-xs">
+                                <thead className="bg-emerald-50">
+                                  <tr>
+                                    <th className="text-left px-3 py-2 font-semibold text-emerald-700">Consecutivo</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-emerald-700">Fecha</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-emerald-700">Contrato</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-emerald-700">Cliente</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-emerald-700">Forma pago</th>
+                                    <th className="text-right px-3 py-2 font-semibold text-emerald-700">Valor</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {emp.recibos_cobrados.map(r => (
+                                    <tr key={r.id} className="border-t border-emerald-50">
+                                      <td className="px-3 py-1.5 font-mono">{r.consecutivo || `R-${r.id}`}</td>
+                                      <td className="px-3 py-1.5">{r.fecha_pago ? String(r.fecha_pago).slice(0,10) : '—'}</td>
+                                      <td className="px-3 py-1.5">{r.numero_contrato || '—'}</td>
+                                      <td className="px-3 py-1.5">{r.cliente || '—'}</td>
+                                      <td className="px-3 py-1.5">{r.forma_pago || '—'}</td>
+                                      <td className="px-3 py-1.5 text-right font-medium">${fmt(r.valor)}</td>
+                                    </tr>
+                                  ))}
+                                  <tr className="border-t border-emerald-200 bg-emerald-50/60 font-semibold">
+                                    <td className="px-3 py-1.5" colSpan={5}>Total cobrado</td>
+                                    <td className="px-3 py-1.5 text-right text-emerald-700">
+                                      ${fmt(emp.recibos_cobrados.reduce((a, r) => a + Number(r.valor || 0), 0))}
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Tours uno a uno (bonos) */}
+                        {(emp.tours_detalle || []).length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">
+                              Tours del mes ({emp.tours_detalle.length})
+                            </p>
+                            <div className="overflow-x-auto rounded-lg border border-amber-100">
+                              <table className="w-full text-xs">
+                                <thead className="bg-amber-50">
+                                  <tr>
+                                    <th className="text-left px-3 py-2 font-semibold text-amber-700">Fecha</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-amber-700">Cliente</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-amber-700">Sala</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {emp.tours_detalle.map(t => (
+                                    <tr key={t.id} className="border-t border-amber-50">
+                                      <td className="px-3 py-1.5">{t.fecha ? String(t.fecha).slice(0,10) : '—'}</td>
+                                      <td className="px-3 py-1.5">{t.cliente || '—'}</td>
+                                      <td className="px-3 py-1.5">{t.sala_nombre || '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Citas uno a uno (TMK) */}
+                        {(emp.citas_detalle || []).length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">
+                              Citas agendadas ({emp.citas_detalle.length})
+                            </p>
+                            <div className="overflow-x-auto rounded-lg border border-blue-100">
+                              <table className="w-full text-xs">
+                                <thead className="bg-blue-50">
+                                  <tr>
+                                    <th className="text-left px-3 py-2 font-semibold text-blue-700">Fecha cita</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-blue-700">Cliente</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-blue-700">Sala</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-blue-700">Estado</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {emp.citas_detalle.map(l => (
+                                    <tr key={l.id} className="border-t border-blue-50">
+                                      <td className="px-3 py-1.5">{l.fecha_cita ? String(l.fecha_cita).slice(0,10) : '—'}</td>
+                                      <td className="px-3 py-1.5">{l.cliente || '—'}</td>
+                                      <td className="px-3 py-1.5">{l.sala_nombre || '—'}</td>
+                                      <td className="px-3 py-1.5 capitalize">{l.estado || '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Cuotas por contrato (mes + arrastre) */}
+                        {([...contratos, ...arrastres].some(c => (c.cuotas || []).length > 0)) && (
+                          <div>
+                            <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">
+                              Cuotas por contrato
+                            </p>
+                            <div className="space-y-2">
+                              {[...contratos, ...arrastres].filter(c => (c.cuotas || []).length > 0).map(c => (
+                                <details key={`cu-${c.id}`} className="rounded-lg border border-slate-200 bg-slate-50/40">
+                                  <summary className="cursor-pointer px-3 py-1.5 text-xs font-medium text-slate-700 select-none">
+                                    {c.numero_contrato || `C-${c.id}`} · {c.cliente || ''} <span className="text-slate-400">— {c.cuotas.length} cuotas</span>
+                                  </summary>
+                                  <div className="overflow-x-auto px-2 pb-2">
+                                    <table className="w-full text-xs">
+                                      <thead className="bg-white">
+                                        <tr>
+                                          <th className="text-left px-2 py-1 font-semibold text-slate-600">#</th>
+                                          <th className="text-left px-2 py-1 font-semibold text-slate-600">Vence</th>
+                                          <th className="text-left px-2 py-1 font-semibold text-slate-600">Pagada</th>
+                                          <th className="text-right px-2 py-1 font-semibold text-slate-600">Esperado</th>
+                                          <th className="text-right px-2 py-1 font-semibold text-slate-600">Pagado</th>
+                                          <th className="text-right px-2 py-1 font-semibold text-slate-600">Interés</th>
+                                          <th className="text-left px-2 py-1 font-semibold text-slate-600">Estado</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {c.cuotas.map(cu => (
+                                          <tr key={`${c.id}-${cu.numero}`} className="border-t border-slate-100">
+                                            <td className="px-2 py-1">{cu.numero}</td>
+                                            <td className="px-2 py-1">{cu.fecha_vencimiento ? String(cu.fecha_vencimiento).slice(0,10) : '—'}</td>
+                                            <td className="px-2 py-1">{cu.fecha_pago ? String(cu.fecha_pago).slice(0,10) : '—'}</td>
+                                            <td className="px-2 py-1 text-right">${fmt(cu.monto_esperado)}</td>
+                                            <td className="px-2 py-1 text-right">${fmt(cu.monto_pagado)}</td>
+                                            <td className="px-2 py-1 text-right text-orange-600">${fmt(cu.monto_interes)}</td>
+                                            <td className="px-2 py-1 capitalize">{cu.estado}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </details>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Resumen de comisiones */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                           <div className="bg-teal-50 rounded-lg p-2 border border-teal-100">
