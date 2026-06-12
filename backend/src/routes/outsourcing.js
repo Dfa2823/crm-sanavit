@@ -84,16 +84,27 @@ router.patch('/empresas/:id', async (req, res) => {
   }
 });
 
-// GET /api/outsourcing/stats — estadísticas por empresa
+// GET /api/outsourcing/stats — estadísticas por empresa.
+// El rol outsourcing ve SOLO su propia empresa (usuarios.outsourcing_empresa_id).
 router.get('/stats', async (req, res) => {
   const { sala_id, fecha_inicio, fecha_fin } = req.query;
-  const { sala_id: userSalaId, rol } = req.user;
+  const { sala_id: userSalaId, rol, id: userId } = req.user;
   const hoy = new Date();
   const primerMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`;
   const inicio = fecha_inicio || primerMes;
   const fin = fecha_fin || hoy.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
   const salaFiltro = sala_id || (['admin', 'director'].includes(rol) ? null : userSalaId);
   try {
+    // Para el rol outsourcing: limitar a su empresa asignada
+    let empresaFiltro = null;
+    if (rol === 'outsourcing') {
+      const u = await pool.query('SELECT outsourcing_empresa_id FROM usuarios WHERE id = $1', [userId]);
+      empresaFiltro = u.rows[0]?.outsourcing_empresa_id || null;
+      if (!empresaFiltro) {
+        return res.json({ data: [], meta: { inicio, fin, aviso: 'Tu usuario no tiene una empresa outsourcing asignada. Pide al administrador que la configure.' } });
+      }
+    }
+
     const result = await pool.query(`
       SELECT
         oe.id AS empresa_id,
@@ -115,10 +126,11 @@ router.get('/stats', async (req, res) => {
         AND DATE(l.created_at) BETWEEN $1::date AND $2::date
         AND ($3::integer IS NULL OR l.sala_id = $3)
       WHERE oe.activo = true
+        AND ($4::integer IS NULL OR oe.id = $4)
       GROUP BY oe.id, oe.nombre, oe.ciudad
       ORDER BY total_leads DESC
-    `, [inicio, fin, salaFiltro || null]);
-    res.json({ data: result.rows, meta: { inicio, fin, sala_id: salaFiltro || 'todas' } });
+    `, [inicio, fin, salaFiltro || null, empresaFiltro]);
+    res.json({ data: result.rows, meta: { inicio, fin, sala_id: salaFiltro || 'todas', empresa_id: empresaFiltro || 'todas' } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al obtener estadísticas outsourcing' });

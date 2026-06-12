@@ -117,6 +117,9 @@ const MENU_POR_ROL = {
   outsourcing: [
     { label: 'Mis Leads', path: '/mercadeo/captura', icon: '📞', section: 'MERCADEO' },
     { label: 'Pre-manifiesto', path: '/mercadeo/premanifiesto', icon: '📋', section: 'OPERACION' },
+    // La página existía pero no estaba en el menú: el outsourcing no podía
+    // ver el reporte de su gestión.
+    { label: 'Mi Reporte', path: '/outsourcing', icon: '📊', section: 'OPERACION' },
   ],
 }
 
