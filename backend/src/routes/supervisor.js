@@ -319,31 +319,55 @@ router.get('/manifiesto', auth, soloSupervisor, async (req, res) => {
   const fechaHasta = (hasta && /^\d{4}-\d{2}-\d{2}$/.test(hasta)) ? hasta : hoyEC;
 
   try {
-    // VENTAS del rango. El TMK de origen se resuelve por el lead más reciente de
-    // la persona (los contratos no guardan visita_sala_id en la práctica).
+    // VENTAS del rango con TODA la cadena comercial que influyó (para liquidar
+    // nómina): TMK o empresa OUTSOURCING de origen, confirmador, consultor que
+    // atendió el tour, hostess, y el consultor que vendió. El origen se resuelve
+    // por el lead más reciente de la persona y su visita a sala más reciente
+    // (los contratos no guardan visita_sala_id en la práctica).
     const ventas = await pool.query(`
       SELECT
         c.id, c.numero_contrato, c.fecha_contrato, c.monto_total, c.cuota_inicial, c.estado,
         p.nombres, p.apellidos, p.telefono,
         uc.nombre AS consultor_nombre,
-        lt.tmk_nombre, lt.fuente_nombre,
+        lt.tmk_nombre, lt.fuente_nombre, lt.confirmador_nombre, lt.outsourcing_nombre,
+        vis.fecha AS fecha_tour,
+        vis.consultor_tour_nombre,
+        vis.hostess_nombre,
+        vis.calificacion AS calificacion_tour,
         COALESCE(SUM(r.valor) FILTER (WHERE r.estado = 'activo'), 0) AS total_pagado
       FROM contratos c
       JOIN personas p ON c.persona_id = p.id
       LEFT JOIN usuarios uc ON c.consultor_id = uc.id
       LEFT JOIN recibos r ON r.contrato_id = c.id
       LEFT JOIN LATERAL (
-        SELECT ut.nombre AS tmk_nombre, f.nombre AS fuente_nombre
+        SELECT ut.nombre AS tmk_nombre, f.nombre AS fuente_nombre,
+               ucf.nombre AS confirmador_nombre, oe.nombre AS outsourcing_nombre
         FROM leads l
         LEFT JOIN usuarios ut ON l.tmk_id = ut.id
+        LEFT JOIN usuarios ucf ON l.confirmador_id = ucf.id
         LEFT JOIN fuentes f ON l.fuente_id = f.id
+        LEFT JOIN outsourcing_empresas oe ON l.outsourcing_empresa_id = oe.id
         WHERE l.persona_id = c.persona_id
         ORDER BY l.created_at DESC
         LIMIT 1
       ) lt ON true
+      LEFT JOIN LATERAL (
+        SELECT v.fecha, v.calificacion,
+               uct.nombre AS consultor_tour_nombre,
+               uh.nombre AS hostess_nombre
+        FROM visitas_sala v
+        LEFT JOIN usuarios uct ON v.consultor_id = uct.id
+        LEFT JOIN usuarios uh ON v.hostess_id = uh.id
+        WHERE v.persona_id = c.persona_id
+          AND v.fecha <= c.fecha_contrato
+        ORDER BY v.fecha DESC, v.id DESC
+        LIMIT 1
+      ) vis ON true
       WHERE c.fecha_contrato BETWEEN $1::date AND $2::date
         AND ($3::integer IS NULL OR c.sala_id = $3)
-      GROUP BY c.id, p.id, uc.nombre, lt.tmk_nombre, lt.fuente_nombre
+      GROUP BY c.id, p.id, uc.nombre, lt.tmk_nombre, lt.fuente_nombre,
+               lt.confirmador_nombre, lt.outsourcing_nombre,
+               vis.fecha, vis.consultor_tour_nombre, vis.hostess_nombre, vis.calificacion
       ORDER BY c.fecha_contrato DESC, c.id DESC
     `, [fechaDesde, fechaHasta, salaFiltro || null]);
 
@@ -375,7 +399,9 @@ router.get('/manifiesto', auth, soloSupervisor, async (req, res) => {
       LEFT JOIN usuarios ut ON l.tmk_id = ut.id
       LEFT JOIN usuarios ucf ON l.confirmador_id = ucf.id
       LEFT JOIN fuentes f ON l.fuente_id = f.id
-      LEFT JOIN outsourcing_empresas oe ON v.outsourcing_empresa_id = oe.id
+      -- La empresa outsourcing puede venir de la visita o del lead
+      LEFT JOIN outsourcing_empresas oe
+        ON oe.id = COALESCE(v.outsourcing_empresa_id, l.outsourcing_empresa_id)
       LEFT JOIN LATERAL (
         SELECT c.numero_contrato, c.monto_total,
                COALESCE((SELECT SUM(r.valor) FROM recibos r

@@ -137,6 +137,80 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+// GET /api/outsourcing/visitas — detalle CLIENTE A CLIENTE de las visitas a sala
+// de una empresa outsourcing (o del call center propio) con su calificación
+// (TOUR / NO_TOUR / NO_SHOW / pendiente) y la venta si la hubo. Responde a
+// "necesito ver cuáles clientes de la outsourcing fueron tour y cuáles no".
+// Query: empresa_id (id numérico | 'propio' = sin outsourcing), fecha_inicio, fecha_fin.
+// El rol outsourcing solo puede ver SU empresa.
+router.get('/visitas', async (req, res) => {
+  const { empresa_id, fecha_inicio, fecha_fin } = req.query;
+  const { rol, id: userId } = req.user;
+  const hoy = new Date();
+  const primerMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`;
+  const inicio = fecha_inicio || primerMes;
+  const fin = fecha_fin || hoy.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
+
+  try {
+    let empresaFiltro = null;   // id numérico
+    let soloPropio = false;     // visitas sin empresa outsourcing
+    if (rol === 'outsourcing') {
+      const u = await pool.query('SELECT outsourcing_empresa_id FROM usuarios WHERE id = $1', [userId]);
+      empresaFiltro = u.rows[0]?.outsourcing_empresa_id || null;
+      if (!empresaFiltro) return res.json({ data: [], meta: { aviso: 'Tu usuario no tiene empresa outsourcing asignada.' } });
+    } else if (empresa_id === 'propio') {
+      soloPropio = true;
+    } else if (empresa_id) {
+      empresaFiltro = parseInt(empresa_id, 10) || null;
+    }
+
+    const result = await pool.query(`
+      SELECT
+        v.id, v.fecha, v.hora_cita_agendada, v.hora_llegada, v.calificacion,
+        p.nombres || ' ' || COALESCE(p.apellidos, '') AS cliente,
+        p.telefono,
+        uc.nombre AS consultor_nombre,
+        ut.nombre AS tmk_nombre,
+        oe.id AS empresa_id, oe.nombre AS empresa_nombre,
+        s.nombre AS sala_nombre,
+        vta.numero_contrato,
+        COALESCE(vta.monto_total, 0) AS monto_venta,
+        COALESCE(vta.cash, 0) AS cash
+      FROM visitas_sala v
+      JOIN personas p ON v.persona_id = p.id
+      LEFT JOIN salas s ON v.sala_id = s.id
+      LEFT JOIN usuarios uc ON v.consultor_id = uc.id
+      LEFT JOIN leads l ON v.lead_id = l.id
+      LEFT JOIN usuarios ut ON l.tmk_id = ut.id
+      LEFT JOIN outsourcing_empresas oe
+        ON oe.id = COALESCE(v.outsourcing_empresa_id, l.outsourcing_empresa_id)
+      LEFT JOIN LATERAL (
+        SELECT c.numero_contrato, c.monto_total,
+               COALESCE((SELECT SUM(r.valor) FROM recibos r
+                         WHERE r.contrato_id = c.id AND r.estado = 'activo'), 0) AS cash
+        FROM contratos c
+        WHERE c.persona_id = v.persona_id
+          AND c.fecha_contrato >= v.fecha
+          AND c.estado NOT IN ('cancelado')
+        ORDER BY c.fecha_contrato ASC
+        LIMIT 1
+      ) vta ON true
+      WHERE v.fecha BETWEEN $1::date AND $2::date
+        AND (
+          ($3::integer IS NOT NULL AND COALESCE(v.outsourcing_empresa_id, l.outsourcing_empresa_id) = $3)
+          OR ($4::boolean = true AND COALESCE(v.outsourcing_empresa_id, l.outsourcing_empresa_id) IS NULL)
+          OR ($3::integer IS NULL AND $4::boolean = false)
+        )
+      ORDER BY v.fecha DESC, v.id DESC
+    `, [inicio, fin, empresaFiltro, soloPropio]);
+
+    res.json({ data: result.rows, meta: { inicio, fin, empresa_id: empresaFiltro || (soloPropio ? 'propio' : 'todas') } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener el detalle de visitas' });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers para carga de leads por outsourcing
 // ─────────────────────────────────────────────────────────────────────────────

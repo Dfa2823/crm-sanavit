@@ -12,3 +12,7 @@ export const cargaMasivaOutsourcing = (formData) => client.post('/api/outsourcin
 }).then(r => r.data);
 export const getMisLeads = (params) => client.get('/api/outsourcing/mis-leads', { params }).then(r => r.data);
 export const getMiResumen = (params) => client.get('/api/outsourcing/mi-resumen', { params }).then(r => r.data);
+
+// Detalle cliente a cliente de las visitas de una empresa (o empresa_id=propio)
+export const getVisitasOutsourcing = (params) =>
+  client.get('/api/outsourcing/visitas', { params }).then(r => r.data)

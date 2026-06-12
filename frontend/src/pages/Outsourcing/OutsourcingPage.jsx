@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
-import { getEmpresas, createEmpresa, updateEmpresa, getOutsourcingStats, getOutsourcingSalas, crearLeadOutsourcing, cargaMasivaOutsourcing, getMisLeads, getMiResumen } from '../../api/outsourcing'
+import { getEmpresas, createEmpresa, updateEmpresa, getOutsourcingStats, getOutsourcingSalas, crearLeadOutsourcing, cargaMasivaOutsourcing, getMisLeads, getMiResumen, getVisitasOutsourcing } from '../../api/outsourcing'
 import { toEcuadorISO } from '../../utils/formatFechaEC'
 
 export default function OutsourcingPage() {
@@ -33,6 +33,28 @@ export default function OutsourcingPage() {
   const [subiendo, setSubiendo] = useState(false)
   const [resultado, setResultado] = useState(null)
   const fileInputRef = useRef(null)
+
+  // Detalle cliente a cliente de una empresa (tab Estadísticas)
+  const [visitasEmpresa, setVisitasEmpresa] = useState(null)   // { empresa_id, empresa }
+  const [visitasDetalle, setVisitasDetalle] = useState([])
+  const [cargandoVisitas, setCargandoVisitas] = useState(false)
+
+  async function abrirVisitas(s) {
+    setVisitasEmpresa(s)
+    setVisitasDetalle([])
+    setCargandoVisitas(true)
+    try {
+      const [y, m] = periodo.split('-')
+      const inicio = `${periodo}-01`
+      const fin = `${periodo}-${String(new Date(Number(y), Number(m), 0).getDate()).padStart(2, '0')}`
+      const r = await getVisitasOutsourcing({ empresa_id: s.empresa_id, fecha_inicio: inicio, fecha_fin: fin })
+      setVisitasDetalle(r.data || [])
+    } catch (e) {
+      toast?.('Error al cargar el detalle de clientes', 'error')
+    } finally {
+      setCargandoVisitas(false)
+    }
+  }
 
   // Estado para Mi Panel (outsourcing)
   const [resumen, setResumen] = useState(null)
@@ -703,15 +725,15 @@ export default function OutsourcingPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['Empresa', 'Ciudad', 'Leads', 'Citas', 'Asistencias', 'Tours', 'Efect. Datos', 'Conv. Tour'].map(h => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                  {['Empresa', 'Ciudad', 'Leads', 'Citas', 'Asistencias', 'Tours', 'Efect. Datos', 'Conv. Tour', ''].map((h, i) => (
+                    <th key={i} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {stats.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-12 text-gray-400">No hay leads de outsourcing en este periodo</td>
+                    <td colSpan={9} className="text-center py-12 text-gray-400">No hay leads de outsourcing en este periodo</td>
                   </tr>
                 ) : stats.map(s => (
                   <tr key={s.empresa_id} className="border-b border-gray-100 hover:bg-gray-50">
@@ -723,11 +745,70 @@ export default function OutsourcingPage() {
                     <td className="px-4 py-3 font-bold text-teal-700">{s.tours}</td>
                     <td className="px-4 py-3">{s.efectividad_datos}%</td>
                     <td className="px-4 py-3 font-bold text-purple-700">{s.efectividad_tour}%</td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => abrirVisitas(s)}
+                        className="text-xs bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 px-2.5 py-1 rounded-lg font-medium"
+                        title="Ver cliente a cliente: quiénes fueron TOUR, NO TOUR, y sus ventas"
+                      >
+                        Ver clientes
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          {/* Detalle cliente a cliente de la empresa seleccionada */}
+          {visitasEmpresa && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mt-4">
+              <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+                <p className="text-sm font-semibold text-gray-700">
+                  Clientes de {visitasEmpresa.empresa} — {periodo}
+                  {!cargandoVisitas && <span className="text-gray-400 font-normal ml-2">({visitasDetalle.length} visitas)</span>}
+                </p>
+                <button onClick={() => setVisitasEmpresa(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+              </div>
+              {cargandoVisitas ? (
+                <p className="text-center py-8 text-gray-400 text-sm">Cargando clientes...</p>
+              ) : visitasDetalle.length === 0 ? (
+                <p className="text-center py-8 text-gray-400 text-sm">Sin visitas a sala de esta empresa en el periodo</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr>
+                      {['Fecha', 'Cliente', 'Teléfono', 'Calificación', 'Consultor', 'TMK/Captador', 'Venta', 'Monto'].map(h => (
+                        <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visitasDetalle.map(v => (
+                      <tr key={v.id} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="px-4 py-2.5 text-xs text-gray-500">{String(v.fecha).slice(0, 10)}</td>
+                        <td className="px-4 py-2.5 text-gray-800">{v.cliente}</td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{v.telefono || '—'}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            String(v.calificacion).toUpperCase() === 'TOUR' ? 'bg-green-100 text-green-700' :
+                            String(v.calificacion).toUpperCase() === 'NO_TOUR' ? 'bg-yellow-100 text-yellow-700' :
+                            v.calificacion ? 'bg-gray-100 text-gray-600' : 'bg-orange-50 text-orange-600'
+                          }`}>{v.calificacion || 'pendiente'}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-600">{v.consultor_nombre || '—'}</td>
+                        <td className="px-4 py-2.5 text-gray-600">{v.tmk_nombre || '—'}</td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-teal-700">{v.numero_contrato || '—'}</td>
+                        <td className="px-4 py-2.5 text-right">
+                          {Number(v.monto_venta) > 0 ? `$${Number(v.monto_venta).toLocaleString('es-EC', { minimumFractionDigits: 2 })}` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </div>
       )}
 

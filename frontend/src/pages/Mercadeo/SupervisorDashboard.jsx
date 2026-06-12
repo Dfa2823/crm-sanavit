@@ -142,6 +142,37 @@ function exportarManifiestoXLSX(data, desde, hasta) {
   ]))
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(hojaManifiesto), 'Manifiesto')
 
+  // ── Hoja 2: Ventas — UNA FILA POR VENTA con toda la cadena que influyó
+  // (para liquidar nómina): TMK o empresa outsourcing de origen, confirmador,
+  // consultor que atendió el tour, hostess, y el consultor que vendió.
+  const hojaVentas = [[
+    'Nº CONTRATO', 'FECHA VENTA', 'CLIENTE', 'TELEFONO',
+    'FUENTE', 'EMPRESA OUTSOURCING', 'TMK / CAPTADOR', 'CONFIRMADOR',
+    'FECHA TOUR', 'CALIFICACION TOUR', 'CONSULTOR DEL TOUR', 'HOSTESS',
+    'VENDEDOR (CONSULTOR)', 'VOLUMEN', 'CASH COBRADO', 'ESTADO',
+  ]]
+  ;(data.ventas || []).forEach(v => {
+    hojaVentas.push([
+      v.numero_contrato || '',
+      fechaEC(v.fecha_contrato),
+      up(`${v.nombres || ''} ${v.apellidos || ''}`),
+      v.telefono || '',
+      v.outsourcing_nombre ? 'OUTSOURCING' : 'TELEMERCADEO',
+      up(v.outsourcing_nombre) || '—',
+      up(v.tmk_nombre) || '—',
+      up(v.confirmador_nombre) || '—',
+      v.fecha_tour ? fechaEC(v.fecha_tour) : '—',
+      v.calificacion_tour || '—',
+      up(v.consultor_tour_nombre) || '—',
+      up(v.hostess_nombre) || '—',
+      up(v.consultor_nombre) || '—',
+      num(v.monto_total),
+      num(v.total_pagado),
+      v.estado || '',
+    ])
+  })
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(hojaVentas), 'Ventas')
+
   // ── Agregador común para las hojas de resumen ──
   const agrupar = (claveFn) => {
     const grupos = {}
@@ -210,6 +241,7 @@ function ManifiestoSection({ salaId }) {
   const [desde, setDesde] = useState(`${hoy.slice(0, 7)}-01`)
   const [hasta, setHasta] = useState(hoy)
   const [vista, setVista] = useState('ventas')
+  const [origen, setOrigen] = useState('todos') // todos | propio | nombre de empresa outsourcing
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -231,6 +263,15 @@ function ManifiestoSection({ salaId }) {
   useEffect(() => { cargar() }, [cargar])
 
   const fmtUSD = (v) => `$${parseFloat(v || 0).toLocaleString('es-EC', { minimumFractionDigits: 2 })}`
+
+  // Filtro por origen aplicado a las tablas (call propio = sin empresa outsourcing)
+  const filtrarOrigen = (item) => {
+    if (origen === 'todos') return true
+    if (origen === 'propio') return !item.outsourcing_nombre
+    return item.outsourcing_nombre === origen
+  }
+  const toursFiltrados = (data?.tours || []).filter(filtrarOrigen)
+  const ventasFiltradas = (data?.ventas || []).filter(filtrarOrigen)
 
   return (
     <div className="space-y-4">
@@ -256,11 +297,23 @@ function ManifiestoSection({ salaId }) {
             </button>
           ))}
         </div>
+        {/* Filtro por ORIGEN: call center propio o cada empresa outsourcing */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Origen</label>
+          <select value={origen} onChange={e => setOrigen(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
+            <option value="todos">Todos</option>
+            <option value="propio">Call center propio</option>
+            {[...new Set((data?.tours || []).map(t => t.outsourcing_nombre).filter(Boolean))].map(n => (
+              <option key={n} value={n}>{n} (outsourcing)</option>
+            ))}
+          </select>
+        </div>
         <button
           onClick={() => data && exportarManifiestoXLSX(data, desde, hasta)}
           disabled={!data || loading}
           className="ml-auto bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
-          title="Descarga el Excel con el formato de la planilla de liquidación (Manifiesto + resúmenes por rol)"
+          title="Descarga el Excel con el formato de la planilla de liquidación (Manifiesto + Ventas con cadena completa + resúmenes por rol)"
         >
           📥 Exportar Excel (manifiesto)
         </button>
@@ -295,9 +348,9 @@ function ManifiestoSection({ salaId }) {
                 </tr>
               </thead>
               <tbody>
-                {data.ventas.length === 0 ? (
+                {ventasFiltradas.length === 0 ? (
                   <tr><td colSpan={8} className="text-center py-8 text-gray-400">Sin ventas en el periodo</td></tr>
-                ) : data.ventas.map(v => (
+                ) : ventasFiltradas.map(v => (
                   <tr key={v.id} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="px-4 py-2.5 font-mono text-teal-700">{v.numero_contrato}</td>
                     <td className="px-4 py-2.5 text-gray-500 text-xs">{String(v.fecha_contrato).slice(0, 10)}</td>
@@ -333,9 +386,9 @@ function ManifiestoSection({ salaId }) {
                 </tr>
               </thead>
               <tbody>
-                {data.tours.length === 0 ? (
+                {toursFiltrados.length === 0 ? (
                   <tr><td colSpan={6} className="text-center py-8 text-gray-400">Sin visitas en el periodo</td></tr>
-                ) : data.tours.map(t => (
+                ) : toursFiltrados.map(t => (
                   <tr key={t.id} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="px-4 py-2.5 text-gray-500 text-xs">{String(t.fecha).slice(0, 10)}</td>
                     <td className="px-4 py-2.5 text-gray-800">{t.nombres} {t.apellidos}</td>
