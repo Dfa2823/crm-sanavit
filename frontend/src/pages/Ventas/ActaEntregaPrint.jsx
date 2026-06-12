@@ -286,14 +286,13 @@ export default function ActaEntregaPrint() {
               </p>
               <p className="text-xs text-gray-500 mt-0.5">EL CLIENTE</p>
             </div>
-            {/* Representante */}
+            {/* Representante — firma el Representante Legal, igual que en el
+                contrato impreso (antes salía el nombre del consultor). */}
             <div>
               <p className="text-gray-600 font-semibold uppercase text-xs tracking-wide mb-1">Por la Compania</p>
               <div className="border-b-2 border-gray-700 mb-2 h-14" />
-              <p className="font-semibold text-gray-800">{contrato.consultor_nombre || 'Representante SANAVIT'}</p>
-              <p className="text-gray-500 text-xs mt-0.5">
-                {contrato.sala_nombre || 'SANAVIT Ecuador'}
-              </p>
+              <p className="font-semibold text-gray-800">JUAN SEBASTIAN GUTIERREZ BUSTILLOS</p>
+              <p className="text-gray-500 text-xs mt-0.5">Representante Legal</p>
               <p className="text-xs text-gray-500 mt-0.5">SANAVIT - JM GUTIERREZ S.A.S.</p>
             </div>
           </div>
