@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import TimelineComentarios from '../../components/Comentarios/TimelineComentarios'
 import {
   getTickets, createTicket, updateTicket, getSACStats,
   getCalidad, activarContrato,
@@ -644,6 +645,11 @@ function DrawerVerTicket({ ticket, onClose, onUpdated, usuario, usuariosList }) 
               {ticket.fecha_cierre && <p className="text-xs text-gray-400 mt-1">Cerrado: {fmtFecha(ticket.fecha_cierre)}</p>}
             </div>
           )}
+
+          <hr className="border-gray-100" />
+
+          {/* Comentarios con historial (línea de tiempo del ticket) */}
+          <TimelineComentarios entidadTipo="pqr_ticket" entidadId={ticket.id} />
 
           {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
           {success && <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">Cambios guardados correctamente</div>}

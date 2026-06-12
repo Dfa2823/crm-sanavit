@@ -2,12 +2,13 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import Breadcrumb from '../../components/UI/Breadcrumb'
-import { getVenta360, updateEstadoVenta, updateNotasVenta, despacharProducto, anularVenta, condonarIntereses } from '../../api/ventas'
+import { getVenta360, updateEstadoVenta, despacharProducto, anularVenta, condonarIntereses } from '../../api/ventas'
 import { createRecibo, anularRecibo } from '../../api/recibos'
 import { getFormasPago } from '../../api/admin'
 import { useToast } from '../../context/ToastContext'
 import client from '../../api/client'
 import { formatFechaSoloFecha } from '../../utils/formatFechaEC'
+import TimelineComentarios from '../../components/Comentarios/TimelineComentarios'
 
 const TIPOS_DOC = [
   { value: 'contrato_firmado', label: 'Contrato firmado' },
@@ -212,10 +213,6 @@ export default function Venta360Page() {
   const [comprobante, setComprobante]     = useState(null)
   const [comprobanteNombre, setComprobanteNombre] = useState('')
   const comprobanteRef = useRef()
-  // ── Notas del contrato ─────────────────────────────────────
-  const [notasEdit, setNotasEdit]     = useState('')
-  const [guardandoNotas, setGuardandoNotas] = useState(false)
-  const [notasMsg, setNotasMsg]       = useState('')
   // ── Cambio de estado ──────────────────────────────────────
   const [cambiandoEstado, setCambiandoEstado] = useState(false)
   // ── Despacho de productos ─────────────────────────────────
@@ -237,11 +234,6 @@ export default function Venta360Page() {
 
   useEffect(() => { cargar() }, [id])
   useEffect(() => { getFormasPago().then(fps => setFormasPago(fps.filter(f => f.activo))).catch(console.error) }, [])
-  useEffect(() => {
-    if (data?.contrato?.observaciones !== undefined) {
-      setNotasEdit(data.contrato.observaciones || '')
-    }
-  }, [data])
 
   function handleComprobanteChange(e) {
     const file = e.target.files[0]
@@ -326,21 +318,6 @@ export default function Venta360Page() {
       addToast(err.response?.data?.error || 'Error al anular el contrato', 'error')
     } finally {
       setCambiandoEstado(false)
-    }
-  }
-
-  async function handleGuardarNotas(e) {
-    e.preventDefault()
-    setGuardandoNotas(true); setNotasMsg('')
-    try {
-      await updateNotasVenta(id, notasEdit)
-      addToast('Notas guardadas correctamente')
-      cargar()
-    } catch (err) {
-      addToast('Error al guardar notas', 'error')
-      setNotasMsg('❌ Error al guardar notas')
-    } finally {
-      setGuardandoNotas(false)
     }
   }
 
@@ -648,34 +625,10 @@ export default function Venta360Page() {
                     <span className="text-sm text-gray-800">{f.value || '—'}</span>
                   </div>
                 ))}
-                {/* Notas / Observaciones editables */}
+                {/* Comentarios con historial (reemplaza las notas que se sobrescribían) */}
                 <div className="pt-3 border-t border-gray-100">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    Observaciones / Notas del contrato
-                  </label>
-                  {['admin','director','consultor','hostess'].includes(usuario?.rol) ? (
-                    <form onSubmit={handleGuardarNotas} className="space-y-2">
-                      <textarea
-                        rows={3}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
-                        placeholder="Agregar notas sobre el contrato..."
-                        value={notasEdit}
-                        onChange={e => setNotasEdit(e.target.value)}
-                      />
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="submit"
-                          disabled={guardandoNotas}
-                          className="bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white px-4 py-1.5 rounded-lg text-sm font-medium"
-                        >
-                          {guardandoNotas ? 'Guardando...' : '💾 Guardar notas'}
-                        </button>
-                        {notasMsg && <span className="text-sm text-gray-600">{notasMsg}</span>}
-                      </div>
-                    </form>
-                  ) : (
-                    <p className="text-sm text-gray-700">{contrato.observaciones || '—'}</p>
-                  )}
+                  <TimelineComentarios entidadTipo="contrato" entidadId={contrato.id}
+                    titulo="Comentarios / Notas del contrato" />
                 </div>
               </div>
 

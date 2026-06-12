@@ -117,6 +117,7 @@ app.use('/api/consultor',    authMiddleware, tenantMiddleware, require('./routes
 app.use('/api/productos', authMiddleware, tenantMiddleware, require('./routes/productos'));
 app.use('/api/ventas',    authMiddleware, tenantMiddleware, require('./routes/ventas'));
 app.use('/api/recibos',   authMiddleware, tenantMiddleware, require('./routes/recibos'));
+app.use('/api/comentarios', authMiddleware, tenantMiddleware, require('./routes/comentarios'));
 
 // ── Health check ───────────────────────────────────────────
 app.get('/health', (req, res) => {
