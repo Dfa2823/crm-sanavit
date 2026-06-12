@@ -62,9 +62,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// Servir archivos estáticos (documentos subidos)
+// Servir archivos estáticos (documentos subidos).
+// UPLOADS_DIR = volumen persistente en Railway; sin él, carpeta local (efímera).
 const path = require('path');
-app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
+app.use('/uploads', express.static(process.env.UPLOADS_DIR || path.join(__dirname, '../uploads'), {
   setHeaders: (res, filePath) => {
     // Imágenes y PDF pueden verse inline; el resto se fuerza a descarga (anti-XSS).
     const ext = path.extname(filePath).toLowerCase();

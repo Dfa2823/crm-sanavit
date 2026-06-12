@@ -683,8 +683,20 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-const uploadDir = path.join(__dirname, '../../uploads/documentos');
+// Base de uploads: UPLOADS_DIR (volumen persistente en Railway) o carpeta local.
+// Sin volumen, el filesystem del contenedor es EFÍMERO: los archivos se pierden
+// en cada deploy. En Railway debe montarse un volumen y apuntar UPLOADS_DIR ahí.
+const uploadsBase = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
+const uploadDir = path.join(uploadsBase, 'documentos');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+// Resuelve la ruta física de un documento a partir de la URL guardada en BD
+// (formato /uploads/documentos/archivo.ext) dentro de la base configurada.
+function pathFisicoDocumento(url) {
+  const nombre = path.basename(url || '');
+  if (!nombre) return null;
+  return path.join(uploadDir, nombre);
+}
 
 // Tipos permitidos: la extensión se deriva del mimetype (no se confía en originalname)
 const TIPOS_DOC_PERMITIDOS = {
@@ -754,6 +766,42 @@ router.post('/:id/documentos', auth, upload.single('archivo'), async (req, res) 
   }
 });
 
+// GET /api/ventas/:id/documentos/:docId/descargar — descarga autenticada.
+// El enlace directo a /uploads/... fallaba en producción: la URL relativa se
+// resolvía contra el dominio del frontend (el SPA capturaba la navegación) y
+// además el archivo podía haberse perdido por el filesystem efímero de Railway.
+// Este endpoint sirve el archivo por la API (con JWT) y responde 404 claro si
+// el archivo físico ya no existe.
+router.get('/:id/documentos/:docId/descargar', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM documentos_contrato WHERE id = $1 AND contrato_id = $2',
+      [req.params.docId, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Documento no encontrado' });
+
+    const doc = result.rows[0];
+    const filePath = pathFisicoDocumento(doc.url);
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({
+        error: 'Archivo no disponible: se perdió en un despliegue anterior del servidor. Por favor vuelva a subirlo.',
+        archivo_perdido: true,
+      });
+    }
+
+    // PDF e imágenes se pueden ver inline; el resto se fuerza a descarga
+    const ext = path.extname(filePath).toLowerCase();
+    const inline = ['.pdf', '.jpg', '.jpeg', '.png', '.webp'].includes(ext);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (inline && req.query.modo === 'ver') {
+      return res.sendFile(filePath);
+    }
+    return res.download(filePath, doc.nombre_archivo || path.basename(filePath));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /api/ventas/:id/documentos/:docId
 router.delete('/:id/documentos/:docId', auth, async (req, res) => {
   if (!['admin', 'director'].includes(req.user.rol)) {
@@ -767,8 +815,8 @@ router.delete('/:id/documentos/:docId', auth, async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Documento no encontrado' });
 
     // Eliminar archivo físico
-    const filePath = path.join(__dirname, '../..', result.rows[0].url);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    const filePath = pathFisicoDocumento(result.rows[0].url);
+    if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
     res.json({ ok: true });
   } catch (err) {

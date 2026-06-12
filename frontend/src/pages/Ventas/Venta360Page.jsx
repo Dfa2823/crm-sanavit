@@ -20,11 +20,48 @@ const TIPOS_DOC = [
 
 function TabDocumentos({ contratoId }) {
   const { usuario } = useAuth()
+  const { addToast } = useToast()
   const fileRef = useRef()
   const [docs, setDocs] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [tipoDoc, setTipoDoc] = useState('contrato_firmado')
+  const [descargando, setDescargando] = useState(null)
+
+  // Descarga por la API (con JWT) en lugar del enlace directo a /uploads:
+  // la URL relativa caía en el dominio del SPA y "abría otra ventana del sistema".
+  const abrirDocumento = async (d, modo) => {
+    setDescargando(d.id)
+    try {
+      const r = await client.get(
+        `/api/ventas/${contratoId}/documentos/${d.id}/descargar`,
+        { params: modo === 'ver' ? { modo: 'ver' } : {}, responseType: 'blob' }
+      )
+      const blobUrl = URL.createObjectURL(new Blob([r.data], { type: r.headers['content-type'] }))
+      if (modo === 'ver') {
+        window.open(blobUrl, '_blank', 'noopener')
+      } else {
+        const a = document.createElement('a')
+        a.href = blobUrl
+        a.download = d.nombre_archivo || 'documento'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      }
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
+    } catch (err) {
+      // El error viene como blob → leerlo para saber si es archivo perdido
+      let msg = 'No se pudo descargar el documento'
+      try {
+        const texto = await err.response?.data?.text?.()
+        const j = texto ? JSON.parse(texto) : null
+        if (j?.error) msg = j.error
+      } catch { /* respuesta no-JSON */ }
+      addToast(msg, 'error', 6000)
+    } finally {
+      setDescargando(null)
+    }
+  }
 
   useEffect(() => {
     client.get(`/api/ventas/${contratoId}/documentos`)
@@ -106,8 +143,14 @@ function TabDocumentos({ contratoId }) {
                 <td className="px-4 py-2 text-gray-500 text-xs">{formatFechaSoloFecha(d.created_at)}</td>
                 <td className="px-4 py-2 text-center">
                   <div className="flex items-center gap-2 justify-center">
-                    <a href={d.url} target="_blank" rel="noreferrer"
-                      className="text-teal-600 hover:text-teal-800 text-xs font-medium">Descargar</a>
+                    <button onClick={() => abrirDocumento(d, 'ver')} disabled={descargando === d.id}
+                      className="text-teal-600 hover:text-teal-800 text-xs font-medium disabled:opacity-50">
+                      {descargando === d.id ? '...' : 'Ver'}
+                    </button>
+                    <button onClick={() => abrirDocumento(d, 'descargar')} disabled={descargando === d.id}
+                      className="text-teal-600 hover:text-teal-800 text-xs font-medium disabled:opacity-50">
+                      Descargar
+                    </button>
                     {['admin','director'].includes(usuario?.rol) && (
                       <button onClick={() => eliminar(d.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
                     )}
