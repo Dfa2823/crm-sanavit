@@ -23,7 +23,7 @@ export default function Topbar({ title, onToggleSidebar, onOpenSearch, onToggleM
   const navigate = useNavigate()
 
   const [query, setQuery]       = useState('')
-  const [results, setResults]   = useState([])
+  const [results, setResults]   = useState({ personas: [], contratos: [] })
   const [searching, setSearching] = useState(false)
   const [showDrop, setShowDrop] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -54,18 +54,23 @@ export default function Topbar({ title, onToggleSidebar, onOpenSearch, onToggleM
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Busqueda con debounce
+  // Busqueda con debounce — usa la búsqueda GLOBAL (/api/buscar): encuentra
+  // clientes Y contratos por número (p.ej. SQT-21). Antes solo consultaba
+  // /api/personas y era imposible buscar un contrato desde aquí.
   const buscar = useCallback((q) => {
     clearTimeout(timerRef.current)
-    if (q.trim().length < 2) { setResults([]); setShowDrop(false); return }
+    if (q.trim().length < 2) { setResults({ personas: [], contratos: [] }); setShowDrop(false); return }
     timerRef.current = setTimeout(async () => {
       setSearching(true)
       try {
-        const { data } = await client.get('/api/personas', { params: { q: q.trim() } })
-        setResults(data.slice(0, 5))
+        const { data } = await client.get('/api/buscar', { params: { q: q.trim() } })
+        setResults({
+          personas: (data.personas || []).slice(0, 5),
+          contratos: (data.contratos || []).slice(0, 5),
+        })
         setShowDrop(true)
       } catch (e) {
-        setResults([])
+        setResults({ personas: [], contratos: [] })
       } finally {
         setSearching(false)
       }
@@ -78,12 +83,23 @@ export default function Topbar({ title, onToggleSidebar, onOpenSearch, onToggleM
     buscar(val)
   }
 
-  function handleSelectResult(persona) {
+  function cerrarBusqueda() {
     setQuery('')
-    setResults([])
+    setResults({ personas: [], contratos: [] })
     setShowDrop(false)
+  }
+
+  function handleSelectResult(persona) {
+    cerrarBusqueda()
     navigate(`/sala/cliente/${persona.id}`)
   }
+
+  function handleSelectContrato(contrato) {
+    cerrarBusqueda()
+    navigate(`/ventas/${contrato.id}`)
+  }
+
+  const hayResultados = results.personas.length > 0 || results.contratos.length > 0
 
   function handleKeyDown(e) {
     if (e.key === 'Escape') { setShowDrop(false); setQuery('') }
@@ -137,9 +153,9 @@ export default function Topbar({ title, onToggleSidebar, onOpenSearch, onToggleM
             value={query}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            onFocus={() => results.length > 0 && setShowDrop(true)}
-            aria-label="Buscar cliente por nombre, telefono o cedula"
-            placeholder="Buscar cliente por nombre, tel, cedula..."
+            onFocus={() => hayResultados && setShowDrop(true)}
+            aria-label="Buscar por nombre, telefono, cedula o numero de contrato"
+            placeholder="Buscar cliente o contrato (SQT-21)..."
             className="w-full border border-gray-200 rounded-xl pl-10 pr-20 py-2 text-sm bg-gray-50/80 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400 focus:bg-white transition-all duration-200 placeholder:text-gray-400"
           />
           {/* Ctrl+K badge */}
@@ -160,12 +176,17 @@ export default function Topbar({ title, onToggleSidebar, onOpenSearch, onToggleM
           )}
         </div>
 
-        {/* Dropdown resultados */}
-        {showDrop && results.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-xl shadow-black/8 z-50 overflow-hidden">
-            {results.map(p => (
+        {/* Dropdown resultados: clientes y contratos */}
+        {showDrop && hayResultados && (
+          <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-xl shadow-black/8 z-50 overflow-hidden max-h-96 overflow-y-auto">
+            {results.personas.length > 0 && (
+              <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50/80">
+                Clientes
+              </p>
+            )}
+            {results.personas.map(p => (
               <button
-                key={p.id}
+                key={`p-${p.id}`}
                 onClick={() => handleSelectResult(p)}
                 className="w-full text-left px-4 py-2.5 hover:bg-teal-50/60 flex items-center gap-3 border-b border-gray-100 last:border-0 transition-colors duration-150"
               >
@@ -178,12 +199,38 @@ export default function Topbar({ title, onToggleSidebar, onOpenSearch, onToggleM
                 </div>
               </button>
             ))}
+            {results.contratos.length > 0 && (
+              <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50/80">
+                Contratos
+              </p>
+            )}
+            {results.contratos.map(c => (
+              <button
+                key={`c-${c.id}`}
+                onClick={() => handleSelectContrato(c)}
+                className="w-full text-left px-4 py-2.5 hover:bg-teal-50/60 flex items-center gap-3 border-b border-gray-100 last:border-0 transition-colors duration-150"
+              >
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-100 to-sky-200 text-sky-700 flex items-center justify-center text-xs font-bold shrink-0">
+                  📄
+                </div>
+                <div className="min-w-0">
+                  <div className="font-medium text-gray-800 text-sm truncate">
+                    <span className="font-mono text-teal-700">{c.numero_contrato}</span>
+                    <span className="text-gray-500 font-normal ml-2">{c.cliente}</span>
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    {c.sala_nombre || '—'} · {c.estado}
+                    {c.monto_total ? ` · $${parseFloat(c.monto_total).toLocaleString('es-EC', { minimumFractionDigits: 2 })}` : ''}
+                  </div>
+                </div>
+              </button>
+            ))}
           </div>
         )}
 
-        {showDrop && results.length === 0 && query.trim().length >= 2 && !searching && (
+        {showDrop && !hayResultados && query.trim().length >= 2 && !searching && (
           <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-xl shadow-black/8 z-50 px-4 py-3 text-sm text-gray-400">
-            No se encontraron clientes
+            Sin resultados (clientes ni contratos)
           </div>
         )}
       </div>

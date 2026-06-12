@@ -35,7 +35,8 @@ router.get('/', auth, async (req, res) => {
         FROM contratos c
         JOIN personas p ON c.persona_id = p.id
         LEFT JOIN salas s ON c.sala_id = s.id
-        WHERE (c.numero_contrato ILIKE $1 OR p.nombres ILIKE $1 OR p.apellidos ILIKE $1 OR p.telefono ILIKE $2)
+        WHERE (c.numero_contrato ILIKE $1 OR p.nombres ILIKE $1 OR p.apellidos ILIKE $1
+               OR p.telefono ILIKE $2 OR p.num_documento ILIKE $2)
           AND ($3::integer IS NULL OR c.sala_id = $3)
         ORDER BY c.fecha_contrato DESC
         LIMIT 5
