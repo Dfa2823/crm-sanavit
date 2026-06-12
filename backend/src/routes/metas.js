@@ -84,7 +84,7 @@ router.get('/progreso', auth, async (req, res) => {
       LEFT JOIN metas_mensuales m ON m.usuario_id = u.id AND m.mes = $4
       WHERE u.activo = true
         AND ($1::integer IS NULL OR u.sala_id = $1)
-        AND r.nombre IN ('consultor','tmk','confirmador','asesor_cartera','director')
+        AND r.nombre IN ('consultor','tmk','confirmador','asesor_cartera','cartera','director')
       ORDER BY r.nombre, u.nombre
     `, [salaId || null, inicio, fin, mesStr]);
 

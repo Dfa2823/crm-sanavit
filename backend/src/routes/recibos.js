@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
 const { dispararWebhook } = require('../utils/webhook');
+const { siguienteConsecutivoRecibo } = require('../utils/consecutivos');
 
 const router = express.Router();
 
@@ -11,6 +12,8 @@ const router = express.Router();
     await pool.query(`ALTER TABLE recibos ADD COLUMN IF NOT EXISTS comprobante TEXT`);
     await pool.query(`ALTER TABLE recibos ADD COLUMN IF NOT EXISTS tipo_tarjeta VARCHAR(20)`);
     await pool.query(`ALTER TABLE recibos ADD COLUMN IF NOT EXISTS entidad_tarjeta VARCHAR(50)`);
+    // 'entrada' = cuota inicial cobrada al firmar el contrato; 'abono' = pago normal
+    await pool.query(`ALTER TABLE recibos ADD COLUMN IF NOT EXISTS tipo VARCHAR(20) DEFAULT 'abono'`);
     // Contador propio de recibos por sala (independiente de serial_contrato).
     await pool.query(`ALTER TABLE salas ADD COLUMN IF NOT EXISTS serial_recibo INTEGER DEFAULT 0`);
     // Backfill colisión-seguro: siembra el contador con el máximo serial ya usado en
@@ -118,25 +121,7 @@ router.post('/', auth, async (req, res) => {
 
     // Obtener consecutivo de recibos para la sala
     const salaId = sala_id || (contrato_id ? (await client.query('SELECT sala_id FROM contratos WHERE id = $1', [contrato_id])).rows[0]?.sala_id : null);
-
-    let consecutivo = null;
-    if (salaId) {
-      const salaResult = await client.query(
-        'SELECT prefijo_contrato, serial_recibo FROM salas WHERE id = $1 FOR UPDATE',
-        [salaId]
-      );
-      if (salaResult.rows.length > 0) {
-        const { prefijo_contrato, serial_recibo } = salaResult.rows[0];
-        const nuevoSerial = (serial_recibo || 0) + 1;
-        // Incremento del contador propio de recibos bajo el lock FOR UPDATE de la sala
-        // (serializa recibos concurrentes y evita la colisión de consecutivo UNIQUE).
-        await client.query(
-          'UPDATE salas SET serial_recibo = $1 WHERE id = $2',
-          [nuevoSerial, salaId]
-        );
-        consecutivo = `${prefijo_contrato}-RC-${nuevoSerial}`;
-      }
-    }
+    const consecutivo = await siguienteConsecutivoRecibo(client, salaId);
 
     const result = await client.query(`
       INSERT INTO recibos (consecutivo, contrato_id, cuota_id, persona_id, sala_id, forma_pago_id, valor, fecha_pago, usuario_id, referencia_pago, observacion, comprobante, tipo_tarjeta, entidad_tarjeta)
@@ -192,20 +177,57 @@ router.post('/', auth, async (req, res) => {
 });
 
 // PATCH /api/recibos/:id/anular
+// Anula el recibo Y revierte la cuota asociada: monto_pagado/estado/fecha_pago se
+// recalculan desde los recibos que siguen activos (no resta ciega — autocorrige
+// inconsistencias históricas). Todo en una transacción.
 router.patch('/:id/anular', auth, async (req, res) => {
   const { rol } = req.user;
   if (!['admin','director'].includes(rol)) return res.status(403).json({ error: 'Sin permiso' });
 
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
+    await client.query('BEGIN');
+
+    const result = await client.query(
       `UPDATE recibos SET estado = 'anulado' WHERE id = $1 AND estado = 'activo' RETURNING *`,
       [req.params.id]
     );
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Recibo no encontrado o ya anulado' });
-    req.audit('anular_recibo', 'recibos', req.params.id, { contrato_id: result.rows[0].contrato_id, valor: result.rows[0].valor });
-    res.json(result.rows[0]);
+    if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Recibo no encontrado o ya anulado' });
+    }
+    const recibo = result.rows[0];
+
+    if (recibo.cuota_id) {
+      // Mismo orden de lock que el POST (cuota FOR UPDATE) para evitar carreras
+      const cuota = await client.query(
+        'SELECT monto_esperado FROM cuotas WHERE id = $1 FOR UPDATE',
+        [recibo.cuota_id]
+      );
+      if (cuota.rows.length > 0) {
+        const agg = await client.query(
+          `SELECT COALESCE(SUM(valor), 0) AS pagado, MAX(fecha_pago) AS ultima_fecha
+           FROM recibos WHERE cuota_id = $1 AND estado = 'activo'`,
+          [recibo.cuota_id]
+        );
+        const pagado = parseFloat(agg.rows[0].pagado);
+        const esperado = parseFloat(cuota.rows[0].monto_esperado);
+        const nuevoEstado = pagado <= 0 ? 'pendiente' : (pagado >= esperado ? 'pagado' : 'parcial');
+        await client.query(
+          `UPDATE cuotas SET monto_pagado = $1, estado = $2, fecha_pago = $3 WHERE id = $4`,
+          [pagado, nuevoEstado, pagado > 0 ? agg.rows[0].ultima_fecha : null, recibo.cuota_id]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    req.audit('anular_recibo', 'recibos', req.params.id, { contrato_id: recibo.contrato_id, valor: recibo.valor, cuota_id: recibo.cuota_id });
+    res.json(recibo);
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 

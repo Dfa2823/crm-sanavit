@@ -3,6 +3,7 @@ const pool = require('../db');
 const auth = require('../middleware/auth');
 const { paginate, paginatedResponse } = require('../utils/pagination');
 const { dispararWebhook } = require('../utils/webhook');
+const { siguienteConsecutivoRecibo } = require('../utils/consecutivos');
 
 const router = express.Router();
 
@@ -38,6 +39,12 @@ async function initMigrations() {
     await pool.query(`
       ALTER TABLE recibos ADD COLUMN IF NOT EXISTS soporte_url TEXT;
       ALTER TABLE recibos ADD COLUMN IF NOT EXISTS soporte_nombre VARCHAR(255);
+    `);
+    // Tipo de recibo: 'entrada' (cuota inicial al firmar) | 'abono' (pago normal).
+    // También se declara en recibos.js — duplicado a propósito para no depender
+    // del orden de carga de los módulos.
+    await pool.query(`
+      ALTER TABLE recibos ADD COLUMN IF NOT EXISTS tipo VARCHAR(20) DEFAULT 'abono';
     `);
     // Despacho parcial: cantidad_despachada en venta_productos
     await pool.query(`
@@ -185,7 +192,7 @@ router.get('/', auth, async (req, res) => {
     let idx = 1;
 
     // Filtro por sala del usuario
-    if (!['admin','director','asesor_cartera'].includes(rol) && userSalaId) {
+    if (!['admin','director','asesor_cartera','cartera'].includes(rol) && userSalaId) {
       where.push(`c.sala_id = $${idx}`); params.push(userSalaId); idx++;
     }
     if (sala_id) { where.push(`c.sala_id = $${idx}`); params.push(sala_id); idx++; }
@@ -445,10 +452,31 @@ router.post('/', auth, async (req, res) => {
       }
     }
 
+    // Recibo automático por la cuota inicial (entrada): el dinero que el cliente
+    // paga al firmar debe constar como pago real — si no, "total pagado" sale 0
+    // y el saldo muestra un valor que ya se pagó. cuota_id = NULL: la entrada no
+    // pertenece al plan de cuotas (las cuotas se generan solo sobre lo financiado).
+    let reciboEntrada = null;
+    if (parseFloat(cuota_inicial || 0) > 0) {
+      const consecutivoRecibo = await siguienteConsecutivoRecibo(client, salaId);
+      const reciboRes = await client.query(`
+        INSERT INTO recibos (consecutivo, contrato_id, cuota_id, persona_id, sala_id,
+                             forma_pago_id, valor, fecha_pago, usuario_id, observacion, tipo)
+        VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8, $9, 'entrada')
+        RETURNING *
+      `, [
+        consecutivoRecibo, contrato.id, persona_id, salaId,
+        forma_pago_inicial_id || null, cuota_inicial,
+        contrato.fecha_contrato || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }),
+        userId, `Cuota inicial contrato ${numeroContrato}`,
+      ]);
+      reciboEntrada = reciboRes.rows[0];
+    }
+
     await client.query('COMMIT');
 
     // Audit trail
-    req.audit('crear_contrato', 'contratos', contrato.id, { numero_contrato: numeroContrato, monto_total: valorBruto, persona_id, productos: productos.length });
+    req.audit('crear_contrato', 'contratos', contrato.id, { numero_contrato: numeroContrato, monto_total: valorBruto, persona_id, productos: productos.length, recibo_entrada: reciboEntrada?.consecutivo || null });
 
     // Retornar vista 360° del contrato creado
     const vista = await getVenta360(contrato.id);
@@ -502,34 +530,68 @@ router.patch('/:id/anular', auth, async (req, res) => {
       }
     }
 
-    const result = await pool.query(
-      `UPDATE contratos
-       SET estado = 'cancelado',
-           motivo_anulacion = $1,
-           anulado_por = $2,
-           fecha_anulacion = NOW(),
-           updated_at = NOW()
-       WHERE id = $3
-       RETURNING id, numero_contrato, estado, motivo_anulacion`,
-      [motivo || 'Caída en mesa', userId, contratoId]
-    );
-
-    req.audit('anular_contrato', 'contratos', contratoId, { motivo: motivo || 'Caída en mesa', numero_contrato: result.rows[0]?.numero_contrato });
-
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error(err);
-    // Columnas de anulación pueden no existir aún, usar fallback
+    const client = await pool.connect();
     try {
-      const result = await pool.query(
-        `UPDATE contratos SET estado = 'cancelado', updated_at = NOW()
-         WHERE id = $1 RETURNING id, numero_contrato, estado`,
+      await client.query('BEGIN');
+
+      const result = await client.query(
+        `UPDATE contratos
+         SET estado = 'cancelado',
+             motivo_anulacion = $1,
+             anulado_por = $2,
+             fecha_anulacion = NOW(),
+             updated_at = NOW()
+         WHERE id = $3
+         RETURNING id, numero_contrato, estado, motivo_anulacion`,
+        [motivo || 'Caída en mesa', userId, contratoId]
+      );
+
+      // Anular también los recibos del contrato (incluido el de entrada): un
+      // contrato caído en mesa no puede seguir sumando en recaudo ni comisiones.
+      const recibosAnulados = await client.query(
+        `UPDATE recibos SET estado = 'anulado'
+         WHERE contrato_id = $1 AND estado = 'activo'
+         RETURNING id, cuota_id, valor`,
         [contratoId]
       );
-      res.json(result.rows[0]);
-    } catch (err2) {
-      res.status(500).json({ error: err.message });
+
+      // Revertir las cuotas que tenían pagos de esos recibos
+      const cuotasAfectadas = [...new Set(recibosAnulados.rows.map(r => r.cuota_id).filter(Boolean))];
+      for (const cuotaId of cuotasAfectadas) {
+        await client.query(
+          `UPDATE cuotas c SET
+             monto_pagado = agg.pagado,
+             estado = CASE WHEN agg.pagado <= 0 THEN 'pendiente'
+                           WHEN agg.pagado >= c.monto_esperado THEN 'pagado'
+                           ELSE 'parcial' END,
+             fecha_pago = CASE WHEN agg.pagado > 0 THEN agg.ultima_fecha ELSE NULL END
+           FROM (
+             SELECT COALESCE(SUM(valor), 0) AS pagado, MAX(fecha_pago) AS ultima_fecha
+             FROM recibos WHERE cuota_id = $1 AND estado = 'activo'
+           ) agg
+           WHERE c.id = $1`,
+          [cuotaId]
+        );
+      }
+
+      await client.query('COMMIT');
+
+      req.audit('anular_contrato', 'contratos', contratoId, {
+        motivo: motivo || 'Caída en mesa',
+        numero_contrato: result.rows[0]?.numero_contrato,
+        recibos_anulados: recibosAnulados.rows.length,
+      });
+
+      res.json({ ...result.rows[0], recibos_anulados: recibosAnulados.rows.length });
+    } catch (errTx) {
+      await client.query('ROLLBACK');
+      throw errTx;
+    } finally {
+      client.release();
     }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -717,7 +779,7 @@ router.delete('/:id/documentos/:docId', auth, async (req, res) => {
 // PATCH /api/ventas/:id/condonar-intereses — condonar intereses por pago anticipado
 router.patch('/:id/condonar-intereses', auth, async (req, res) => {
   const { rol, id: userId, nombre: userName } = req.user;
-  if (!['admin', 'director', 'asesor_cartera', 'sac'].includes(rol)) {
+  if (!['admin', 'director', 'asesor_cartera', 'cartera', 'sac'].includes(rol)) {
     return res.status(403).json({ error: 'Sin permiso para condonar intereses' });
   }
 

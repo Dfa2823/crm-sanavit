@@ -399,7 +399,7 @@ export default function Venta360Page() {
           )}
 
           {/* Botón Refinanciar — solo admin/director/asesor_cartera, contrato activo sin refinanciación previa */}
-          {['admin','director','asesor_cartera'].includes(usuario?.rol) &&
+          {['admin','director','asesor_cartera','cartera'].includes(usuario?.rol) &&
            contrato.estado === 'activo' && (
             <button
               onClick={() => {
@@ -787,7 +787,7 @@ export default function Venta360Page() {
                   <span>
                     <strong>Nota:</strong> Las cuotas resaltadas incluyen interes del {contrato.tasa_interes || 1.5}% mensual (aplicado a partir de la 4ta cuota).
                   </span>
-                  {['admin','director','asesor_cartera','sac'].includes(usuario?.rol) &&
+                  {['admin','director','asesor_cartera','cartera','sac'].includes(usuario?.rol) &&
                    contrato.estado === 'activo' &&
                    cuotas.some(q => q.estado !== 'pagado' && parseFloat(q.monto_interes || 0) > 0) && (
                     <button
@@ -842,7 +842,14 @@ export default function Venta360Page() {
                   <tbody>
                     {recibos.map(r => (
                       <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="px-4 py-3 font-mono text-xs text-teal-700">{r.consecutivo || `RC-${r.id}`}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-teal-700">
+                          {r.consecutivo || `RC-${r.id}`}
+                          {r.tipo === 'entrada' && (
+                            <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 font-sans font-semibold align-middle">
+                              Entrada
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right font-bold text-green-700">{fmt(r.valor)}</td>
                         <td className="px-4 py-3 text-gray-600">
                           {r.forma_pago_nombre || '—'}

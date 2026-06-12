@@ -13,6 +13,7 @@ const ROL_COLORS = {
   hostess:        'bg-pink-50 text-pink-700 border-pink-200',
   consultor:      'bg-orange-50 text-orange-700 border-orange-200',
   asesor_cartera: 'bg-red-50 text-red-700 border-red-200',
+  cartera:        'bg-red-50 text-red-700 border-red-200',
   sac:            'bg-yellow-50 text-yellow-700 border-yellow-200',
   outsourcing:    'bg-gray-50 text-gray-700 border-gray-200',
 }

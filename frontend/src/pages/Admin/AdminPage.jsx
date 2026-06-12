@@ -235,7 +235,7 @@ function SeccionSalarial({ form, setForm, rolNombre }) {
   const esConsultorODirector = ['consultor','director','admin'].includes(rolNombre)
   const esTmk                = rolNombre === 'tmk'
   const esConfirmador        = rolNombre === 'confirmador'
-  const esAsesor             = rolNombre === 'asesor_cartera'
+  const esAsesor             = rolNombre === 'asesor_cartera' || rolNombre === 'cartera'
   const tieneComision        = esConsultorODirector || esTmk || esConfirmador || esAsesor
 
   if (!tieneComision && !rolNombre) return null

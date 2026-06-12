@@ -512,7 +512,7 @@ export default function NuevaVentaPage() {
                 onChange={e => setContrato(c => ({ ...c, sac_asesor_id: e.target.value }))}>
                 <option value="">Sin asesor asignado</option>
                 {usuarios
-                  .filter(u => ['sac', 'asesor_cartera', 'confirmador'].includes(u.rol))
+                  .filter(u => ['sac', 'asesor_cartera', 'cartera', 'confirmador'].includes(u.rol))
                   .map(u => <option key={u.id} value={u.id}>{u.nombre} ({u.rol})</option>)
                 }
               </select>

@@ -101,6 +101,14 @@ const MENU_POR_ROL = {
     { label: 'Cartera', path: '/cartera', icon: '💳', section: 'FINANCIERO' },
     { label: 'Reportes', path: '/reportes', icon: '📈', section: 'FINANCIERO' },
   ],
+  // 'cartera' es un rol duplicado de 'asesor_cartera' que existe en producción
+  // con usuarios asignados — mismo menú para ambos.
+  cartera: [
+    { label: 'Dashboard KPIs', path: '/kpis', icon: '📊', section: 'OPERACION' },
+    { label: 'Cartera', path: '/cartera', icon: '💳', section: 'FINANCIERO' },
+    { label: 'Ventas', path: '/ventas', icon: '💼', section: 'FINANCIERO' },
+    { label: 'Reportes', path: '/reportes', icon: '📈', section: 'FINANCIERO' },
+  ],
   sac: [
     { label: 'SAC / PQR', path: '/sac', icon: '🎫', section: 'OPERACION' },
     { label: 'Dashboard KPIs', path: '/kpis', icon: '📊', section: 'OPERACION' },

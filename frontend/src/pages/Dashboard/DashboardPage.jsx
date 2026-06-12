@@ -1140,7 +1140,7 @@ export default function DashboardPage() {
   if (rol === 'consultor')                      return <DashboardConsultor />
   if (rol === 'tmk' || rol === 'outsourcing')   return <DashboardTMK />
   if (rol === 'supervisor_cc')                  return <DashboardSupervisor />
-  if (rol === 'asesor_cartera')                 return <DashboardCartera />
+  if (rol === 'asesor_cartera' || rol === 'cartera') return <DashboardCartera />
   if (rol === 'hostess')                        return <DashboardHostess />
   return <DashboardGenerico />
 }

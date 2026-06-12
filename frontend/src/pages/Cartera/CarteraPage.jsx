@@ -1113,7 +1113,7 @@ export default function CarteraPage() {
                               >
                                 Historial
                               </button>
-                              {['admin', 'director', 'asesor_cartera'].includes(usuario?.rol) && (
+                              {['admin', 'director', 'asesor_cartera', 'cartera'].includes(usuario?.rol) && (
                                 <button
                                   onClick={() => setPanelRefinanciacion(c)}
                                   className="btn btn-xs bg-purple-600 text-white hover:bg-purple-700"

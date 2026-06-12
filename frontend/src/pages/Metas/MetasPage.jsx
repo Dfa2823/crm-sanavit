@@ -27,6 +27,7 @@ const ROLES_LABEL = {
   tmk: 'TMK',
   confirmador: 'Confirmador',
   asesor_cartera: 'Asesor Cartera',
+  cartera: 'Asesor Cartera',
   director: 'Director',
 }
 

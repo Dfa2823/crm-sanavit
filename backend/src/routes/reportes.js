@@ -291,7 +291,7 @@ router.get('/ventas', async (req, res) => {
 router.get('/cartera', async (req, res) => {
   const { sala_id } = req.query;
   const { sala_id: userSalaId, rol } = req.user;
-  const salaFiltro = sala_id || (['admin', 'director', 'asesor_cartera'].includes(rol) ? null : userSalaId);
+  const salaFiltro = sala_id || (['admin', 'director', 'asesor_cartera', 'cartera'].includes(rol) ? null : userSalaId);
   try {
     const result = await pool.query(`
       SELECT
