@@ -297,7 +297,7 @@ router.post('/usuarios', requireAdmin, async (req, res) => {
 // PATCH /api/admin/usuarios/:id — actualizar usuario
 router.patch('/usuarios/:id', requireAdmin, async (req, res) => {
   const {
-    nombre, sala_id, rol_id, activo, password,
+    nombre, username, sala_id, rol_id, activo, password,
     sueldo_base, pct_comision_venta, pct_comision_cobro,
     bono_por_tour, bono_por_cita, pct_desbloqueo,
   } = req.body;
@@ -308,6 +308,10 @@ router.patch('/usuarios/:id', requireAdmin, async (req, res) => {
     let idx = 1;
 
     if (nombre !== undefined)             { updates.push(`nombre = $${idx++}`);             params.push(nombre); }
+    if (username !== undefined && String(username).trim() !== '') {
+      updates.push(`username = $${idx++}`);
+      params.push(String(username).trim().toLowerCase());
+    }
     if (sala_id !== undefined)            { updates.push(`sala_id = $${idx++}`);            params.push(sala_id === null ? null : parseInt(sala_id, 10) || null); }
     if (rol_id !== undefined && rol_id !== null && rol_id !== '') { updates.push(`rol_id = $${idx++}`); params.push(parseInt(rol_id, 10)); }
     if (activo !== undefined)             { updates.push(`activo = $${idx++}`);             params.push(activo); }
@@ -357,6 +361,7 @@ router.patch('/usuarios/:id', requireAdmin, async (req, res) => {
 
     const cambios = {};
     if (nombre !== undefined) cambios.nombre = nombre;
+    if (username !== undefined && String(username).trim() !== '') cambios.username = String(username).trim().toLowerCase();
     if (sala_id !== undefined) cambios.sala_id = sala_id;
     if (rol_id !== undefined) cambios.rol_id = rol_id;
     if (activo !== undefined) cambios.activo = activo;
@@ -367,6 +372,9 @@ router.patch('/usuarios/:id', requireAdmin, async (req, res) => {
     res.json(updated.rows[0]);
   } catch (err) {
     console.error(err);
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Ese nombre de usuario (username) ya está en uso por otra persona' });
+    }
     res.status(500).json({ error: 'Error al actualizar usuario' });
   }
 });

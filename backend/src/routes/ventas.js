@@ -4,6 +4,7 @@ const auth = require('../middleware/auth');
 const { paginate, paginatedResponse } = require('../utils/pagination');
 const { dispararWebhook } = require('../utils/webhook');
 const { siguienteConsecutivoRecibo } = require('../utils/consecutivos');
+const { tieneAcceso } = require('../utils/permisos');
 
 const router = express.Router();
 
@@ -323,8 +324,10 @@ router.get('/:id', auth, async (req, res) => {
  *         description: Numero de contrato duplicado
  */
 router.post('/', auth, async (req, res) => {
-  const { rol, id: userId, sala_id: userSalaId } = req.user;
-  if (!['admin','director','consultor','hostess'].includes(rol)) {
+  const { id: userId, sala_id: userSalaId } = req.user;
+  // Multi-cargo: además de los roles base, cualquier usuario con el permiso
+  // personalizado "ventas" puede vender (p.ej. un agente SAC que también vende).
+  if (!tieneAcceso(req.user, 'ventas', ['consultor', 'hostess'])) {
     return res.status(403).json({ error: 'Sin permiso para crear contratos' });
   }
 
@@ -515,7 +518,7 @@ router.post('/', auth, async (req, res) => {
 // PATCH /api/ventas/:id/anular — anulación por caída en mesa (mismo día)
 router.patch('/:id/anular', auth, async (req, res) => {
   const { rol, id: userId } = req.user;
-  if (!['admin', 'director', 'hostess', 'confirmador', 'consultor'].includes(rol)) {
+  if (!tieneAcceso(req.user, 'ventas', ['hostess', 'confirmador', 'consultor'])) {
     return res.status(403).json({ error: 'Sin permiso para anular contratos' });
   }
 
@@ -532,10 +535,15 @@ router.patch('/:id/anular', auth, async (req, res) => {
     const c = check.rows[0];
     if (c.estado !== 'activo') return res.status(400).json({ error: 'Solo se pueden anular contratos activos' });
 
-    // Hostess/confirmador/consultor solo pueden anular si fue creado hoy
-    if (['hostess', 'confirmador', 'consultor'].includes(rol)) {
+    // Todos salvo admin/director solo pueden anular si fue creado hoy (caída en mesa).
+    // OJO: fecha_contrato es DATE y el driver lo entrega como string 'YYYY-MM-DD';
+    // pasarlo por new Date() lo interpretaba como medianoche UTC (= día anterior
+    // en Guayaquil) y el check fallaba SIEMPRE. Comparar el string directamente.
+    if (!['admin', 'director'].includes(rol)) {
       const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
-      const fechaContrato = new Date(c.fecha_contrato).toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
+      const fechaContrato = c.fecha_contrato instanceof Date
+        ? c.fecha_contrato.toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' })
+        : String(c.fecha_contrato).slice(0, 10);
       if (fechaContrato !== hoy) {
         return res.status(403).json({ error: 'Solo puedes anular contratos creados hoy (caída en mesa)' });
       }

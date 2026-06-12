@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { ROLES_CON_MENU } from '../../components/Layout/Sidebar'
 import {
   getUsuarios, createUsuario, updateUsuario, toggleUsuario, inactivarUsuario, reasignarEInactivar, updatePermisos,
   getSalas, createSala,
@@ -345,7 +346,7 @@ function TabUsuarios({ salas, roles }) {
     pct_comision_cobro: '', bono_por_tour: '', bono_por_cita: '',
   })
   const [formEditar, setFormEditar] = useState({
-    nombre: '', sala_id: '', rol_id: '', activo: true, password: '',
+    nombre: '', username: '', sala_id: '', rol_id: '', activo: true, password: '',
     sueldo_base: '', pct_comision_venta: '', pct_desbloqueo: '',
     pct_comision_cobro: '', bono_por_tour: '', bono_por_cita: '',
   })
@@ -403,6 +404,7 @@ function TabUsuarios({ salas, roles }) {
       }
       const payload = {
         nombre:  formEditar.nombre,
+        username: formEditar.username?.trim() || undefined,
         sala_id: formEditar.sala_id ? parseInt(formEditar.sala_id, 10) : null,
         rol_id:  parseInt(formEditar.rol_id, 10),
         activo:  formEditar.activo,
@@ -477,6 +479,7 @@ function TabUsuarios({ salas, roles }) {
   function abrirEditar(u) {
     setFormEditar({
       nombre:  u.nombre  || '',
+      username: u.username || '',
       sala_id: u.sala_id ? String(u.sala_id) : '',
       rol_id:  u.rol_id  ? String(u.rol_id)  : '',
       activo:  u.activo !== false,
@@ -702,6 +705,16 @@ function TabUsuarios({ salas, roles }) {
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Usuario (login)</label>
+              <input
+                type="text"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={formEditar.username}
+                onChange={e => setFormEditar(f => ({ ...f, username: e.target.value }))}
+                placeholder="nombre.apellido"
+              />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Sala</label>
               <select
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
@@ -727,6 +740,17 @@ function TabUsuarios({ salas, roles }) {
                 ))}
               </select>
             </div>
+            {(() => {
+              const rolSel = roles.find(r => String(r.id) === String(formEditar.rol_id))?.nombre
+              const sinMenu = rolSel && !ROLES_CON_MENU.includes(rolSel)
+              const sinPermisos = !Array.isArray(modalEditar.permisos) || modalEditar.permisos.length === 0
+              return sinMenu && sinPermisos ? (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-xs">
+                  ⚠️ El rol <b>{rolSel}</b> no tiene menú propio: este usuario verá la pantalla vacía
+                  al entrar. Usa el botón <b>Permisos</b> de la lista para asignarle los módulos que necesita.
+                </div>
+              ) : null
+            })()}
             {/* ── Configuración salarial ── */}
             <SeccionSalarial
               form={formEditar}

@@ -415,10 +415,12 @@ export default function Venta360Page() {
           >
             📄 Acta de Entrega
           </button>
-          {/* Botón Caída en Mesa — para hostess/confirmador/consultor solo contratos de hoy */}
+          {/* Botón Caída en Mesa — para hostess/confirmador/consultor solo contratos de hoy.
+              fecha_contrato llega como 'YYYY-MM-DD': compararla como string — pasarla por
+              new Date() la corría un día atrás (UTC) y el botón nunca aparecía. */}
           {['hostess','confirmador','consultor','admin','director'].includes(usuario?.rol) &&
            contrato.estado === 'activo' &&
-           new Date(contrato.fecha_contrato).toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }) === new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }) && (
+           String(contrato.fecha_contrato).slice(0, 10) === new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }) && (
             <button
               disabled={cambiandoEstado}
               onClick={handleAnularContrato}

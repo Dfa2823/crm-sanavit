@@ -120,6 +120,11 @@ const MENU_POR_ROL = {
   ],
 }
 
+/* Roles que tienen menú propio definido. Un usuario cuyo rol NO esté aquí ve el
+   menú VACÍO salvo que tenga permisos personalizados — AdminPage lo usa para
+   avisar al administrador. */
+export const ROLES_CON_MENU = Object.keys(MENU_POR_ROL)
+
 /* Agrupa items del menu por seccion, respetando el orden original */
 function groupBySection(items) {
   const groups = []
