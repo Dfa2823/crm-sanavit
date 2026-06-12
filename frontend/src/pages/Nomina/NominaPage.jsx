@@ -572,25 +572,42 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
     }))
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(recibos), 'Recibos')
 
-    // Hoja 7: Tours uno a uno
-    const tours = [['Empleado (consultor)', 'Rol', 'Sala empleado', 'Fecha', 'Cliente', 'Sala del tour']]
+    // Hoja 7: Tours uno a uno (incluye tours del empleado como consultor Y como TMK).
+    // "Empleado" es el dueño de la nómina; "TMK origen" y "Consultor que atendió"
+    // identifican a nombre de quién es cada tour.
+    const tours = [['Empleado', 'Rol', 'Sala empleado', 'Origen', 'Fecha', 'Cliente', 'Sala del tour', 'TMK origen', 'Consultor que atendio']]
     data.forEach(emp => (emp.tours_detalle || []).forEach(t => {
       tours.push([
         ...empCols(emp),
-        toDate(t.fecha), t.cliente || '', t.sala_nombre || '',
+        t.origen || '', toDate(t.fecha), t.cliente || '', t.sala_nombre || '',
+        t.tmk_nombre || '', t.consultor_nombre || '',
       ])
     }))
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tours), 'Tours')
 
-    // Hoja 8: Citas agendadas (TMK)
-    const citas = [['Empleado (TMK)', 'Rol', 'Sala empleado', 'Fecha cita', 'Cliente', 'Sala de la cita', 'Estado']]
+    // Hoja 8: Citas agendadas — TMK que agendó + Confirmador que confirmó
+    const citas = [['Empleado (TMK)', 'Rol', 'Sala empleado', 'Fecha cita', 'Cliente', 'Sala de la cita', 'Estado', 'TMK', 'Confirmador']]
     data.forEach(emp => (emp.citas_detalle || []).forEach(l => {
       citas.push([
         ...empCols(emp),
         toDate(l.fecha_cita), l.cliente || '', l.sala_nombre || '', l.estado || '',
+        l.tmk_nombre || '', l.confirmador_nombre || '',
       ])
     }))
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(citas), 'Citas')
+
+    // Hoja 9: Arrastre TMK — recibos de contratos de meses ANTERIORES cuyo lead
+    // generó este TMK, pagados este mes (respaldo de la "Com. Arrastre TMK")
+    const arrastreTmk = [['Empleado (TMK)', 'Rol', 'Sala', 'Consecutivo', 'Fecha pago', 'Nº Contrato', 'Cliente', 'Fecha contrato', 'Valor cobrado']]
+    data.forEach(emp => (emp.arrastre_tmk_detalle || []).forEach(r => {
+      arrastreTmk.push([
+        ...empCols(emp),
+        r.consecutivo || `R-${r.id}`, toDate(r.fecha_pago),
+        r.numero_contrato || '', r.cliente || '', toDate(r.fecha_contrato),
+        Number(r.valor || 0),
+      ])
+    }))
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(arrastreTmk), 'Arrastre TMK')
 
     XLSX.writeFile(wb, `reporte_validacion_nomina_${mes}.xlsx`)
   }
@@ -1229,16 +1246,26 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
                               <table className="w-full text-xs">
                                 <thead className="bg-amber-50">
                                   <tr>
+                                    <th className="text-left px-3 py-2 font-semibold text-amber-700">Origen</th>
                                     <th className="text-left px-3 py-2 font-semibold text-amber-700">Fecha</th>
                                     <th className="text-left px-3 py-2 font-semibold text-amber-700">Cliente</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-amber-700">TMK origen</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-amber-700">Consultor</th>
                                     <th className="text-left px-3 py-2 font-semibold text-amber-700">Sala</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {emp.tours_detalle.map(t => (
-                                    <tr key={t.id} className="border-t border-amber-50">
+                                    <tr key={`${t.origen}-${t.id}`} className="border-t border-amber-50">
+                                      <td className="px-3 py-1.5">
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${t.origen === 'Como TMK' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700'}`}>
+                                          {t.origen || '—'}
+                                        </span>
+                                      </td>
                                       <td className="px-3 py-1.5">{t.fecha ? String(t.fecha).slice(0,10) : '—'}</td>
                                       <td className="px-3 py-1.5">{t.cliente || '—'}</td>
+                                      <td className="px-3 py-1.5">{t.tmk_nombre || '—'}</td>
+                                      <td className="px-3 py-1.5">{t.consultor_nombre || '—'}</td>
                                       <td className="px-3 py-1.5">{t.sala_nombre || '—'}</td>
                                     </tr>
                                   ))}
@@ -1260,6 +1287,8 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
                                   <tr>
                                     <th className="text-left px-3 py-2 font-semibold text-blue-700">Fecha cita</th>
                                     <th className="text-left px-3 py-2 font-semibold text-blue-700">Cliente</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-blue-700">TMK</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-blue-700">Confirmador</th>
                                     <th className="text-left px-3 py-2 font-semibold text-blue-700">Sala</th>
                                     <th className="text-left px-3 py-2 font-semibold text-blue-700">Estado</th>
                                   </tr>
@@ -1269,6 +1298,8 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
                                     <tr key={l.id} className="border-t border-blue-50">
                                       <td className="px-3 py-1.5">{l.fecha_cita ? String(l.fecha_cita).slice(0,10) : '—'}</td>
                                       <td className="px-3 py-1.5">{l.cliente || '—'}</td>
+                                      <td className="px-3 py-1.5">{l.tmk_nombre || '—'}</td>
+                                      <td className="px-3 py-1.5">{l.confirmador_nombre || '—'}</td>
                                       <td className="px-3 py-1.5">{l.sala_nombre || '—'}</td>
                                       <td className="px-3 py-1.5 capitalize">{l.estado || '—'}</td>
                                     </tr>

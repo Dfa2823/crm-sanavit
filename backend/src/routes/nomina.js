@@ -1141,34 +1141,105 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
         ORDER BY r.fecha_pago DESC, r.id DESC
       `, [uid, mes]);
 
-      // 6. Tours del mes para el empleado (consultor)
+      // 6. Tours del mes que cuentan para el bono del empleado.
+      // MISMO criterio que tours_count (sección 2c): como CONSULTOR
+      // (vs.consultor_id) Y como TMK (leads.tmk_id). Antes la query solo traía
+      // los de consultor, así que para un TMK la hoja "Tours" salía VACÍA aunque
+      // en Resumen tuviera "# Tours / Bono Tours". UNION ALL para que el número
+      // de filas cuadre exactamente con tours_count.
       const toursRes = await pool.query(`
-        SELECT vs.id, vs.fecha, vs.calificacion,
+        SELECT vs.id, vs.fecha,
                p.nombres || ' ' || COALESCE(p.apellidos, '') AS cliente,
-               s.nombre AS sala_nombre
+               s.nombre AS sala_nombre,
+               'Como consultor' AS origen,
+               ut.nombre AS tmk_nombre,
+               uc.nombre AS consultor_nombre
         FROM visitas_sala vs
         LEFT JOIN personas p ON p.id = vs.persona_id
         LEFT JOIN salas s ON s.id = vs.sala_id
+        LEFT JOIN usuarios uc ON uc.id = vs.consultor_id
+        LEFT JOIN leads l ON l.id = vs.lead_id
+        LEFT JOIN usuarios ut ON ut.id = l.tmk_id
         WHERE vs.consultor_id = $1
           AND vs.calificacion = 'TOUR'
           AND TO_CHAR(vs.fecha, 'YYYY-MM') = $2
-        ORDER BY vs.fecha DESC, vs.id DESC
+
+        UNION ALL
+
+        SELECT vs.id, vs.fecha,
+               p.nombres || ' ' || COALESCE(p.apellidos, '') AS cliente,
+               s.nombre AS sala_nombre,
+               'Como TMK' AS origen,
+               ut.nombre AS tmk_nombre,
+               uc.nombre AS consultor_nombre
+        FROM leads l
+        JOIN visitas_sala vs ON vs.lead_id = l.id
+        LEFT JOIN personas p ON p.id = vs.persona_id
+        LEFT JOIN salas s ON s.id = vs.sala_id
+        LEFT JOIN usuarios uc ON uc.id = vs.consultor_id
+        LEFT JOIN usuarios ut ON ut.id = l.tmk_id
+        WHERE l.tmk_id = $1
+          AND vs.calificacion = 'TOUR'
+          AND TO_CHAR(vs.fecha, 'YYYY-MM') = $2
+
+        ORDER BY fecha DESC, id DESC
       `, [uid, mes]);
 
-      // 7. Citas (leads) agendadas por el empleado en el mes (TMK)
+      // 7. Citas (leads) agendadas por el empleado como TMK, con el nombre del
+      // TMK que agendó y del CONFIRMADOR que confirmó (el bono de citas se paga
+      // al confirmador, ver sección 2d — aquí solo se identifican ambos para
+      // poder validar; no cambia a quién se le paga).
       const citasRes = await pool.query(`
         SELECT l.id, l.fecha_cita, l.estado,
                p.nombres || ' ' || COALESCE(p.apellidos, '') AS cliente,
-               s.nombre AS sala_nombre
+               s.nombre AS sala_nombre,
+               ut.nombre AS tmk_nombre,
+               ucf.nombre AS confirmador_nombre
         FROM leads l
         LEFT JOIN personas p ON p.id = l.persona_id
         LEFT JOIN salas s ON s.id = l.sala_id
+        LEFT JOIN usuarios ut ON ut.id = l.tmk_id
+        LEFT JOIN usuarios ucf ON ucf.id = l.confirmador_id
         WHERE l.tmk_id = $1
           AND l.fecha_cita IS NOT NULL
           AND TO_CHAR(l.fecha_cita, 'YYYY-MM') = $2
           AND l.estado IN ('confirmada','tentativa','tour','no_tour','inasistencia')
         ORDER BY l.fecha_cita DESC, l.id DESC
       `, [uid, mes]);
+
+      // 7b. Detalle del ARRASTRE TMK: recibos de contratos de meses ANTERIORES,
+      // cuyo lead fue generado por este usuario como TMK, pagados este mes.
+      // Mismo criterio que el cálculo de comision_arrastre_tmk (sección 2g) — solo
+      // si el usuario cobra arrastre (pct_comision_cobro > 0). Da el respaldo que
+      // faltaba para validar ese rubro a nombre del TMK.
+      let arrastreTmkDetalle = [];
+      if (Number(nom.pct_comision_cobro) > 0) {
+        const arrTmkRes = await pool.query(`
+          SELECT r.id, r.consecutivo, r.fecha_pago, r.valor, r.contrato_id,
+                 c.numero_contrato, c.fecha_contrato,
+                 p.nombres || ' ' || COALESCE(p.apellidos, '') AS cliente
+          FROM recibos r
+          JOIN contratos c ON r.contrato_id = c.id
+          LEFT JOIN visitas_sala vs ON c.visita_sala_id = vs.id
+          LEFT JOIN leads l ON vs.lead_id = l.id
+          LEFT JOIN personas p ON p.id = c.persona_id
+          WHERE l.tmk_id = $1
+            AND TO_CHAR(r.fecha_pago, 'YYYY-MM') = $2
+            AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') != $2
+            AND r.estado = 'activo'
+            AND c.estado NOT IN ('cancelado')
+          ORDER BY r.fecha_pago DESC, r.id DESC
+        `, [uid, mes]);
+        arrastreTmkDetalle = arrTmkRes.rows.map(r => ({
+          id: r.id,
+          consecutivo: r.consecutivo,
+          fecha_pago: r.fecha_pago,
+          valor: Number(r.valor || 0),
+          numero_contrato: r.numero_contrato || (r.contrato_id ? `C-${r.contrato_id}` : null),
+          cliente: r.cliente,
+          fecha_contrato: r.fecha_contrato,
+        }));
+      }
 
       // 8. Desglose semanal TMK (ya almacenado en nomina)
       let desglose_semanal = nom.desglose_semanal_tmk;
@@ -1270,6 +1341,9 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
           fecha: t.fecha,
           cliente: t.cliente,
           sala_nombre: t.sala_nombre,
+          origen: t.origen,
+          tmk_nombre: t.tmk_nombre,
+          consultor_nombre: t.consultor_nombre,
         })),
         citas_detalle: citasRes.rows.map(l => ({
           id: l.id,
@@ -1277,7 +1351,10 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
           estado: l.estado,
           cliente: l.cliente,
           sala_nombre: l.sala_nombre,
+          tmk_nombre: l.tmk_nombre,
+          confirmador_nombre: l.confirmador_nombre,
         })),
+        arrastre_tmk_detalle: arrastreTmkDetalle,
       });
     }
 
