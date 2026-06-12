@@ -300,6 +300,95 @@ router.get('/ranking', auth, soloSupervisor, async (req, res) => {
   }
 });
 
+// ── GET /api/supervisor/manifiesto ─────────────────────────
+// Manifiesto del periodo: VENTAS y TOURS con su TMK de origen.
+// Query params: desde, hasta (YYYY-MM-DD; default = mes en curso), sala_id
+router.get('/manifiesto', auth, soloSupervisor, async (req, res) => {
+  const { sala_id, desde, hasta } = req.query;
+  const { sala_id: userSalaId, rol } = req.user;
+
+  const salaFiltro = sala_id
+    ? parseInt(sala_id, 10)
+    : !['admin', 'director'].includes(rol)
+      ? userSalaId
+      : null;
+
+  // Rango por defecto: del 1 del mes actual a hoy (zona Ecuador)
+  const hoyEC = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
+  const fechaDesde = (desde && /^\d{4}-\d{2}-\d{2}$/.test(desde)) ? desde : `${hoyEC.slice(0, 7)}-01`;
+  const fechaHasta = (hasta && /^\d{4}-\d{2}-\d{2}$/.test(hasta)) ? hasta : hoyEC;
+
+  try {
+    // VENTAS del rango. El TMK de origen se resuelve por el lead más reciente de
+    // la persona (los contratos no guardan visita_sala_id en la práctica).
+    const ventas = await pool.query(`
+      SELECT
+        c.id, c.numero_contrato, c.fecha_contrato, c.monto_total, c.cuota_inicial, c.estado,
+        p.nombres, p.apellidos, p.telefono,
+        uc.nombre AS consultor_nombre,
+        lt.tmk_nombre, lt.fuente_nombre,
+        COALESCE(SUM(r.valor) FILTER (WHERE r.estado = 'activo'), 0) AS total_pagado
+      FROM contratos c
+      JOIN personas p ON c.persona_id = p.id
+      LEFT JOIN usuarios uc ON c.consultor_id = uc.id
+      LEFT JOIN recibos r ON r.contrato_id = c.id
+      LEFT JOIN LATERAL (
+        SELECT ut.nombre AS tmk_nombre, f.nombre AS fuente_nombre
+        FROM leads l
+        LEFT JOIN usuarios ut ON l.tmk_id = ut.id
+        LEFT JOIN fuentes f ON l.fuente_id = f.id
+        WHERE l.persona_id = c.persona_id
+        ORDER BY l.created_at DESC
+        LIMIT 1
+      ) lt ON true
+      WHERE c.fecha_contrato BETWEEN $1::date AND $2::date
+        AND ($3::integer IS NULL OR c.sala_id = $3)
+      GROUP BY c.id, p.id, uc.nombre, lt.tmk_nombre, lt.fuente_nombre
+      ORDER BY c.fecha_contrato DESC, c.id DESC
+    `, [fechaDesde, fechaHasta, salaFiltro || null]);
+
+    // TOURS del rango (visitas a sala con su calificación)
+    const tours = await pool.query(`
+      SELECT
+        v.id, v.fecha, v.hora_llegada, v.calificacion,
+        p.nombres, p.apellidos, p.telefono,
+        uc.nombre AS consultor_nombre,
+        ut.nombre AS tmk_nombre,
+        f.nombre AS fuente_nombre,
+        oe.nombre AS outsourcing_nombre
+      FROM visitas_sala v
+      JOIN personas p ON v.persona_id = p.id
+      LEFT JOIN usuarios uc ON v.consultor_id = uc.id
+      LEFT JOIN leads l ON v.lead_id = l.id
+      LEFT JOIN usuarios ut ON l.tmk_id = ut.id
+      LEFT JOIN fuentes f ON l.fuente_id = f.id
+      LEFT JOIN outsourcing_empresas oe ON v.outsourcing_empresa_id = oe.id
+      WHERE v.fecha BETWEEN $1::date AND $2::date
+        AND ($3::integer IS NULL OR v.sala_id = $3)
+      ORDER BY v.fecha DESC, v.id DESC
+    `, [fechaDesde, fechaHasta, salaFiltro || null]);
+
+    const totalVentas = ventas.rows.reduce((s, v) => s + parseFloat(v.monto_total || 0), 0);
+    res.json({
+      desde: fechaDesde,
+      hasta: fechaHasta,
+      sala_id: salaFiltro || null,
+      ventas: ventas.rows,
+      tours: tours.rows,
+      totales: {
+        n_ventas: ventas.rows.length,
+        monto_ventas: Math.round(totalVentas * 100) / 100,
+        n_visitas: tours.rows.length,
+        n_tours: tours.rows.filter(t => String(t.calificacion || '').toUpperCase() === 'TOUR').length,
+        n_no_tours: tours.rows.filter(t => String(t.calificacion || '').toUpperCase() === 'NO_TOUR').length,
+      },
+    });
+  } catch (err) {
+    console.error('Error en GET /api/supervisor/manifiesto:', err);
+    res.status(500).json({ error: 'Error al obtener el manifiesto' });
+  }
+});
+
 // ── GET /api/supervisor/asignaciones ──────────────────────
 // Lista todas las asignaciones TMK ↔ Confirmador
 router.get('/asignaciones', auth, soloSupervisor, async (req, res) => {

@@ -5,7 +5,18 @@ import { useToast } from '../../context/ToastContext'
 import client from '../../api/client'
 import { formatFechaEC, formatFechaSoloFecha } from '../../utils/formatFechaEC'
 
-const SEGURIDAD_SOCIAL  = ['Cotizante', 'Beneficiario', 'Subsidiado', 'Retirado']
+// Catálogo de seguridad social de ECUADOR (las opciones anteriores eran del
+// régimen colombiano: Cotizante/Beneficiario/Subsidiado). Los valores viejos
+// ya guardados se siguen mostrando como opción extra en el select.
+const SEGURIDAD_SOCIAL  = [
+  'IESS Seguro General',
+  'IESS Seguro Voluntario',
+  'IESS Seguro Campesino',
+  'ISSFA (Fuerzas Armadas)',
+  'ISSPOL (Policía)',
+  'Seguro privado',
+  'Ninguno',
+]
 const SITUACION_LABORAL = ['Empleado público', 'Empleado privado', 'Independiente', 'Jubilado']
 const ESTADO_CIVIL      = ['Soltero/a', 'Casado/a', 'Divorciado/a', 'Viudo/a', 'Unión libre']
 const GENERO            = ['Masculino', 'Femenino', 'Otro']
@@ -396,6 +407,10 @@ export default function HojaDeVida() {
                       <select className="input" value={form.tipo_seguridad_social}
                         onChange={e => setForm(f => ({ ...f, tipo_seguridad_social: e.target.value }))}>
                         <option value="">Seleccionar...</option>
+                        {/* Valor legacy guardado (catálogo colombiano viejo): mostrarlo para no perderlo */}
+                        {form.tipo_seguridad_social && !SEGURIDAD_SOCIAL.includes(form.tipo_seguridad_social) && (
+                          <option value={form.tipo_seguridad_social}>{form.tipo_seguridad_social} (anterior)</option>
+                        )}
                         {SEGURIDAD_SOCIAL.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>

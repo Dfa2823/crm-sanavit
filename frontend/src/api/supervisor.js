@@ -24,3 +24,7 @@ export const getConfirmadores = (params) =>
 
 export const getTmksDisponibles = (params) =>
   client.get('/api/supervisor/tmks-disponibles', { params }).then(r => r.data)
+
+// Manifiesto del periodo: ventas y tours con su TMK de origen
+export const getManifiesto = (params) =>
+  client.get('/api/supervisor/manifiesto', { params }).then(r => r.data)

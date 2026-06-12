@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import {
-  getTMKStats, getResumenDia, getRankingMensual,
+  getTMKStats, getResumenDia, getRankingMensual, getManifiesto,
   getAsignaciones, crearAsignacion, eliminarAsignacion,
   getConfirmadores, getTmksDisponibles,
 } from '../../api/supervisor'
@@ -29,6 +29,155 @@ function medallaEmoji(pos) {
   if (pos === 2) return '🥈'
   if (pos === 3) return '🥉'
   return `${pos}.`
+}
+
+// ── Manifiesto del mes: ventas y tours con su TMK de origen ──
+
+function ManifiestoSection({ salaId }) {
+  const hoy = hoyISO()
+  const [desde, setDesde] = useState(`${hoy.slice(0, 7)}-01`)
+  const [hasta, setHasta] = useState(hoy)
+  const [vista, setVista] = useState('ventas')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const cargar = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      const params = { desde, hasta }
+      if (salaId) params.sala_id = salaId
+      setData(await getManifiesto(params))
+    } catch (err) {
+      console.error(err)
+      setError(err.response?.data?.error || 'No se pudo cargar el manifiesto')
+    } finally {
+      setLoading(false)
+    }
+  }, [desde, hasta, salaId])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  const fmtUSD = (v) => `$${parseFloat(v || 0).toLocaleString('es-EC', { minimumFractionDigits: 2 })}`
+
+  return (
+    <div className="space-y-4">
+      {/* Filtros de rango */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-wrap items-end gap-4">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Desde</label>
+          <input type="date" value={desde} onChange={e => setDesde(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Hasta</label>
+          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+        </div>
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+          {[{ key: 'ventas', label: 'Ventas' }, { key: 'tours', label: 'Tours' }].map(v => (
+            <button key={v.key} onClick={() => setVista(v.key)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                vista === v.key ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? <Spinner /> : error ? (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
+      ) : data && (<>
+        {/* Totales del periodo */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <StatCard titulo="Ventas" valor={data.totales.n_ventas} color="teal" icon="💼" />
+          <StatCard titulo="Monto vendido" valor={fmtUSD(data.totales.monto_ventas)} color="green" icon="💰" />
+          <StatCard titulo="Visitas a sala" valor={data.totales.n_visitas} color="blue" icon="🏥" />
+          <StatCard titulo="Tours" valor={data.totales.n_tours} color="green" icon="✅" />
+          <StatCard titulo="No tours" valor={data.totales.n_no_tours} color="yellow" icon="❌" />
+        </div>
+
+        {/* Tabla de ventas */}
+        {vista === 'ventas' && (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="text-left px-4 py-3 text-gray-600">Contrato</th>
+                  <th className="text-left px-4 py-3 text-gray-600">Fecha</th>
+                  <th className="text-left px-4 py-3 text-gray-600">Cliente</th>
+                  <th className="text-right px-4 py-3 text-gray-600">Monto</th>
+                  <th className="text-right px-4 py-3 text-gray-600">Pagado</th>
+                  <th className="text-left px-4 py-3 text-gray-600">Consultor</th>
+                  <th className="text-left px-4 py-3 text-gray-600">TMK origen</th>
+                  <th className="text-center px-4 py-3 text-gray-600">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.ventas.length === 0 ? (
+                  <tr><td colSpan={8} className="text-center py-8 text-gray-400">Sin ventas en el periodo</td></tr>
+                ) : data.ventas.map(v => (
+                  <tr key={v.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="px-4 py-2.5 font-mono text-teal-700">{v.numero_contrato}</td>
+                    <td className="px-4 py-2.5 text-gray-500 text-xs">{String(v.fecha_contrato).slice(0, 10)}</td>
+                    <td className="px-4 py-2.5 text-gray-800">{v.nombres} {v.apellidos}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold">{fmtUSD(v.monto_total)}</td>
+                    <td className="px-4 py-2.5 text-right text-green-700">{fmtUSD(v.total_pagado)}</td>
+                    <td className="px-4 py-2.5 text-gray-600">{v.consultor_nombre || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-600">{v.tmk_nombre || '—'}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        v.estado === 'activo' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                      }`}>{v.estado}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Tabla de tours */}
+        {vista === 'tours' && (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="text-left px-4 py-3 text-gray-600">Fecha</th>
+                  <th className="text-left px-4 py-3 text-gray-600">Cliente</th>
+                  <th className="text-center px-4 py-3 text-gray-600">Calificación</th>
+                  <th className="text-left px-4 py-3 text-gray-600">Consultor</th>
+                  <th className="text-left px-4 py-3 text-gray-600">TMK origen</th>
+                  <th className="text-left px-4 py-3 text-gray-600">Fuente / Outsourcing</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.tours.length === 0 ? (
+                  <tr><td colSpan={6} className="text-center py-8 text-gray-400">Sin visitas en el periodo</td></tr>
+                ) : data.tours.map(t => (
+                  <tr key={t.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="px-4 py-2.5 text-gray-500 text-xs">{String(t.fecha).slice(0, 10)}</td>
+                    <td className="px-4 py-2.5 text-gray-800">{t.nombres} {t.apellidos}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        String(t.calificacion).toUpperCase() === 'TOUR' ? 'bg-green-100 text-green-700' :
+                        String(t.calificacion).toUpperCase() === 'NO_TOUR' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>{t.calificacion || 'pendiente'}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-600">{t.consultor_nombre || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-600">{t.tmk_nombre || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-500 text-xs">{t.outsourcing_nombre || t.fuente_nombre || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </>)}
+    </div>
+  )
 }
 
 // ── Spinner ──────────────────────────────────────────────────
@@ -455,6 +604,7 @@ export default function SupervisorDashboard() {
           <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
             {[
               { key: 'dashboard', label: 'Metricas' },
+              { key: 'manifiesto', label: 'Manifiesto del mes' },
               { key: 'asignaciones', label: 'Asignaciones TMK / Confirmador' },
             ].map(t => (
               <button
@@ -476,6 +626,11 @@ export default function SupervisorDashboard() {
       {/* ── Tab: Asignaciones ─────────────────────────────── */}
       {tabActiva === 'asignaciones' && (
         <AsignacionesTMKSection salaId={salaId || null} />
+      )}
+
+      {/* ── Tab: Manifiesto del mes (ventas + tours) ──────── */}
+      {tabActiva === 'manifiesto' && (
+        <ManifiestoSection salaId={salaId || null} />
       )}
 
       {/* ── Tab: Dashboard Metricas ──────────────────────── */}

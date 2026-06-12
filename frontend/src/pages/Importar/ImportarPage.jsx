@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { getSalas, getFormasPago, getFuentes, getTipificaciones } from '../../api/admin'
 import { apiUsuarios } from '../../api/usuarios'
-import { previewImport, ejecutarImport, descargarDuplicados, getHistorialImportaciones, eliminarImportacion } from '../../api/importar'
+import { previewImport, ejecutarImport, descargarDuplicados, getHistorialImportaciones, eliminarImportacion, getTipificacionImportacion } from '../../api/importar'
 import { useEffect } from 'react'
 
 // --- Helpers ---
@@ -71,6 +71,24 @@ export default function ImportarPage() {
   // Historial
   const [historial, setHistorial] = useState([])
   const [cargandoHistorial, setCargandoHistorial] = useState(false)
+
+  // Modal de tipificación de una base
+  const [modalTip, setModalTip] = useState(null)        // la importación seleccionada
+  const [datosTip, setDatosTip] = useState(null)        // distribución cargada
+  const [cargandoTip, setCargandoTip] = useState(false)
+
+  async function abrirTipificacion(imp) {
+    setModalTip(imp)
+    setDatosTip(null)
+    setCargandoTip(true)
+    try {
+      setDatosTip(await getTipificacionImportacion(imp.id))
+    } catch (err) {
+      console.error('Error cargando tipificación:', err)
+    } finally {
+      setCargandoTip(false)
+    }
+  }
   const [eliminandoId, setEliminandoId] = useState(null)
   const [confirmEliminar, setConfirmEliminar] = useState(null) // importacion a confirmar
 
@@ -752,6 +770,9 @@ export default function ImportarPage() {
                   <th className="text-center px-3 py-2.5 text-xs font-semibold text-green-600 uppercase">Import.</th>
                   <th className="text-center px-3 py-2.5 text-xs font-semibold text-yellow-600 uppercase">Dup.</th>
                   <th className="text-center px-3 py-2.5 text-xs font-semibold text-red-500 uppercase">Err.</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-teal-600 uppercase" title="Leads ya tipificados / total de la base">Gestionados</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-blue-600 uppercase">Citas</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-green-600 uppercase">Tours</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Usuario</th>
                   <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
                 </tr>
@@ -786,10 +807,31 @@ export default function ImportarPage() {
                     <td className="px-3 py-2.5 text-xs text-center">
                       <span className="font-bold text-red-500">{imp.total_errores || 0}</span>
                     </td>
+                    <td className="px-3 py-2.5 text-xs text-center whitespace-nowrap">
+                      {Number(imp.leads_actuales) > 0 ? (
+                        <span className="font-semibold text-teal-700">
+                          {imp.tipificados}/{imp.leads_actuales}
+                          <span className="text-gray-400 font-normal ml-1">
+                            ({Math.round((imp.tipificados / imp.leads_actuales) * 100)}%)
+                          </span>
+                        </span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-center font-semibold text-blue-700">{imp.citas || 0}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-semibold text-green-700">{imp.tours || 0}</td>
                     <td className={`px-3 py-2.5 text-xs text-gray-600 ${imp.eliminado ? 'line-through' : ''}`}>
                       {imp.usuario_nombre || '-'}
                     </td>
-                    <td className="px-3 py-2.5 text-center">
+                    <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                      {Number(imp.leads_actuales) > 0 && !imp.eliminado && (
+                        <button
+                          onClick={() => abrirTipificacion(imp)}
+                          className="text-xs bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 px-2.5 py-1 rounded-lg font-medium transition-colors mr-1.5"
+                          title="Ver distribución de tipificaciones de esta base"
+                        >
+                          Tipificación
+                        </button>
+                      )}
                       {imp.eliminado ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700" title={`Eliminada por ${imp.eliminado_por_nombre || '?'} el ${formatFecha(imp.eliminado_en)}`}>
                           Eliminada
@@ -818,6 +860,78 @@ export default function ImportarPage() {
           </div>
         )}
       </div>
+
+      {/* ====================================================
+          MODAL: TIPIFICACIÓN DE LA BASE
+      ==================================================== */}
+      {modalTip && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setModalTip(null)}>
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-bold text-gray-800">Tipificación de la base</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{modalTip.nombre_archivo} · {formatFecha(modalTip.created_at)}</p>
+              </div>
+              <button onClick={() => setModalTip(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+
+            {cargandoTip ? (
+              <div className="py-10 text-center text-gray-400 text-sm">Cargando distribución...</div>
+            ) : !datosTip ? (
+              <div className="py-10 text-center text-red-500 text-sm">No se pudo cargar la distribución</div>
+            ) : (
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Por tipificación</p>
+                  <div className="space-y-1.5">
+                    {datosTip.por_tipificacion.map(t => {
+                      const max = Math.max(...datosTip.por_tipificacion.map(x => Number(x.cantidad)), 1)
+                      return (
+                        <div key={t.tipificacion} className="flex items-center gap-2">
+                          <span className="w-32 text-xs text-gray-600 truncate shrink-0" title={t.tipificacion}>{t.tipificacion}</span>
+                          <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                            <div className="h-2.5 rounded-full bg-teal-400" style={{ width: `${Math.min(Number(t.cantidad) / max * 100, 100)}%` }} />
+                          </div>
+                          <span className="text-xs font-semibold text-gray-700 w-14 text-right">{Number(t.cantidad).toLocaleString()}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-4 mb-2">Por estado</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {datosTip.por_estado.map(e => (
+                      <span key={e.estado} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                        {e.estado}: <b>{Number(e.cantidad).toLocaleString()}</b>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Avance por TMK</p>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-100 text-gray-500">
+                        <th className="text-left py-1.5">TMK</th>
+                        <th className="text-right py-1.5">Gestionados</th>
+                        <th className="text-right py-1.5">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {datosTip.por_tmk.map(t => (
+                        <tr key={t.tmk} className="border-b border-gray-50">
+                          <td className="py-1.5 text-gray-700 truncate max-w-[140px]" title={t.tmk}>{t.tmk}</td>
+                          <td className="py-1.5 text-right font-semibold text-teal-700">{Number(t.gestionados).toLocaleString()}</td>
+                          <td className="py-1.5 text-right text-gray-600">{Number(t.total).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ====================================================
           MODAL DE CONFIRMACION DE ELIMINACION

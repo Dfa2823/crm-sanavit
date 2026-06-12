@@ -22,3 +22,7 @@ export const getHistorialImportaciones = () =>
 
 export const eliminarImportacion = (id) =>
   client.delete(`/api/importar/${id}`).then(r => r.data)
+
+// Distribucion de tipificaciones/estados/avance por TMK de una base importada
+export const getTipificacionImportacion = (id) =>
+  client.get(`/api/importar/${id}/tipificacion`).then(r => r.data)

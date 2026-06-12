@@ -53,6 +53,21 @@ const upload = multer({
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_leads_importacion ON leads(importacion_id)
     `);
+    // Backfill de bases antiguas: los leads importados antes de que existiera
+    // importacion_id se vinculan por su observación "Importado desde: {archivo}".
+    // Solo cuando el nombre de archivo es inequívoco (una sola importación con
+    // ese nombre). Idempotente: filtra importacion_id IS NULL.
+    await pool.query(`
+      UPDATE leads l SET importacion_id = sub.id
+      FROM (
+        SELECT MIN(id) AS id, nombre_archivo
+        FROM importaciones_log
+        GROUP BY nombre_archivo
+        HAVING COUNT(1) = 1
+      ) sub
+      WHERE l.importacion_id IS NULL
+        AND l.observacion = 'Importado desde: ' || sub.nombre_archivo
+    `);
     console.log('  ok leads.importacion_id column ready');
   } catch (err) {
     console.error('Error auto-migrate leads.importacion_id:', err.message);
@@ -455,13 +470,27 @@ router.get('/historial', auth, async (req, res) => {
         il.eliminado_por,
         ue.nombre AS eliminado_por_nombre,
         il.eliminado_en,
-        il.created_at
+        il.created_at,
+        COALESCE(av.leads_actuales, 0)  AS leads_actuales,
+        COALESCE(av.tipificados, 0)     AS tipificados,
+        COALESCE(av.sin_tipificar, 0)   AS sin_tipificar,
+        COALESCE(av.citas, 0)           AS citas,
+        COALESCE(av.tours, 0)           AS tours
       FROM importaciones_log il
       LEFT JOIN salas s ON il.sala_id = s.id
       LEFT JOIN fuentes f ON il.fuente_id = f.id
       LEFT JOIN usuarios tmk ON il.tmk_id = tmk.id
       LEFT JOIN usuarios u ON il.usuario_id = u.id
       LEFT JOIN usuarios ue ON il.eliminado_por = ue.id
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(1)                                                            AS leads_actuales,
+          COUNT(1) FILTER (WHERE l.tipificacion_id IS NOT NULL)               AS tipificados,
+          COUNT(1) FILTER (WHERE l.tipificacion_id IS NULL)                   AS sin_tipificar,
+          COUNT(1) FILTER (WHERE l.estado IN ('confirmada','tentativa'))      AS citas,
+          COUNT(1) FILTER (WHERE l.estado = 'tour')                           AS tours
+        FROM leads l WHERE l.importacion_id = il.id
+      ) av ON true
       ORDER BY il.created_at DESC
       LIMIT 200
     `);
@@ -469,6 +498,56 @@ router.get('/historial', auth, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('Historial importaciones error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/importar/:id/tipificacion
+// Distribución de tipificaciones y estados de los leads de UNA base importada
+// (responde a "no puedo ver la tipificación de la base").
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/:id/tipificacion', auth, async (req, res) => {
+  const { rol } = req.user;
+  if (!['admin', 'director', 'supervisor_cc'].includes(rol)) {
+    return res.status(403).json({ error: 'Sin permiso para ver el avance de la base' });
+  }
+  const importacionId = parseInt(req.params.id, 10);
+  if (isNaN(importacionId)) return res.status(400).json({ error: 'ID inválido' });
+
+  try {
+    const [porTipificacion, porEstado, porTmk] = await Promise.all([
+      pool.query(`
+        SELECT COALESCE(t.nombre, 'Sin tipificar') AS tipificacion, COUNT(1) AS cantidad
+        FROM leads l
+        LEFT JOIN tipificaciones t ON l.tipificacion_id = t.id
+        WHERE l.importacion_id = $1
+        GROUP BY t.nombre
+        ORDER BY cantidad DESC
+      `, [importacionId]),
+      pool.query(`
+        SELECT l.estado, COUNT(1) AS cantidad
+        FROM leads l WHERE l.importacion_id = $1
+        GROUP BY l.estado ORDER BY cantidad DESC
+      `, [importacionId]),
+      pool.query(`
+        SELECT COALESCE(u.nombre, 'Sin asignar') AS tmk, COUNT(1) AS total,
+               COUNT(1) FILTER (WHERE l.tipificacion_id IS NOT NULL) AS gestionados
+        FROM leads l
+        LEFT JOIN usuarios u ON l.tmk_id = u.id
+        WHERE l.importacion_id = $1
+        GROUP BY u.nombre ORDER BY total DESC
+      `, [importacionId]),
+    ]);
+
+    res.json({
+      importacion_id: importacionId,
+      por_tipificacion: porTipificacion.rows,
+      por_estado: porEstado.rows,
+      por_tmk: porTmk.rows,
+    });
+  } catch (err) {
+    console.error('Tipificacion de base error:', err);
     res.status(500).json({ error: err.message });
   }
 });
