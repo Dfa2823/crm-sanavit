@@ -48,7 +48,9 @@ router.get('/', auth, async (req, res) => {
   try {
     let result;
     if (q && q.trim()) {
-      const term = `%${q.trim()}%`;
+      // Espacios normalizados en ambos lados: hay registros con dobles espacios
+      // en nombres/apellidos y el nombre completo no coincidía.
+      const term = `%${q.trim().replace(/\s+/g, ' ')}%`;
       result = await pool.query(`
         SELECT id, nombres, apellidos, telefono, telefono2, email, ciudad, edad,
                tipo_documento, num_documento, situacion_laboral, patologia,
@@ -56,13 +58,13 @@ router.get('/', auth, async (req, res) => {
                created_at
         FROM personas
         WHERE nombres ILIKE $1 OR apellidos ILIKE $1
-           OR CONCAT(nombres,' ',apellidos) ILIKE $1
+           OR regexp_replace(CONCAT(nombres, ' ', apellidos), '\\s+', ' ', 'g') ILIKE $1
            OR telefono ILIKE $2 OR num_documento ILIKE $2
            OR telefono2 ILIKE $2
            OR email ILIKE $1
         ORDER BY nombres ASC
         LIMIT 20
-      `, [term, `%${q.trim()}%`]);
+      `, [term, term]);
     } else {
       result = await pool.query(`
         SELECT id, nombres, apellidos, telefono, telefono2, email, ciudad, edad,

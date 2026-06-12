@@ -12,7 +12,10 @@ router.get('/', auth, async (req, res) => {
     return res.json({ personas: [], contratos: [], leads: [] });
   }
 
-  const term = `%${q.trim()}%`;
+  // Normalizar espacios múltiples: hay registros con dobles espacios o espacios
+  // al borde en nombres/apellidos (~295 personas), y el usuario puede escribirlos
+  // también. Ambos lados de la comparación se normalizan.
+  const term = `%${q.trim().replace(/\s+/g, ' ')}%`;
   const { sala_id: userSalaId, rol } = req.user;
   const salaFilter = ['admin','director'].includes(rol) ? null : userSalaId;
 
@@ -22,7 +25,8 @@ router.get('/', auth, async (req, res) => {
         SELECT id, nombres, apellidos, telefono, num_documento, ciudad, email
         FROM personas
         WHERE nombres ILIKE $1 OR apellidos ILIKE $1
-           OR telefono ILIKE $2 OR num_documento ILIKE $2
+           OR regexp_replace(CONCAT(nombres, ' ', apellidos), '\\s+', ' ', 'g') ILIKE $1
+           OR telefono ILIKE $2 OR telefono2 ILIKE $2 OR num_documento ILIKE $2
            OR email ILIKE $1
         ORDER BY nombres
         LIMIT 6
@@ -36,6 +40,7 @@ router.get('/', auth, async (req, res) => {
         JOIN personas p ON c.persona_id = p.id
         LEFT JOIN salas s ON c.sala_id = s.id
         WHERE (c.numero_contrato ILIKE $1 OR p.nombres ILIKE $1 OR p.apellidos ILIKE $1
+               OR regexp_replace(CONCAT(p.nombres, ' ', p.apellidos), '\\s+', ' ', 'g') ILIKE $1
                OR p.telefono ILIKE $2 OR p.num_documento ILIKE $2)
           AND ($3::integer IS NULL OR c.sala_id = $3)
         ORDER BY c.fecha_contrato DESC
@@ -50,7 +55,9 @@ router.get('/', auth, async (req, res) => {
         FROM leads l
         JOIN personas p ON l.persona_id = p.id
         LEFT JOIN fuentes f ON l.fuente_id = f.id
-        WHERE (p.nombres ILIKE $1 OR p.apellidos ILIKE $1 OR p.telefono ILIKE $2)
+        WHERE (p.nombres ILIKE $1 OR p.apellidos ILIKE $1
+               OR regexp_replace(CONCAT(p.nombres, ' ', p.apellidos), '\\s+', ' ', 'g') ILIKE $1
+               OR p.telefono ILIKE $2)
           AND ($3::integer IS NULL OR l.sala_id = $3)
         ORDER BY l.created_at DESC
         LIMIT 5

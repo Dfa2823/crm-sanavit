@@ -210,12 +210,13 @@ router.get('/', auth, async (req, res) => {
     if (consultor_id) { where.push(`c.consultor_id = $${idx}`); params.push(consultor_id); idx++; }
     // Búsqueda server-side: número de contrato (p.ej. SQT-15), cédula, teléfono o nombre.
     // El filtro local del frontend solo veía la página cargada y "no encontraba" contratos.
+    // Espacios normalizados en ambos lados (hay registros con dobles espacios).
     if (q && String(q).trim().length >= 2) {
-      const term = `%${String(q).trim()}%`;
+      const term = `%${String(q).trim().replace(/\s+/g, ' ')}%`;
       where.push(`(c.numero_contrato ILIKE $${idx}
         OR p.num_documento ILIKE $${idx}
         OR p.telefono ILIKE $${idx}
-        OR (p.nombres || ' ' || p.apellidos) ILIKE $${idx})`);
+        OR regexp_replace(CONCAT(p.nombres, ' ', p.apellidos), '\\s+', ' ', 'g') ILIKE $${idx})`);
       params.push(term); idx++;
     }
 
