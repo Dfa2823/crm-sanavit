@@ -3,6 +3,7 @@ const pool = require('../db');
 const auth = require('../middleware/auth');
 const { dispararWebhook } = require('../utils/webhook');
 const { siguienteConsecutivoRecibo } = require('../utils/consecutivos');
+const { tieneAcceso } = require('../utils/permisos');
 
 const router = express.Router();
 
@@ -113,7 +114,16 @@ router.post('/', auth, async (req, res) => {
   const { id: userId } = req.user;
   const { contrato_id, cuota_id, persona_id, sala_id, forma_pago_id, valor, fecha_pago, referencia_pago, observacion, comprobante, tipo_tarjeta, entidad_tarjeta } = req.body;
 
+  // Registrar dinero requiere un rol que cobra (o el permiso personalizado):
+  // antes CUALQUIER usuario autenticado podía crear recibos.
+  const puedeCobrar = tieneAcceso(req.user, 'cartera', ['cartera', 'asesor_cartera'])
+    || tieneAcceso(req.user, 'ventas', ['hostess', 'consultor', 'confirmador']);
+  if (!puedeCobrar) {
+    return res.status(403).json({ error: 'Sin permiso para registrar pagos' });
+  }
+
   if (!persona_id || !valor) return res.status(400).json({ error: 'persona_id y valor son requeridos' });
+  if (parseFloat(valor) <= 0) return res.status(400).json({ error: 'El valor del pago debe ser mayor a 0' });
 
   const client = await pool.connect();
   try {

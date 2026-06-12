@@ -90,6 +90,15 @@ const { auditMiddleware } = require('./middleware/audit');
 app.use(auditMiddleware);
 
 // ── Rutas ─────────────────────────────────────────────────
+// Rate limit estricto para login: 10 intentos/min por IP (anti fuerza bruta)
+const loginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de inicio de sesión. Espera un minuto.' },
+});
+app.use('/api/auth/login', loginLimiter);
 app.use('/api/auth',      require('./routes/auth'));
 app.use('/api/personas',  require('./routes/personas'));
 app.use('/api/leads',     require('./routes/leads'));
@@ -133,7 +142,7 @@ app.get('/health', (req, res) => {
             '/api/productos','/api/ventas','/api/recibos',
             '/api/alertas','/api/liquidaciones','/api/perfil','/api/importar',
             '/api/nomina','/api/metas','/api/buscar','/api/consultor',
-            '/api/admin/tenants'],
+            '/api/admin/tenants','/api/comentarios'],
   });
 });
 
