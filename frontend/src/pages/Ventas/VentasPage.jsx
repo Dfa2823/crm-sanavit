@@ -51,14 +51,26 @@ export default function VentasPage() {
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
   const [busqueda, setBusqueda]   = useState('')
+  const [busquedaServer, setBusquedaServer] = useState('')
   const [pagina, setPagina]       = useState(1)
   const POR_PAGINA = 50
+
+  // Debounce: la búsqueda se envía al BACKEND (antes filtraba solo la página
+  // cargada, así que un contrato fuera de los primeros 50 "no aparecía").
+  useEffect(() => {
+    const t = setTimeout(() => setBusquedaServer(busqueda.trim()), 400)
+    return () => clearTimeout(t)
+  }, [busqueda])
 
   const cargar = useCallback(async () => {
     setLoading(true); setError('')
     try {
       const [dataVentas, dataSalas] = await Promise.all([
-        getVentas({ sala_id: salaId || undefined, estado: estado || undefined }),
+        getVentas({
+          sala_id: salaId || undefined,
+          estado: estado || undefined,
+          q: busquedaServer.length >= 2 ? busquedaServer : undefined,
+        }),
         getSalas(),
       ])
       setVentas(Array.isArray(dataVentas) ? dataVentas : dataVentas?.data || [])
@@ -68,28 +80,16 @@ export default function VentasPage() {
     } finally {
       setLoading(false)
     }
-  }, [salaId, estado])
+  }, [salaId, estado, busquedaServer])
 
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => { setPagina(1) }, [busqueda, salaId, estado])
+  useEffect(() => { setPagina(1) }, [busquedaServer, salaId, estado])
 
   const totalMonto  = ventas.reduce((s, v) => s + parseFloat(v.monto_total || 0), 0)
   const totalPagado = ventas.reduce((s, v) => s + parseFloat(v.total_pagado || 0), 0)
   const porcentaje  = totalMonto > 0 ? Math.round(totalPagado / totalMonto * 100) : 0
 
-  // Filtro de texto local (sin llamada extra al backend)
-  const ventasFiltradas = busqueda.trim().length < 2
-    ? ventas
-    : ventas.filter(v => {
-        const q = busqueda.toLowerCase()
-        return (
-          (v.nombres + ' ' + v.apellidos).toLowerCase().includes(q) ||
-          (v.numero_contrato || '').toLowerCase().includes(q) ||
-          (v.telefono || '').includes(q) ||
-          (v.num_documento || '').includes(q) ||
-          (v.consultor_nombre || '').toLowerCase().includes(q)
-        )
-      })
+  const ventasFiltradas = ventas
 
   const totalPaginas  = Math.ceil(ventasFiltradas.length / POR_PAGINA)
   const ventasPagina  = ventasFiltradas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)

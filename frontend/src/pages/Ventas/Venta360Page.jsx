@@ -290,12 +290,22 @@ export default function Venta360Page() {
   }
 
   async function handleCambiarEstado(nuevoEstado) {
-    const labels = { suspendido: 'suspender', cancelado: 'cancelar', activo: 'reactivar', completado: 'marcar como completado' }
+    const labels = { suspendido: 'suspender', cancelado: 'cancelar', activo: 'reactivar', completado: 'marcar como completado', inactivo: 'inactivar' }
     const msg = `¿Estás seguro de ${labels[nuevoEstado] || nuevoEstado} este contrato?`
     if (!window.confirm(msg)) return
+    // El motivo es obligatorio para SAC (retracto/novedad) y queda en la línea de tiempo
+    let motivo
+    if (nuevoEstado !== 'activo' || usuario?.rol === 'sac') {
+      motivo = window.prompt(`Motivo para ${labels[nuevoEstado] || nuevoEstado} el contrato${usuario?.rol === 'sac' ? ' (obligatorio)' : ''}:`)
+      if (motivo === null) return // canceló
+      if (usuario?.rol === 'sac' && !motivo.trim()) {
+        addToast('El motivo es obligatorio', 'error')
+        return
+      }
+    }
     setCambiandoEstado(true)
     try {
-      await updateEstadoVenta(id, { estado: nuevoEstado })
+      await updateEstadoVenta(id, { estado: nuevoEstado, motivo: motivo?.trim() || undefined })
       addToast('Estado del contrato actualizado')
       cargar()
     } catch (err) {
@@ -441,11 +451,19 @@ export default function Venta360Page() {
             </button>
           )}
 
-          {/* Botones de cambio de estado — solo admin/director */}
-          {['admin','director'].includes(usuario?.rol) && (
+          {/* Botones de cambio de estado — admin/director (todo) y SAC (inactivar/suspender/reactivar con motivo) */}
+          {['admin','director','sac'].includes(usuario?.rol) && (
             <div className="flex items-center gap-2">
               {contrato.estado === 'activo' && (
                 <>
+                  <button
+                    disabled={cambiandoEstado}
+                    onClick={() => handleCambiarEstado('inactivo')}
+                    className="border border-gray-400 text-gray-700 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-lg text-sm disabled:opacity-60"
+                    title="Inactivar por retracto o novedad (con motivo)"
+                  >
+                    ⛔ Inactivar
+                  </button>
                   <button
                     disabled={cambiandoEstado}
                     onClick={() => handleCambiarEstado('suspendido')}
@@ -453,13 +471,15 @@ export default function Venta360Page() {
                   >
                     ⏸ Suspender
                   </button>
-                  <button
-                    disabled={cambiandoEstado}
-                    onClick={() => handleCambiarEstado('cancelado')}
-                    className="border border-red-400 text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-sm disabled:opacity-60"
-                  >
-                    ✕ Anular
-                  </button>
+                  {['admin','director'].includes(usuario?.rol) && (
+                    <button
+                      disabled={cambiandoEstado}
+                      onClick={() => handleCambiarEstado('cancelado')}
+                      className="border border-red-400 text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-sm disabled:opacity-60"
+                    >
+                      ✕ Anular
+                    </button>
+                  )}
                 </>
               )}
               {contrato.estado === 'suspendido' && (
@@ -471,16 +491,19 @@ export default function Venta360Page() {
                   >
                     ▶ Reactivar
                   </button>
-                  <button
-                    disabled={cambiandoEstado}
-                    onClick={() => handleCambiarEstado('cancelado')}
-                    className="border border-red-400 text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-sm disabled:opacity-60"
-                  >
-                    ✕ Anular
-                  </button>
+                  {['admin','director'].includes(usuario?.rol) && (
+                    <button
+                      disabled={cambiandoEstado}
+                      onClick={() => handleCambiarEstado('cancelado')}
+                      className="border border-red-400 text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-sm disabled:opacity-60"
+                    >
+                      ✕ Anular
+                    </button>
+                  )}
                 </>
               )}
-              {['cancelado','completado','inactivo'].includes(contrato.estado) && (
+              {['cancelado','completado','inactivo'].includes(contrato.estado) &&
+                (['admin','director'].includes(usuario?.rol) || (usuario?.rol === 'sac' && contrato.estado === 'inactivo')) && (
                 <button
                   disabled={cambiandoEstado}
                   onClick={() => handleCambiarEstado('activo')}

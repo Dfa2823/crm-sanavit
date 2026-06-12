@@ -252,6 +252,7 @@ function DrawerNuevoTicket({ onClose, onCreated, userSalaId }) {
   const [buscando, setBuscando]           = useState(false)
   const [persona, setPersona]             = useState(null)
   const [sugerencias, setSugerencias]     = useState([])
+  const [sugContratos, setSugContratos]   = useState([])
   const [mostrarSug, setMostrarSug]       = useState(false)
   const [nuevaNombres, setNuevaNombres]   = useState('')
   const [nuevaApellidos, setNuevaApellidos] = useState('')
@@ -270,6 +271,7 @@ function DrawerNuevoTicket({ onClose, onCreated, userSalaId }) {
     setTelefono(val)
     setPersona(null)
     setSugerencias([])
+    setSugContratos([])
     setContratos([])
     setContratoId('')
     clearTimeout(debounceRef.current)
@@ -277,8 +279,14 @@ function DrawerNuevoTicket({ onClose, onCreated, userSalaId }) {
     debounceRef.current = setTimeout(async () => {
       setBuscando(true)
       try {
-        const data = await apiPersonas.buscar(val)
-        setSugerencias(Array.isArray(data) ? data : [])
+        // Buscar personas Y contratos por número (p.ej. "SQT-15") en paralelo
+        const [dataPersonas, dataVentas] = await Promise.all([
+          apiPersonas.buscar(val).catch(() => []),
+          client.get('/api/ventas', { params: { q: val } }).then(r => r.data).catch(() => null),
+        ])
+        setSugerencias(Array.isArray(dataPersonas) ? dataPersonas : [])
+        const ventas = Array.isArray(dataVentas) ? dataVentas : (dataVentas?.data || [])
+        setSugContratos(ventas.slice(0, 5))
         setMostrarSug(true)
       } catch {
         setSugerencias([])
@@ -288,16 +296,27 @@ function DrawerNuevoTicket({ onClose, onCreated, userSalaId }) {
     }, 500)
   }
 
-  const seleccionarPersona = async (p) => {
+  const seleccionarPersona = async (p, contratoPreseleccionado) => {
     setPersona(p)
     setTelefono(`${p.nombres} ${p.apellidos} -- ${p.telefono || ''}`)
     setMostrarSug(false)
     try {
       const data = await client.get('/api/ventas', { params: { persona_id: p.id } }).then(r => r.data)
-      setContratos(Array.isArray(data) ? data : [])
+      // El backend devuelve respuesta paginada { data: [...] } — antes se esperaba
+      // un array plano y los contratos nunca se cargaban en el ticket.
+      setContratos(Array.isArray(data) ? data : (data?.data || []))
+      if (contratoPreseleccionado) setContratoId(String(contratoPreseleccionado))
     } catch {
       setContratos([])
     }
+  }
+
+  // Seleccionar directamente un contrato encontrado por número (autocompleta el cliente)
+  const seleccionarContrato = (v) => {
+    seleccionarPersona(
+      { id: v.persona_id, nombres: v.nombres, apellidos: v.apellidos, telefono: v.telefono },
+      v.id
+    )
   }
 
   const handleSubmit = async (e) => {
@@ -365,18 +384,31 @@ function DrawerNuevoTicket({ onClose, onCreated, userSalaId }) {
                   <div className="w-4 h-4 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
                 </div>
               )}
-              {mostrarSug && sugerencias.length > 0 && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+              {mostrarSug && (sugerencias.length > 0 || sugContratos.length > 0) && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                   {sugerencias.map(p => (
-                    <button key={p.id} type="button" onClick={() => seleccionarPersona(p)}
+                    <button key={`p-${p.id}`} type="button" onClick={() => seleccionarPersona(p)}
                       className="w-full text-left px-4 py-2.5 hover:bg-teal-50 text-sm border-b border-gray-50 last:border-0">
                       <span className="font-medium text-gray-800">{p.nombres} {p.apellidos}</span>
                       <span className="text-gray-400 ml-2 font-mono text-xs">{p.telefono}</span>
                     </button>
                   ))}
+                  {sugContratos.length > 0 && (
+                    <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">
+                      Contratos
+                    </p>
+                  )}
+                  {sugContratos.map(v => (
+                    <button key={`c-${v.id}`} type="button" onClick={() => seleccionarContrato(v)}
+                      className="w-full text-left px-4 py-2.5 hover:bg-teal-50 text-sm border-b border-gray-50 last:border-0">
+                      <span className="font-mono text-teal-700 font-semibold">{v.numero_contrato}</span>
+                      <span className="text-gray-600 ml-2">{v.nombres} {v.apellidos}</span>
+                      <span className="text-gray-400 ml-2 text-xs">({v.estado})</span>
+                    </button>
+                  ))}
                 </div>
               )}
-              {mostrarSug && sugerencias.length === 0 && !buscando && (
+              {mostrarSug && sugerencias.length === 0 && sugContratos.length === 0 && !buscando && (
                 <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg px-4 py-3 text-sm text-gray-500">
                   No encontrado -- completa los datos para crear cliente nuevo
                 </div>

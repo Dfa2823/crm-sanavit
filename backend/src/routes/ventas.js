@@ -183,7 +183,7 @@ async function getVenta360(id) {
  *         description: Lista paginada de contratos
  */
 router.get('/', auth, async (req, res) => {
-  const { sala_id, estado, fecha_inicio, fecha_fin, persona_id, consultor_id, page, limit } = req.query;
+  const { sala_id, estado, fecha_inicio, fecha_fin, persona_id, consultor_id, q, page, limit } = req.query;
   const { rol, sala_id: userSalaId } = req.user;
 
   try {
@@ -201,6 +201,16 @@ router.get('/', auth, async (req, res) => {
     if (fecha_fin) { where.push(`c.fecha_contrato <= $${idx}`); params.push(fecha_fin); idx++; }
     if (persona_id) { where.push(`c.persona_id = $${idx}`); params.push(persona_id); idx++; }
     if (consultor_id) { where.push(`c.consultor_id = $${idx}`); params.push(consultor_id); idx++; }
+    // Búsqueda server-side: número de contrato (p.ej. SQT-15), cédula, teléfono o nombre.
+    // El filtro local del frontend solo veía la página cargada y "no encontraba" contratos.
+    if (q && String(q).trim().length >= 2) {
+      const term = `%${String(q).trim()}%`;
+      where.push(`(c.numero_contrato ILIKE $${idx}
+        OR p.num_documento ILIKE $${idx}
+        OR p.telefono ILIKE $${idx}
+        OR (p.nombres || ' ' || p.apellidos) ILIKE $${idx})`);
+      params.push(term); idx++;
+    }
 
     const whereStr = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
@@ -216,6 +226,7 @@ router.get('/', auth, async (req, res) => {
       SELECT
         c.id, c.numero_contrato, c.fecha_contrato, c.tipo_plan,
         c.monto_total, c.n_cuotas, c.estado, c.segunda_venta,
+        c.persona_id,
         p.nombres, p.apellidos, p.telefono, p.num_documento,
         s.nombre AS sala_nombre,
         u.nombre AS consultor_nombre,
@@ -596,14 +607,27 @@ router.patch('/:id/anular', auth, async (req, res) => {
 });
 
 // PATCH /api/ventas/:id/estado
+// admin/director: cualquier estado. SAC: puede INACTIVAR o SUSPENDER un contrato
+// (retracto, novedad) y reactivarlo, siempre con motivo obligatorio; cancelar y
+// completar siguen reservados a admin/director.
 router.patch('/:id/estado', auth, async (req, res) => {
-  const { rol } = req.user;
-  if (!['admin','director'].includes(rol)) return res.status(403).json({ error: 'Sin permiso' });
-
+  const { rol, id: userId } = req.user;
   const { estado, motivo } = req.body;
+
   const estadosValidos = ['activo','inactivo','cancelado','suspendido','completado'];
   if (!estadosValidos.includes(estado)) {
     return res.status(400).json({ error: `Estado debe ser uno de: ${estadosValidos.join(', ')}` });
+  }
+
+  const esAdmin = ['admin','director'].includes(rol);
+  const sacPermitidos = ['inactivo','suspendido','activo'];
+  if (!esAdmin) {
+    if (rol !== 'sac' || !sacPermitidos.includes(estado)) {
+      return res.status(403).json({ error: 'Sin permiso' });
+    }
+    if (!motivo || !String(motivo).trim()) {
+      return res.status(400).json({ error: 'El motivo es obligatorio para cambiar el estado (retracto, novedad, etc.)' });
+    }
   }
 
   try {
@@ -613,6 +637,17 @@ router.patch('/:id/estado', auth, async (req, res) => {
       [estado, motivo, req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Contrato no encontrado' });
+
+    // Dejar rastro en la línea de tiempo del contrato (tabla comentarios)
+    try {
+      await pool.query(
+        `INSERT INTO comentarios (entidad_tipo, entidad_id, usuario_id, texto)
+         VALUES ('contrato', $1, $2, $3)`,
+        [req.params.id, userId, `Cambio de estado a "${estado.toUpperCase()}"${motivo ? `: ${motivo}` : ''}`]
+      );
+    } catch (e) { /* la tabla puede no existir aún en el primer boot */ }
+
+    req.audit('cambiar_estado_contrato', 'contratos', req.params.id, { estado, motivo: motivo || null });
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
