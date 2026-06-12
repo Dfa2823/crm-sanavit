@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import * as XLSX from 'xlsx'
 import { useAuth } from '../../context/AuthContext'
 import {
   getTMKStats, getResumenDia, getRankingMensual, getManifiesto,
@@ -29,6 +30,177 @@ function medallaEmoji(pos) {
   if (pos === 2) return '🥈'
   if (pos === 3) return '🥉'
   return `${pos}.`
+}
+
+// ── Export del manifiesto al formato de la planilla del cliente ──────────────
+// Genera el XLSX con la MISMA estructura con la que el equipo liquidaba a mano:
+// hoja "Manifiesto" (una fila por visita con toda la cadena comercial) + hojas
+// de resumen por rol. Mapeo de flags: Q = tour calificado (TOUR), NQ = NO_TOUR,
+// NT = NO_SHOW o sin calificar, T = tomó tour (Q o NQ), VENTA = contrato de esa
+// persona dentro del rango. Los roles que no existen en la operación (OPC,
+// coordinadores) van como "SIN ..." igual que en la planilla original.
+function exportarManifiestoXLSX(data, desde, hasta) {
+  const up = (s) => String(s || '').trim().toUpperCase()
+  const num = (v) => Number(v || 0)
+  const fechaEC = (f) => {
+    const s = String(f || '').slice(0, 10)
+    if (!s) return ''
+    const [y, m, d] = s.split('-')
+    return `${d}/${m}/${y}`
+  }
+
+  const sup = data.supervisores_por_sala || {}
+
+  // Filas normalizadas del manifiesto (una por visita). Si la misma persona
+  // visitó más de una vez en el rango, su contrato se cuenta UNA sola vez
+  // (en la visita más reciente — el array viene ordenado DESC por fecha),
+  // para no inflar VENTA/CASH/VOLUMEN en los resúmenes.
+  const contratosUsados = new Set()
+  const filas = (data.tours || []).map((t, i) => {
+    const q  = t.calificacion === 'TOUR' ? 1 : 0
+    const nq = t.calificacion === 'NO_TOUR' ? 1 : 0
+    const nt = (!t.calificacion || t.calificacion === 'NO_SHOW') ? 1 : 0
+    let venta = 0
+    if (t.numero_contrato && !contratosUsados.has(t.numero_contrato)) {
+      contratosUsados.add(t.numero_contrato)
+      venta = 1
+    }
+    return {
+      n: i + 1,
+      fecha: fechaEC(t.fecha),
+      mes: Number(String(t.fecha || '').slice(5, 7)) || '',
+      horario: t.hora_cita_agendada || t.hora_llegada || '',
+      fuente: t.outsourcing_nombre ? 'OUTSOURCING' : 'TELEMERCADEO',
+      programa: up(t.outsourcing_nombre || t.fuente_nombre),
+      locacion: up(t.fuente_nombre) || 'BASE FRIA',
+      nombre: up(`${t.nombres || ''} ${t.apellidos || ''}`),
+      sexo: up(t.genero),
+      edad: t.edad || '',
+      ocupacion: t.situacion_laboral || '',
+      cotsub: t.tipo_seguridad_social || '',
+      consultor: up(t.consultor_nombre),
+      supervisor: up(sup[t.sala_id]) || 'SIN SUPERVISOR',
+      confirmador: up(t.confirmador_nombre),
+      tmk: up(t.tmk_nombre),
+      cash: venta ? num(t.cash) : 0,
+      volumen: venta ? num(t.volumen) : 0,
+      venta, q, nq, nt, t: q + nq,
+      observaciones: t.lead_observacion || '',
+      ciudad: t.ciudad || '',
+      codigo: t.id,
+      sala: t.sala_nombre || '',
+      outsourcing: t.outsourcing_nombre || '',
+    }
+  })
+
+  // Ventas del rango SIN visita a sala (recompras, ventas directas, o tours de
+  // un periodo anterior): van al final como filas "NA" — igual que el grupo
+  // "NA" de la planilla original — para que el total de ventas cuadre con los
+  // contratos del periodo y ninguna venta quede fuera del corte.
+  ;(data.ventas || []).forEach(v => {
+    if (!v.numero_contrato || contratosUsados.has(v.numero_contrato)) return
+    if (v.estado === 'cancelado') return
+    contratosUsados.add(v.numero_contrato)
+    filas.push({
+      n: filas.length + 1,
+      fecha: fechaEC(v.fecha_contrato),
+      mes: Number(String(v.fecha_contrato || '').slice(5, 7)) || '',
+      horario: '',
+      fuente: 'SIN TOUR',
+      programa: 'NA',
+      locacion: 'NA',
+      nombre: up(`${v.nombres || ''} ${v.apellidos || ''}`),
+      sexo: '', edad: '', ocupacion: '', cotsub: '',
+      consultor: up(v.consultor_nombre),
+      supervisor: 'SIN SUPERVISOR',
+      confirmador: '',
+      tmk: up(v.tmk_nombre),
+      cash: num(v.total_pagado),
+      volumen: num(v.monto_total),
+      venta: 1, q: 0, nq: 0, nt: 0, t: 0,
+      observaciones: `Venta sin visita en el periodo (${v.numero_contrato})`,
+      ciudad: '', codigo: v.numero_contrato, sala: '', outsourcing: '',
+    })
+  })
+
+  const wb = XLSX.utils.book_new()
+
+  // ── Hoja 1: Manifiesto (columnas en el orden exacto de la planilla) ──
+  const hojaManifiesto = [[
+    'N', 'FECHA', 'MES', 'HORARIO', 'FUENTE', 'PROGRAMA', 'LOCACION', 'NOMBRE',
+    'SEXO', 'EDAD', 'OCUPACIÓN', 'RECHAZO', 'COT/SUB', 'CONSULTOR', 'SUPERVISOR',
+    'COORDINADOR OPC', 'OPC', 'CONFIRMADOR', 'COORDINADOR', 'SUPERVISOR TMK', 'TMK',
+    'CASH', 'VOLUMEN', 'VENTA', 'VTA', 'Q', 'TipQ', 'NQ', 'NT', 'T',
+    'OBSERVACIONES', 'CIUDAD', 'CODIGO', 'ESTADO', 'SALA', 'APTO',
+  ]]
+  filas.forEach(f => hojaManifiesto.push([
+    f.n, f.fecha, f.mes, f.horario, f.fuente, f.programa, f.locacion, f.nombre,
+    f.sexo, f.edad, f.ocupacion, '', f.cotsub, f.consultor, f.supervisor,
+    'SIN COORDINADOR', 'SIN OPC', f.confirmador, 'SIN COORDINADOR', 'SIN SUPERVISOR', f.tmk,
+    f.cash, f.volumen, f.venta || '', f.venta || '', f.q || '', '', f.nq || '', f.nt || '', f.t || '',
+    f.observaciones, f.ciudad, f.codigo, '', f.sala, '',
+  ]))
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(hojaManifiesto), 'Manifiesto')
+
+  // ── Agregador común para las hojas de resumen ──
+  const agrupar = (claveFn) => {
+    const grupos = {}
+    filas.forEach(f => {
+      const k = claveFn(f) || ' '
+      if (!grupos[k]) grupos[k] = { ventas: 0, cash: 0, volumen: 0, q: 0, nq: 0, nt: 0 }
+      const g = grupos[k]
+      g.ventas += f.venta; g.cash += f.cash; g.volumen += f.volumen
+      g.q += f.q; g.nq += f.nq; g.nt += f.nt
+    })
+    return grupos
+  }
+  const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0)
+  const prom = (a, b) => (b > 0 ? Math.round(a / b) : 0)
+
+  // Hoja de resumen estilo planilla: una fila por clave + Total General
+  const hojaResumen = (titulo, claveFn, etiqueta) => {
+    const grupos = agrupar(claveFn)
+    const filasHoja = [[etiqueta, 'VENTA', 'CASH', 'VOLUMEN', 'Q', 'QP', 'NQ', 'TOUR', 'NT', '%Q', '%TOUR', 'PROMEDIO CASH']]
+    const tot = { ventas: 0, cash: 0, volumen: 0, q: 0, nq: 0, nt: 0 }
+    Object.entries(grupos).sort((a, b) => b[1].volumen - a[1].volumen).forEach(([k, g]) => {
+      const tour = g.q + g.nq
+      filasHoja.push([k, g.ventas, g.cash, g.volumen, g.q, 0, g.nq, tour, g.nt,
+        pct(g.ventas, g.q), pct(g.ventas, tour), prom(g.cash, g.ventas)])
+      tot.ventas += g.ventas; tot.cash += g.cash; tot.volumen += g.volumen
+      tot.q += g.q; tot.nq += g.nq; tot.nt += g.nt
+    })
+    const totTour = tot.q + tot.nq
+    filasHoja.push(['Total General', tot.ventas, tot.cash, tot.volumen, tot.q, 0, tot.nq, totTour, tot.nt,
+      pct(tot.ventas, tot.q), pct(tot.ventas, totTour), prom(tot.cash, tot.ventas)])
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filasHoja), titulo)
+  }
+
+  // ── Hoja 2: Consultores (con sus columnas propias de la planilla) ──
+  {
+    const grupos = agrupar(f => f.consultor)
+    const filasHoja = [['CONSULTOR', 'VENTA', 'CASH', 'VOLUMEN', 'Q', 'NQ', 'TOUR', 'NT', '%TOUR', '%VTA/Q', 'VENTA PROMEDIO']]
+    const tot = { ventas: 0, cash: 0, volumen: 0, q: 0, nq: 0, nt: 0 }
+    Object.entries(grupos).sort((a, b) => b[1].volumen - a[1].volumen).forEach(([k, g]) => {
+      const tour = g.q + g.nq
+      filasHoja.push([k, g.ventas, g.cash, g.volumen, g.q, g.nq, tour, g.nt,
+        pct(g.ventas, tour), pct(g.ventas, g.q), prom(g.volumen, g.ventas)])
+      tot.ventas += g.ventas; tot.cash += g.cash; tot.volumen += g.volumen
+      tot.q += g.q; tot.nq += g.nq; tot.nt += g.nt
+    })
+    const totTour = tot.q + tot.nq
+    filasHoja.push(['Total General', tot.ventas, tot.cash, tot.volumen, tot.q, tot.nq, totTour, tot.nt,
+      pct(tot.ventas, totTour), pct(tot.ventas, tot.q), prom(tot.volumen, tot.ventas)])
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filasHoja), 'Consultores')
+  }
+
+  // ── Hojas 3-7: tmk, Supervisor, Opc, Locaciones, Callcenter ──
+  hojaResumen('Opc', () => 'SIN OPC', 'OPC')
+  hojaResumen('tmk', f => f.tmk, 'TMK')
+  hojaResumen('Supervisor', f => f.supervisor, 'SUPERVISOR')
+  hojaResumen('Locaciones', f => f.locacion, 'LOCACIONES')
+  hojaResumen('Callcenter', f => f.outsourcing ? up(f.outsourcing) : 'CALL CENTER PROPIO', 'MERCADEO')
+
+  XLSX.writeFile(wb, `Manifiesto_${desde}_a_${hasta}.xlsx`)
 }
 
 // ── Manifiesto del mes: ventas y tours con su TMK de origen ──
@@ -84,6 +256,14 @@ function ManifiestoSection({ salaId }) {
             </button>
           ))}
         </div>
+        <button
+          onClick={() => data && exportarManifiestoXLSX(data, desde, hasta)}
+          disabled={!data || loading}
+          className="ml-auto bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
+          title="Descarga el Excel con el formato de la planilla de liquidación (Manifiesto + resúmenes por rol)"
+        >
+          📥 Exportar Excel (manifiesto)
+        </button>
       </div>
 
       {loading ? <Spinner /> : error ? (

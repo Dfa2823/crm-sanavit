@@ -347,32 +347,70 @@ router.get('/manifiesto', auth, soloSupervisor, async (req, res) => {
       ORDER BY c.fecha_contrato DESC, c.id DESC
     `, [fechaDesde, fechaHasta, salaFiltro || null]);
 
-    // TOURS del rango (visitas a sala con su calificación)
+    // TOURS del rango (visitas a sala con su calificación), enriquecidos con los
+    // datos que necesita el manifiesto exportable (formato de la planilla con la
+    // que el cliente liquidaba): horario, demografía del cliente, seguridad
+    // social, confirmador, y la venta de esa persona dentro del rango
+    // (VENTA / CASH cobrado / VOLUMEN vendido).
     const tours = await pool.query(`
       SELECT
-        v.id, v.fecha, v.hora_llegada, v.calificacion,
+        v.id, v.fecha, v.hora_cita_agendada, v.hora_llegada, v.calificacion,
         p.nombres, p.apellidos, p.telefono,
+        p.genero, p.edad, p.situacion_laboral, p.tipo_seguridad_social, p.ciudad,
+        s.nombre AS sala_nombre, v.sala_id,
         uc.nombre AS consultor_nombre,
         ut.nombre AS tmk_nombre,
+        ucf.nombre AS confirmador_nombre,
         f.nombre AS fuente_nombre,
-        oe.nombre AS outsourcing_nombre
+        oe.nombre AS outsourcing_nombre,
+        l.observacion AS lead_observacion,
+        vta.numero_contrato,
+        COALESCE(vta.monto_total, 0) AS volumen,
+        COALESCE(vta.cash, 0) AS cash
       FROM visitas_sala v
       JOIN personas p ON v.persona_id = p.id
+      LEFT JOIN salas s ON v.sala_id = s.id
       LEFT JOIN usuarios uc ON v.consultor_id = uc.id
       LEFT JOIN leads l ON v.lead_id = l.id
       LEFT JOIN usuarios ut ON l.tmk_id = ut.id
+      LEFT JOIN usuarios ucf ON l.confirmador_id = ucf.id
       LEFT JOIN fuentes f ON l.fuente_id = f.id
       LEFT JOIN outsourcing_empresas oe ON v.outsourcing_empresa_id = oe.id
+      LEFT JOIN LATERAL (
+        SELECT c.numero_contrato, c.monto_total,
+               COALESCE((SELECT SUM(r.valor) FROM recibos r
+                         WHERE r.contrato_id = c.id AND r.estado = 'activo'), 0) AS cash
+        FROM contratos c
+        WHERE c.persona_id = v.persona_id
+          AND c.fecha_contrato BETWEEN $1::date AND $2::date
+          AND c.estado NOT IN ('cancelado')
+        ORDER BY c.fecha_contrato DESC
+        LIMIT 1
+      ) vta ON true
       WHERE v.fecha BETWEEN $1::date AND $2::date
         AND ($3::integer IS NULL OR v.sala_id = $3)
       ORDER BY v.fecha DESC, v.id DESC
     `, [fechaDesde, fechaHasta, salaFiltro || null]);
+
+    // Supervisor de cada sala (rol supervisor_cc activo) — para la columna
+    // SUPERVISOR del manifiesto exportable
+    const supervisoresRes = await pool.query(`
+      SELECT u.sala_id, u.nombre
+      FROM usuarios u
+      JOIN roles r ON u.rol_id = r.id
+      WHERE r.nombre = 'supervisor_cc' AND u.activo = true AND u.sala_id IS NOT NULL
+    `);
+    const supervisoresPorSala = {};
+    for (const row of supervisoresRes.rows) {
+      if (!supervisoresPorSala[row.sala_id]) supervisoresPorSala[row.sala_id] = row.nombre;
+    }
 
     const totalVentas = ventas.rows.reduce((s, v) => s + parseFloat(v.monto_total || 0), 0);
     res.json({
       desde: fechaDesde,
       hasta: fechaHasta,
       sala_id: salaFiltro || null,
+      supervisores_por_sala: supervisoresPorSala,
       ventas: ventas.rows,
       tours: tours.rows,
       totales: {
