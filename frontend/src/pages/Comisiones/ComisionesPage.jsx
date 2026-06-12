@@ -312,15 +312,21 @@ export default function ComisionesPage() {
                             <td className="py-3 px-4 text-right text-gray-700">{fmt(c.monto_total)}</td>
                             <td className="py-3 px-4 text-right text-green-600">{fmt(c.total_cobrado)}</td>
                             <td className="py-3 px-4 text-right">
-                              <span className={`font-semibold ${parseFloat(c.pct_pagado) >= 30 ? 'text-green-600' : 'text-orange-500'}`}>
+                              <span className={`font-semibold ${parseFloat(c.pct_pagado) >= parseFloat(c.pct_desbloqueo || 30) ? 'text-green-600' : 'text-orange-500'}`}>
                                 {parseFloat(c.pct_pagado || 0).toFixed(1)}%
                               </span>
+                              <span className="block text-[10px] text-gray-400">umbral {parseFloat(c.pct_desbloqueo || 30).toFixed(0)}%</span>
                             </td>
                             <td className="py-3 px-4 text-right font-bold text-teal-700">
                               {fmt(c.comision_por_contrato)}
                             </td>
                             <td className="py-3 px-4 text-center">
                               <BadgeComision estado={c.estado_comision} />
+                              {c.estado_comision === 'bloqueada' && parseFloat(c.falta_monto) > 0 && (
+                                <span className="block text-[10px] text-orange-500 mt-1 whitespace-nowrap">
+                                  falta {parseFloat(c.falta_pct || 0).toFixed(1)}% (≈{fmt(c.falta_monto)})
+                                </span>
+                              )}
                             </td>
                           </tr>
                         ))}

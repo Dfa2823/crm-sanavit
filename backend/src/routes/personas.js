@@ -251,20 +251,34 @@ router.get('/:id/historia', auth, async (req, res) => {
       ORDER BY vs.fecha DESC
     `, [id]);
 
-    // 4. Contratos con resumen financiero
+    // 4. Contratos con resumen financiero.
+    // OJO: recibos y cuotas van en subconsultas separadas — con doble LEFT JOIN
+    // las filas se multiplicaban (1 recibo × N cuotas) y el "total pagado" salía
+    // inflado (p.ej. $150 reales se mostraban como $450 en un contrato de 3
+    // cuotas, marcando "comisión desbloqueada" donde no la había).
     const contratosRes = await pool.query(`
       SELECT c.*,
         s.nombre AS sala_nombre,
         u.nombre AS consultor_nombre,
-        COALESCE(SUM(r.valor) FILTER (WHERE r.estado='activo'), 0) AS total_pagado,
-        COUNT(cu.id) FILTER (WHERE cu.estado='vencido') AS cuotas_vencidas
+        COALESCE(u.pct_desbloqueo, 30) AS pct_desbloqueo,
+        COALESCE(r.total_pagado, 0) AS total_pagado,
+        COALESCE(cu.vencidas, 0) AS cuotas_vencidas
       FROM contratos c
       LEFT JOIN salas s ON c.sala_id = s.id
       LEFT JOIN usuarios u ON c.consultor_id = u.id
-      LEFT JOIN recibos r ON r.contrato_id = c.id
-      LEFT JOIN cuotas cu ON cu.contrato_id = c.id
+      LEFT JOIN (
+        SELECT contrato_id, SUM(valor) AS total_pagado
+        FROM recibos WHERE estado = 'activo'
+        GROUP BY contrato_id
+      ) r ON r.contrato_id = c.id
+      LEFT JOIN (
+        -- "vencida" se deriva de la fecha (el estado 'vencido' no se persiste)
+        SELECT contrato_id, COUNT(1) AS vencidas
+        FROM cuotas
+        WHERE fecha_vencimiento < CURRENT_DATE AND estado NOT IN ('pagado','refinanciado')
+        GROUP BY contrato_id
+      ) cu ON cu.contrato_id = c.id
       WHERE c.persona_id = $1
-      GROUP BY c.id, s.id, u.id
       ORDER BY c.fecha_contrato DESC
     `, [id]);
 

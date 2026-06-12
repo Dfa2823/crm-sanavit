@@ -137,6 +137,9 @@ router.get('/detalle/:consultor_id', async (req, res) => {
   const mesFiltro = mes || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' }).slice(0, 7);
 
   try {
+    // total_base = cobrado − intereses de cuotas pagadas: la MISMA base que usan
+    // el agregado de comisiones y el cálculo de liquidaciones (antes este
+    // detalle usaba el cobrado bruto y a veces se contradecía con la lista).
     const result = await pool.query(`
       SELECT
         c.id,
@@ -145,23 +148,33 @@ router.get('/detalle/:consultor_id', async (req, res) => {
         p.apellidos,
         c.monto_total,
         COALESCE(r.total_cobrado, 0)                                        AS total_cobrado,
+        COALESCE(r.total_base, 0)                                           AS total_base,
         CASE
           WHEN c.monto_total > 0
-          THEN ROUND(COALESCE(r.total_cobrado, 0) / c.monto_total * 100, 2)
+          THEN ROUND(COALESCE(r.total_base, 0) / c.monto_total * 100, 2)
           ELSE 0
         END                                                                  AS pct_pagado,
         CASE
           WHEN c.monto_total > 0
-            AND COALESCE(r.total_cobrado, 0) / c.monto_total * 100 >= COALESCE(cons.pct_desbloqueo, 30)
-          THEN ROUND(COALESCE(r.total_cobrado, 0) * COALESCE(cons.pct_comision_venta, 10) / 100, 2)
+            AND COALESCE(r.total_base, 0) / c.monto_total * 100 >= COALESCE(cons.pct_desbloqueo, 30)
+          THEN ROUND(COALESCE(r.total_base, 0) * COALESCE(cons.pct_comision_venta, 10) / 100, 2)
           ELSE 0
         END                                                                  AS comision_por_contrato,
         CASE
           WHEN c.monto_total > 0
-            AND COALESCE(r.total_cobrado, 0) / c.monto_total * 100 >= COALESCE(cons.pct_desbloqueo, 30)
+            AND COALESCE(r.total_base, 0) / c.monto_total * 100 >= COALESCE(cons.pct_desbloqueo, 30)
           THEN 'desbloqueada'
           ELSE 'bloqueada'
         END                                                                  AS estado_comision,
+        -- Cuánto falta para desbloquear (puntos porcentuales y dólares)
+        GREATEST(0, ROUND(
+          COALESCE(cons.pct_desbloqueo, 30)
+          - (COALESCE(r.total_base, 0) / NULLIF(c.monto_total, 0) * 100), 2
+        ))                                                                   AS falta_pct,
+        GREATEST(0, ROUND(
+          c.monto_total * COALESCE(cons.pct_desbloqueo, 30) / 100
+          - COALESCE(r.total_base, 0), 2
+        ))                                                                   AS falta_monto,
         COALESCE(cons.pct_comision_venta, 10) AS pct_comision_venta,
         COALESCE(cons.pct_desbloqueo, 30)     AS pct_desbloqueo,
         c.fecha_contrato,
@@ -170,10 +183,13 @@ router.get('/detalle/:consultor_id', async (req, res) => {
       JOIN personas p ON c.persona_id = p.id
       JOIN usuarios cons ON c.consultor_id = cons.id
       LEFT JOIN (
-        SELECT contrato_id, SUM(valor) AS total_cobrado
-        FROM recibos
-        WHERE estado = 'activo'
-        GROUP BY contrato_id
+        SELECT rr.contrato_id,
+               SUM(rr.valor) AS total_cobrado,
+               SUM(rr.valor) - COALESCE((SELECT SUM(COALESCE(cu.monto_interes, 0)) FROM cuotas cu
+                  WHERE cu.contrato_id = rr.contrato_id AND cu.estado = 'pagado'), 0) AS total_base
+        FROM recibos rr
+        WHERE rr.estado = 'activo'
+        GROUP BY rr.contrato_id
       ) r ON r.contrato_id = c.id
       WHERE c.consultor_id = $1
         AND c.estado = 'activo'

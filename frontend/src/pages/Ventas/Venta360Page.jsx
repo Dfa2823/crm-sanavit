@@ -546,7 +546,7 @@ export default function Venta360Page() {
             <p className="text-xs text-green-600 mt-1">✅ Comisión desbloqueada</p>
           )}
           {!resumen.comision_desbloqueada && (
-            <p className="text-xs text-orange-500 mt-1">⏳ Falta {Math.max(0, 30 - resumen.porcentaje_pagado).toFixed(1)}% para comisión</p>
+            <p className="text-xs text-orange-500 mt-1">⏳ Falta {Math.max(0, (resumen.pct_desbloqueo ?? 30) - resumen.porcentaje_pagado).toFixed(1)}% para comisión (umbral {resumen.pct_desbloqueo ?? 30}%)</p>
           )}
         </div>
         <div className="rounded-xl border bg-purple-50 border-purple-200 p-4">

@@ -79,6 +79,7 @@ async function getVenta360(id) {
       p.patologia,
       s.nombre AS sala_nombre,
       u.nombre AS consultor_nombre,
+      COALESCE(u.pct_desbloqueo, 30) AS consultor_pct_desbloqueo,
       oe.nombre AS outsourcing_nombre
     FROM contratos c
     JOIN personas p ON c.persona_id = p.id
@@ -115,6 +116,10 @@ async function getVenta360(id) {
   const montoTotal = parseFloat(data.monto_total || 0);
   const totalPagado = recibos.rows.reduce((s, r) => s + parseFloat(r.valor || 0), 0);
   const porcentajePagado = montoTotal > 0 ? (totalPagado / montoTotal * 100) : 0;
+  // Umbral de desbloqueo del CONSULTOR (usuarios.pct_desbloqueo) — el mismo
+  // criterio que usa el módulo de comisiones; antes aquí era 30 fijo y las
+  // pantallas se contradecían entre sí.
+  const umbralDesbloqueo = parseFloat(data.consultor_pct_desbloqueo || 30);
 
   return {
     contrato: data,
@@ -126,7 +131,8 @@ async function getVenta360(id) {
       total_pagado: totalPagado,
       saldo_pendiente: montoTotal - totalPagado,
       porcentaje_pagado: Math.round(porcentajePagado * 100) / 100,
-      comision_desbloqueada: porcentajePagado >= 30,  // Regla del 30%
+      pct_desbloqueo: umbralDesbloqueo,
+      comision_desbloqueada: porcentajePagado >= umbralDesbloqueo,
       n_cuotas: cuotas.rows.length,
       cuotas_pagadas: cuotas.rows.filter(q => q.estado === 'pagado').length,
       cuotas_vencidas: cuotas.rows.filter(q => q.estado === 'vencido').length,

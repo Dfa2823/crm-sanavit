@@ -553,6 +553,8 @@ export default function HojaDeVida() {
                 const pagado  = Number(c.total_pagado)  || 0
                 const vencidas = Number(c.cuotas_vencidas) || 0
                 const pct     = monto > 0 ? Math.round((pagado / monto) * 100) : 0
+                // Umbral de desbloqueo del CONSULTOR del contrato (antes 30 fijo)
+                const umbral  = Number(c.pct_desbloqueo) || 30
                 return (
                   <div key={c.id} className="bg-white rounded-lg shadow-sm border p-4 mb-3">
                     <div className="flex justify-between items-start mb-2">
@@ -585,17 +587,21 @@ export default function HojaDeVida() {
                       <div className="bg-gray-200 rounded-full h-2">
                         <div
                           className={`h-2 rounded-full transition-all ${
-                            pct >= 100 ? 'bg-teal-500' :
-                            pct >= 30  ? 'bg-blue-500' :
-                                         'bg-orange-400'
+                            pct >= 100    ? 'bg-teal-500' :
+                            pct >= umbral ? 'bg-blue-500' :
+                                            'bg-orange-400'
                           }`}
                           style={{ width: `${Math.min(pct, 100)}%` }}
                         />
                       </div>
                       <p className="text-xs text-gray-500 mt-0.5 text-right">
                         {pct}% cobrado
-                        {pct >= 30 && (
+                        {pct >= umbral ? (
                           <span className="text-green-600 ml-1">✅ Comisión desbloqueada</span>
+                        ) : (
+                          <span className="text-orange-600 ml-1">
+                            🔒 Comisión bloqueada — falta {Math.max(umbral - pct, 0)}% (umbral {umbral}%)
+                          </span>
                         )}
                       </p>
                     </div>
