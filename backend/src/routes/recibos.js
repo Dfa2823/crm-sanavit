@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool = require('../db');
 const auth = require('../middleware/auth');
 const { dispararWebhook } = require('../utils/webhook');
@@ -66,7 +67,7 @@ router.get('/', auth, async (req, res) => {
 
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -222,7 +223,7 @@ router.post('/', auth, async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   } finally {
     client.release();
   }
@@ -277,7 +278,7 @@ router.patch('/:id/anular', auth, async (req, res) => {
     res.json(recibo);
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   } finally {
     client.release();
   }

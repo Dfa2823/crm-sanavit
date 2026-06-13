@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool = require('../db');
 const auth = require('../middleware/auth');
 
@@ -238,7 +239,7 @@ router.get('/tendencia', auth, async (req, res) => {
       ORDER BY 1 ASC
     `, [salaId || null, n]);
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { res.status(500).json({ error: msgError(err) }); }
 });
 
 // GET /api/kpis/top-consultores?sala_id=X&periodo=YYYY-MM
@@ -276,7 +277,7 @@ router.get('/top-consultores', auth, async (req, res) => {
       LIMIT 5
     `, [fechaInicio, fechaFin, salaId || null]);
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { res.status(500).json({ error: msgError(err) }); }
 });
 
 // GET /api/kpis/hoy?sala_id=X

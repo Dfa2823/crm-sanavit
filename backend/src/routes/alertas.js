@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool    = require('../db');
 const auth    = require('../middleware/auth');
 const router  = express.Router();
@@ -58,7 +59,7 @@ router.get('/resumen', auth, async (req, res) => {
     });
   } catch (err) {
     console.error('[alertas/resumen]', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -176,7 +177,7 @@ router.get('/detalle', auth, async (req, res) => {
     res.json({ total: alertas.length, alertas });
   } catch (err) {
     console.error('[alertas/detalle]', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -209,7 +210,7 @@ router.get('/tours-recientes', auth, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('[alertas/tours-recientes]', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 

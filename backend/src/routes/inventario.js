@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool    = require('../db');
 const auth    = require('../middleware/auth');
 const router  = express.Router();
@@ -104,7 +105,7 @@ router.get('/stock', auth, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -169,7 +170,7 @@ router.get('/movimientos', auth, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -245,7 +246,7 @@ router.post('/movimiento', auth, async (req, res) => {
     res.status(201).json({ ...result.rows[0], stock_nuevo });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -292,7 +293,7 @@ router.post('/productos', auth, async (req, res) => {
   } catch (err) {
     console.error(err);
     if (err.code === '23505') return res.status(409).json({ error: 'Ya existe un producto con ese código' });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -351,7 +352,7 @@ router.patch('/productos/:id', auth, async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 

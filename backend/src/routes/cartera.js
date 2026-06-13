@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool = require('../db');
 const { paginate, paginatedResponse } = require('../utils/pagination');
 const { puedeAccederContrato } = require('../utils/acceso');
@@ -251,7 +252,7 @@ router.get('/', async (req, res) => {
     res.json(paginatedResponse(result.rows, total, p, l));
   } catch (err) {
     console.error('GET /api/cartera error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -318,7 +319,7 @@ router.get('/resumen', async (req, res) => {
     });
   } catch (err) {
     console.error('GET /api/cartera/resumen error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -334,7 +335,7 @@ router.get('/tipificaciones', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('GET /api/cartera/tipificaciones error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -400,7 +401,7 @@ router.post('/cuotas/:id/gestion', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('POST /api/cartera/cuotas/:id/gestion error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   } finally {
     client.release();
   }
@@ -437,7 +438,7 @@ router.get('/historial/:contrato_id', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('GET /api/cartera/historial error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -489,7 +490,7 @@ router.patch('/cuotas/:id/gestion', async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     console.error('PATCH /api/cartera/cuotas/:id/gestion error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -542,7 +543,7 @@ router.get('/refinanciacion/:contrato_id', async (req, res) => {
     });
   } catch (err) {
     console.error('GET /api/cartera/refinanciacion error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -715,7 +716,7 @@ router.post('/refinanciar/:contrato_id', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Refinanciación error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   } finally {
     client.release();
   }

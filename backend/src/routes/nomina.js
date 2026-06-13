@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool = require('../db');
 
 const router = express.Router();
@@ -164,7 +165,7 @@ router.get('/', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('Error en GET /api/nomina:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -639,7 +640,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
     res.json(lista.rows);
   } catch (err) {
     console.error('Error en POST /api/nomina/calcular:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -664,7 +665,7 @@ router.get('/reporte/:mes', requireAdminOrDirector, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('Error en GET /api/nomina/reporte/:mes:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -680,7 +681,7 @@ router.get('/:id(\\d+)', async (req, res) => {
        WHERE n.id = $1`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'No encontrado' });
     res.json(rows[0]);
-  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: msgError(e) }); }
 });
 
 // ─── PATCH /api/nomina/:id ───────────────────────────────────────────────────
@@ -755,7 +756,7 @@ router.patch('/:id(\\d+)', requireAdminOrDirector, async (req, res) => {
     res.json(updated.rows[0]);
   } catch (err) {
     console.error('Error en PATCH /api/nomina/:id:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -780,7 +781,7 @@ router.get('/asistencia', async (req, res) => {
     `, params);
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -809,7 +810,7 @@ router.post('/asistencia', async (req, res) => {
     `, [usuario_id, sala_id || req.user.sala_id, fecha, hora_entrada || null, hora_salida || null, estado, justificacion || null, req.user.id]);
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -831,7 +832,7 @@ router.get('/asistencia/resumen', async (req, res) => {
     `, [usuario_id, mes]);
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -873,7 +874,7 @@ router.post('/asistencia/bulk', async (req, res) => {
     res.status(201).json(results);
   } catch (err) {
     console.error('Error en POST /api/nomina/asistencia/bulk:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -922,7 +923,7 @@ router.get('/asistencia/resumen-mensual', async (req, res) => {
     res.json({ dias_laborables, usuarios: result.rows });
   } catch (err) {
     console.error('Error en GET /api/nomina/asistencia/resumen-mensual:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -962,7 +963,7 @@ router.get('/asistencia/dia', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('Error en GET /api/nomina/asistencia/dia:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -1361,7 +1362,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
     res.json(reporte);
   } catch (err) {
     console.error('Error en GET /api/nomina/reporte-validacion/:mes:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -1411,7 +1412,7 @@ router.post('/notificar/:nomina_id', requireAdminOrDirector, async (req, res) =>
     });
   } catch (err) {
     console.error('Error en POST /api/nomina/notificar/:nomina_id:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -1457,7 +1458,7 @@ router.post('/suspender-comision', requireAdminOrDirector, async (req, res) => {
     res.json({ success: true, message: 'Comision suspendida correctamente', suspendidas: suspRes.rows });
   } catch (err) {
     console.error('Error en POST /api/nomina/suspender-comision:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -1493,7 +1494,7 @@ router.post('/reactivar-comision', requireAdminOrDirector, async (req, res) => {
     res.json({ success: true, message: 'Comision reactivada correctamente', suspendidas: suspRes.rows });
   } catch (err) {
     console.error('Error en POST /api/nomina/reactivar-comision:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 

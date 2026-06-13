@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool = require('../db');
 const { puedeAccederEntidad } = require('../utils/acceso');
 
@@ -73,7 +74,7 @@ router.get('/', async (req, res) => {
     `, [entidad_tipo, entidad_id]);
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -114,7 +115,7 @@ router.post('/', async (req, res) => {
       usuario_nombre: req.user.nombre,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 

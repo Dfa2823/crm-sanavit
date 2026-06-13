@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool = require('../db');
 const auth = require('../middleware/auth');
 const { paginate, paginatedResponse } = require('../utils/pagination');
@@ -256,7 +257,7 @@ router.get('/', auth, async (req, res) => {
     res.json(paginatedResponse(result.rows, total, pg, lm));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -268,7 +269,7 @@ router.get('/:id', auth, async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -531,7 +532,7 @@ router.post('/', auth, async (req, res) => {
     await client.query('ROLLBACK');
     console.error(err);
     if (err.code === '23505') return res.status(409).json({ error: 'Número de contrato duplicado' });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   } finally {
     client.release();
   }
@@ -632,7 +633,7 @@ router.patch('/:id/anular', auth, async (req, res) => {
     }
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -680,7 +681,7 @@ router.patch('/:id/estado', auth, async (req, res) => {
     req.audit('cambiar_estado_contrato', 'contratos', req.params.id, { estado, motivo: motivo || null });
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -719,7 +720,7 @@ router.patch('/productos/:id/despachar', auth, async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -738,7 +739,7 @@ router.patch('/:id/notas', auth, async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Contrato no encontrado' });
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -802,7 +803,7 @@ router.get('/:id/documentos', auth, async (req, res) => {
     `, [req.params.id]);
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -827,7 +828,7 @@ router.post('/:id/documentos', auth, upload.single('archivo'), async (req, res) 
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -863,7 +864,7 @@ router.get('/:id/documentos/:docId/descargar', auth, async (req, res) => {
     }
     return res.download(filePath, doc.nombre_archivo || path.basename(filePath));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -885,7 +886,7 @@ router.delete('/:id/documentos/:docId', auth, async (req, res) => {
 
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -981,7 +982,7 @@ router.patch('/:id/condonar-intereses', auth, async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error condonar intereses:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   } finally {
     client.release();
   }

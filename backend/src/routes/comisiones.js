@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool = require('../db');
 
 const router = express.Router();
@@ -115,7 +116,7 @@ router.get('/', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('Error en GET /api/comisiones:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -202,7 +203,7 @@ router.get('/detalle/:consultor_id', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('Error en GET /api/comisiones/detalle/:consultor_id:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 

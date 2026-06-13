@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool = require('../db');
 const auth = require('../middleware/auth');
 const { puedeAccederPersona } = require('../utils/acceso');
@@ -334,7 +335,7 @@ router.get('/:id/historia', auth, async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -422,7 +423,7 @@ router.get('/:id/timeline', auth, async (req, res) => {
     res.json(eventos.slice(0, 100));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 

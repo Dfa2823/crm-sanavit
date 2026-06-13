@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool = require('../db');
 const auth = require('../middleware/auth');
 
@@ -696,7 +697,7 @@ router.post('/reasignar-huerfanos', auth, soloSupervisor, async (req, res) => {
     res.json({ reasignados, message: `${reasignados} leads reasignados a TMKs activos` });
   } catch (err) {
     console.error('Error reasignar huerfanos:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 

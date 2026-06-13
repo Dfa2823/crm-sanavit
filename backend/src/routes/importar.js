@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const multer  = require('multer');
 const XLSX    = require('xlsx');
 const pool    = require('../db');
@@ -435,7 +436,7 @@ router.post('/ejecutar', auth, upload.single('archivo'), async (req, res) => {
     });
   } catch (err) {
     console.error('Importar ejecutar error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -498,7 +499,7 @@ router.get('/historial', auth, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('Historial importaciones error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -548,7 +549,7 @@ router.get('/:id/tipificacion', auth, async (req, res) => {
     });
   } catch (err) {
     console.error('Tipificacion de base error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -646,7 +647,7 @@ router.delete('/:id', auth, async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Eliminar importacion error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   } finally {
     client.release();
   }
@@ -704,7 +705,7 @@ router.post('/duplicados/descargar', auth, async (req, res) => {
     res.send(buffer);
   } catch (err) {
     console.error('Descargar duplicados error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 

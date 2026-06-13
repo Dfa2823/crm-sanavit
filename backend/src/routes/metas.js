@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool    = require('../db');
 const auth    = require('../middleware/auth');
 
@@ -91,7 +92,7 @@ router.get('/progreso', auth, async (req, res) => {
     res.json({ mes: mesStr, data: result.rows });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -116,7 +117,7 @@ router.get('/', auth, async (req, res) => {
     `, [mesStr, salaId || null]);
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -147,7 +148,7 @@ router.post('/', auth, async (req, res) => {
         meta_ventas_monto || 0, meta_tours || 0, meta_contratos || 0, bono_cumplimiento || 0]);
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -175,7 +176,7 @@ router.patch('/:id', auth, async (req, res) => {
     if (!result.rows.length) return res.status(404).json({ error: 'Meta no encontrada' });
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -191,7 +192,7 @@ router.delete('/:id', auth, async (req, res) => {
     await pool.query('DELETE FROM metas_mensuales WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 

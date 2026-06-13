@@ -5,6 +5,18 @@ require('dotenv').config();
 // use America/Guayaquil en todas las operaciones de fecha.
 process.env.TZ = 'America/Guayaquil';
 
+// ── Validación de configuración crítica al arranque ──────────
+// JWT_SECRET ausente = tokens imposibles/firmados con undefined → inseguro.
+// Fail-fast si falta (no arrancar a ciegas). La longitud débil solo se advierte
+// para NO arriesgar un boot-loop en producción si el secreto vigente fuera corto.
+if (!process.env.JWT_SECRET) {
+  console.error('[BOOT] FATAL: falta JWT_SECRET en las variables de entorno. Abortando.');
+  process.exit(1);
+}
+if (process.env.JWT_SECRET.length < 32) {
+  console.warn('[BOOT] Advertencia: JWT_SECRET corto (<32 caracteres). Usa uno largo y aleatorio.');
+}
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -15,7 +27,12 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // ── Seguridad HTTP headers ────────────────────────────────
-app.use(helmet({ contentSecurityPolicy: false }));
+// CSP activado en producción (este servicio sólo sirve API JSON + /uploads;
+// no entrega la SPA de React, así que la CSP por defecto de helmet es segura).
+// En desarrollo se deja desactivada para no romper Swagger UI.
+app.use(helmet({
+  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
+}));
 
 // ── Compresión gzip ───────────────────────────────────────
 app.use(compression());
@@ -33,17 +50,20 @@ app.use(globalLimiter);
 // ── Middlewares globales ───────────────────────────────────
 app.use(cors({
   origin: function(origin, callback) {
-    // Permitir requests sin origin (mobile, curl, postman)
+    // Permitir requests sin origin (mobile, curl, postman, same-origin)
     if (!origin) return callback(null, true);
+    // Allowlist explícita: antes se aceptaba CUALQUIER *.railway.app con
+    // credentials:true (cualquier app ajena en Railway podía hacer requests
+    // autenticadas). Ahora sólo los orígenes legítimos del proyecto.
+    // .replace quita un posible trailing slash (p.ej. FRONTEND_URL = "https://...app/"),
+    // que rompería el match exacto contra el header Origin (que nunca lleva slash final).
     const allowed = [
       process.env.FRONTEND_URL,
+      'https://reasonable-hope-production.up.railway.app', // frontend de producción
       'http://localhost:5173',
       'http://localhost:4173',
-    ].filter(Boolean);
-    // Permitir cualquier *.railway.app y *.up.railway.app
-    if (allowed.includes(origin) || /\.railway\.app$/.test(origin)) {
-      return callback(null, true);
-    }
+    ].filter(Boolean).map(o => o.replace(/\/+$/, ''));
+    if (allowed.includes(origin.replace(/\/+$/, ''))) return callback(null, true);
     callback(new Error('CORS no permitido'));
   },
   credentials: true,
@@ -75,9 +95,13 @@ app.use('/uploads', express.static(process.env.UPLOADS_DIR || path.join(__dirnam
   },
 }));
 
-// ── Swagger / OpenAPI docs ────────────────────────────────
-const { setupSwagger } = require('./swagger');
-setupSwagger(app);
+// ── Swagger / OpenAPI docs (sólo fuera de producción) ─────
+// La doc exponía toda la superficie de la API públicamente; en producción
+// se deshabilita.
+if (process.env.NODE_ENV !== 'production') {
+  const { setupSwagger } = require('./swagger');
+  setupSwagger(app);
+}
 
 // ── Middlewares de autenticación ───────────────────────────
 const authMiddleware = require('./middleware/auth');
@@ -165,6 +189,19 @@ app.use((err, req, res, next) => {
       ? 'Error interno del servidor'
       : err.message,
   });
+});
+
+// ── Resiliencia: errores no capturados ──────────────────────
+// Sin estos handlers, una promesa rechazada o una excepción suelta puede
+// tumbar el proceso sin dejar rastro. unhandledRejection: log y seguir
+// (la mayoría no son fatales). uncaughtException: log y salir, porque el
+// estado del proceso ya no es confiable y conviene que Railway reinicie limpio.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason instanceof Error ? reason.stack : reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err && err.stack ? err.stack : err);
+  process.exit(1);
 });
 
 // ── Arrancar servidor ──────────────────────────────────────

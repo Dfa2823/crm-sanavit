@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool = require('../db');
 const auth = require('../middleware/auth');
 const { puedeAccederEntidad } = require('../utils/acceso');
@@ -111,7 +112,7 @@ router.get('/stats', auth, async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -223,7 +224,7 @@ router.get('/tickets', auth, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -302,7 +303,7 @@ router.post('/tickets', auth, async (req, res) => {
   } catch (err) {
     console.error(err);
     if (err.code === '23505') return res.status(409).json({ error: 'Número de ticket duplicado, reintente' });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -346,7 +347,7 @@ router.get('/tickets/:id', auth, async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -419,7 +420,7 @@ router.patch('/tickets/:id', auth, async (req, res) => {
     res.json(full.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -459,7 +460,7 @@ router.get('/calidad', auth, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -493,7 +494,7 @@ router.get('/control-calidad', auth, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -519,7 +520,7 @@ router.post('/calidad/:contrato_id/activar', auth, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -541,7 +542,7 @@ router.post('/activar/:contrato_id', auth, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -583,7 +584,7 @@ router.get('/fidelizacion', auth, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -614,7 +615,7 @@ router.post('/fidelizacion/:contrato_id/agendar', auth, async (req, res) => {
     res.json({ ok: true, lead_id: result.rows[0].id });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -632,7 +633,7 @@ router.post('/recitar/:persona_id', auth, async (req, res) => {
     res.json({ ok: true, lead_id: result.rows[0].id });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 

@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const multer  = require('multer');
 const XLSX    = require('xlsx');
 const pool = require('../db');
@@ -391,7 +392,7 @@ router.post('/lead', async (req, res) => {
     res.status(201).json({ ok: true, lead_id: result.rows[0].id, mensaje: 'Lead creado exitosamente' });
   } catch (err) {
     console.error('Error crear lead outsourcing:', err);
-    res.status(500).json({ error: 'Error al crear lead: ' + err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -581,7 +582,7 @@ router.post('/carga-masiva', upload.single('archivo'), async (req, res) => {
     });
   } catch (err) {
     console.error('Carga masiva outsourcing error:', err);
-    res.status(500).json({ error: 'Error al procesar archivo: ' + err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -652,7 +653,7 @@ router.get('/mis-leads', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('Error en GET /api/outsourcing/mis-leads:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -712,7 +713,7 @@ router.get('/mi-resumen', async (req, res) => {
     });
   } catch (err) {
     console.error('Error en GET /api/outsourcing/mi-resumen:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 

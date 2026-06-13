@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const bcrypt = require('bcrypt');
 const pool = require('../db');
 const { EVENTOS_VALIDOS } = require('../utils/webhook');
@@ -35,7 +36,7 @@ const router = express.Router();
     `);
 
     // ── PARTE 3: Carga de usuarios reales ────────────────────────
-    const HASH = bcrypt.hashSync('123456', 10);
+    const HASH = bcrypt.hashSync('123456', 12);
 
     // Helper: obtener rol_id por nombre
     const getRolId = async (nombre) => {
@@ -237,6 +238,9 @@ router.post('/usuarios', requireAdmin, async (req, res) => {
   if (!nombre || !username || !password || !rol_id) {
     return res.status(400).json({ error: 'nombre, username, password y rol_id son requeridos' });
   }
+  if (String(password).length < 8) {
+    return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' });
+  }
 
   try {
     // Verificar que el username no exista
@@ -248,7 +252,7 @@ router.post('/usuarios', requireAdmin, async (req, res) => {
       const eu = existing.rows[0]; return res.status(409).json({ error: eu.activo ? 'El username ya existe (' + eu.nombre + ')' : 'El username ya existe como inactivo (' + eu.nombre + '). Reactive el usuario o use otro username.' });
     }
 
-    const password_hash = await bcrypt.hash(password, 10);
+    const password_hash = await bcrypt.hash(password, 12);
 
     const result = await pool.query(`
       INSERT INTO usuarios (
@@ -290,7 +294,7 @@ router.post('/usuarios', requireAdmin, async (req, res) => {
     res.status(201).json(newUser.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Error al crear usuario: ' + (err.detail || err.message || 'Error desconocido') });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -323,7 +327,7 @@ router.patch('/usuarios/:id', requireAdmin, async (req, res) => {
     if (pct_desbloqueo !== undefined)     { updates.push(`pct_desbloqueo = $${idx++}`);     params.push(pct_desbloqueo); }
 
     if (password !== undefined && password !== '') {
-      const password_hash = await bcrypt.hash(password, 10);
+      const password_hash = await bcrypt.hash(password, 12);
       updates.push(`password_hash = $${idx++}`);
       params.push(password_hash);
     }
@@ -460,7 +464,7 @@ router.post('/usuarios/:id/reasignar', requireAdmin, async (req, res) => {
     res.json({ reasignados: leadsRes.rows.length, tmks_destino: tmkIds.length });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -548,7 +552,7 @@ router.post('/usuarios/:id/reasignar-e-inactivar', requireAdmin, async (req, res
     await client.query('ROLLBACK').catch(() => {});
     client.release();
     console.error('Error en reasignar-e-inactivar:', err);
-    res.status(500).json({ error: 'Error al reasignar e inactivar: ' + err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 

@@ -1,4 +1,5 @@
 const express = require('express');
+const { msgError } = require('../utils/errores');
 const pool    = require('../db');
 const auth    = require('../middleware/auth');
 const router  = express.Router();
@@ -86,7 +87,7 @@ router.get('/', auth, requireAdminOrDirector, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('Error en GET /api/liquidaciones:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -276,7 +277,7 @@ router.post('/calcular', auth, requireAdminOrDirector, async (req, res) => {
     res.json(lista.rows);
   } catch (err) {
     console.error('Error en POST /api/liquidaciones/calcular:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -372,7 +373,7 @@ router.patch('/:id', auth, requireAdminOrDirector, async (req, res) => {
     res.json(liquidacion.rows[0]);
   } catch (err) {
     console.error('Error en PATCH /api/liquidaciones/:id:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -482,7 +483,7 @@ router.get('/:id/detalle', auth, requireAdminOrDirector, async (req, res) => {
     });
   } catch (err) {
     console.error('Error en GET /api/liquidaciones/:id/detalle:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -572,7 +573,7 @@ router.patch('/:id/suspender', auth, requireAdminOrDirector, async (req, res) =>
     res.json({ ok: true, mensaje: 'Comisión suspendida correctamente' });
   } catch (err) {
     console.error('Error en PATCH /api/liquidaciones/:id/suspender:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
@@ -623,7 +624,7 @@ router.patch('/:id/reactivar', auth, requireAdminOrDirector, async (req, res) =>
     res.json({ ok: true, mensaje: 'Comisión reactivada correctamente' });
   } catch (err) {
     console.error('Error en PATCH /api/liquidaciones/:id/reactivar:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: msgError(err) });
   }
 });
 
