@@ -4,6 +4,7 @@ const auth = require('../middleware/auth');
 const { dispararWebhook } = require('../utils/webhook');
 const { siguienteConsecutivoRecibo } = require('../utils/consecutivos');
 const { tieneAcceso } = require('../utils/permisos');
+const { montoValido } = require('../utils/validacion');
 
 const router = express.Router();
 
@@ -122,15 +123,56 @@ router.post('/', auth, async (req, res) => {
     return res.status(403).json({ error: 'Sin permiso para registrar pagos' });
   }
 
-  if (!persona_id || !valor) return res.status(400).json({ error: 'persona_id y valor son requeridos' });
-  if (parseFloat(valor) <= 0) return res.status(400).json({ error: 'El valor del pago debe ser mayor a 0' });
+  if (!persona_id || valor === undefined || valor === null) return res.status(400).json({ error: 'persona_id y valor son requeridos' });
+  // Validación robusta del monto: rechaza NaN, Infinity, negativos y no-números
+  // (parseFloat solo no basta: parseFloat("abc")=NaN pasaba el <= 0).
+  if (!montoValido(valor, { min: 0.01 })) {
+    return res.status(400).json({ error: 'El valor del pago debe ser un número mayor a 0' });
+  }
+  // No permitir fechas de pago futuras (sesgarían recaudo y flujo de caja)
+  const hoyEC = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
+  if (fecha_pago && String(fecha_pago).slice(0, 10) > hoyEC) {
+    return res.status(400).json({ error: 'La fecha de pago no puede ser futura' });
+  }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
+    // El contrato debe existir y estar ACTIVO: no se cobra a contratos
+    // cancelados/completados/suspendidos (corrompería cartera y comisiones).
+    let salaId = sala_id || null;
+    if (contrato_id) {
+      const c = await client.query('SELECT sala_id, estado FROM contratos WHERE id = $1', [contrato_id]);
+      if (c.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Contrato no encontrado' });
+      }
+      if (c.rows[0].estado !== 'activo') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `No se pueden registrar pagos: el contrato está ${c.rows[0].estado}` });
+      }
+      salaId = sala_id || c.rows[0].sala_id;
+    }
+
+    // Idempotencia básica anti doble-submit: si en los últimos 60s ya se registró
+    // un recibo idéntico (mismo contrato/cuota/valor/cajero), devolverlo en vez
+    // de duplicar el pago.
+    const dup = await client.query(`
+      SELECT id FROM recibos
+      WHERE estado = 'activo' AND usuario_id = $1 AND persona_id = $2
+        AND COALESCE(contrato_id,0) = COALESCE($3,0)
+        AND COALESCE(cuota_id,0) = COALESCE($4,0)
+        AND valor = $5 AND created_at > NOW() - INTERVAL '60 seconds'
+      LIMIT 1
+    `, [userId, persona_id, contrato_id || null, cuota_id || null, valor]);
+    if (dup.rows.length > 0) {
+      await client.query('ROLLBACK');
+      const existente = await pool.query('SELECT * FROM recibos WHERE id = $1', [dup.rows[0].id]);
+      return res.status(200).json({ ...existente.rows[0], _idempotente: true });
+    }
+
     // Obtener consecutivo de recibos para la sala
-    const salaId = sala_id || (contrato_id ? (await client.query('SELECT sala_id FROM contratos WHERE id = $1', [contrato_id])).rows[0]?.sala_id : null);
     const consecutivo = await siguienteConsecutivoRecibo(client, salaId);
 
     const result = await client.query(`

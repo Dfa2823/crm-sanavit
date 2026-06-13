@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
+const { puedeAccederEntidad } = require('../utils/acceso');
 
 const router = express.Router();
 
@@ -310,6 +311,10 @@ router.post('/tickets', auth, async (req, res) => {
 // ─────────────────────────────────────────────────────────
 router.get('/tickets/:id', auth, async (req, res) => {
   try {
+    // Acceso por sala: el listado ya filtra; el detalle también debe hacerlo.
+    if (!(await puedeAccederEntidad(req.user, 'pqr_ticket', req.params.id))) {
+      return res.status(404).json({ error: 'Ticket no encontrado' });
+    }
     const result = await pool.query(`
       SELECT
         t.*,
@@ -352,9 +357,12 @@ router.patch('/tickets/:id', auth, async (req, res) => {
   const { estado, prioridad, asignado_a, resolucion, categoria } = req.body;
 
   try {
-    // Verificar que el ticket existe
+    // Verificar que el ticket existe Y pertenece a la sala del usuario
     const existing = await pool.query('SELECT id, estado FROM pqr_tickets WHERE id = $1', [req.params.id]);
     if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Ticket no encontrado' });
+    }
+    if (!(await puedeAccederEntidad(req.user, 'pqr_ticket', req.params.id))) {
       return res.status(404).json({ error: 'Ticket no encontrado' });
     }
 

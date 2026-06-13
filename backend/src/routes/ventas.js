@@ -5,6 +5,7 @@ const { paginate, paginatedResponse } = require('../utils/pagination');
 const { dispararWebhook } = require('../utils/webhook');
 const { siguienteConsecutivoRecibo } = require('../utils/consecutivos');
 const { tieneAcceso } = require('../utils/permisos');
+const { montoValido } = require('../utils/validacion');
 
 const router = express.Router();
 
@@ -362,6 +363,20 @@ router.post('/', auth, async (req, res) => {
 
   if (!persona_id || !monto_total) {
     return res.status(400).json({ error: 'persona_id y monto_total son requeridos' });
+  }
+  // Validación de dinero: rechazar montos inválidos (NaN/negativos/no-número)
+  // que distorsionarían saldos, cartera y comisiones.
+  if (!montoValido(monto_total, { min: 0.01 })) {
+    return res.status(400).json({ error: 'El monto total debe ser un número mayor a 0' });
+  }
+  if (!montoValido(cuota_inicial, { min: 0 })) {
+    return res.status(400).json({ error: 'La cuota inicial debe ser un número válido (>= 0)' });
+  }
+  if (parseFloat(cuota_inicial) > parseFloat(monto_total)) {
+    return res.status(400).json({ error: 'La cuota inicial no puede ser mayor que el monto total' });
+  }
+  if (!Number.isInteger(Number(n_cuotas)) || Number(n_cuotas) < 1) {
+    return res.status(400).json({ error: 'El número de cuotas debe ser un entero mayor o igual a 1' });
   }
 
   const client = await pool.connect();

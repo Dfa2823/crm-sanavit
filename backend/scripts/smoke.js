@@ -53,6 +53,22 @@ function check(nombre, ok, detalle = '') {
   check('búsqueda global', personas.status === 200 && !!persona);
   if (!persona) { console.error('\nSin personas: abortando.'); process.exit(1); }
 
+  // 3b. Validación de dinero en ventas (Tanda B): deben rechazarse con 400
+  const vNeg = await api('POST', '/api/ventas', { persona_id: persona.id, sala_id: 1, monto_total: -500, cuota_inicial: 0, n_cuotas: 1, productos: [] });
+  check('ventas: monto_total<=0 rechazado', vNeg.status === 400);
+  const vNaN = await api('POST', '/api/ventas', { persona_id: persona.id, sala_id: 1, monto_total: 'abc', cuota_inicial: 0, n_cuotas: 1, productos: [] });
+  check('ventas: monto_total no numérico rechazado', vNaN.status === 400);
+  const vCuota = await api('POST', '/api/ventas', { persona_id: persona.id, sala_id: 1, monto_total: 100, cuota_inicial: 500, n_cuotas: 1, productos: [] });
+  check('ventas: cuota_inicial > total rechazado', vCuota.status === 400);
+  const vCuotas0 = await api('POST', '/api/ventas', { persona_id: persona.id, sala_id: 1, monto_total: 100, cuota_inicial: 0, n_cuotas: 0, productos: [] });
+  check('ventas: n_cuotas<1 rechazado', vCuotas0.status === 400);
+
+  // 3c. Validación de dinero en recibos (Tanda B): deben rechazarse con 400
+  const rNeg = await api('POST', '/api/recibos', { persona_id: persona.id, valor: -10, sala_id: 1 });
+  check('recibos: valor<=0 rechazado', rNeg.status === 400);
+  const rFut = await api('POST', '/api/recibos', { persona_id: persona.id, valor: 10, sala_id: 1, fecha_pago: '2099-01-01' });
+  check('recibos: fecha futura rechazada', rFut.status === 400);
+
   // 4. Crear venta financiada con entrada
   const venta = await api('POST', '/api/ventas', {
     persona_id: persona.id, sala_id: 1, monto_total: 90, cuota_inicial: 30,
@@ -72,6 +88,14 @@ function check(nombre, ok, detalle = '') {
     valor: 10, forma_pago_id: 1, sala_id: 1, observacion: 'SMOKE abono',
   });
   check('cobrar cuota (abono parcial)', cobro.status === 201 && !!cobro.data?.id);
+
+  // 5b. Idempotencia (Tanda B): repetir el MISMO recibo dentro de la ventana → devuelve el existente
+  const cobroDup = await api('POST', '/api/recibos', {
+    persona_id: persona.id, contrato_id: c.id, cuota_id: cuota.id,
+    valor: 10, forma_pago_id: 1, sala_id: 1, observacion: 'SMOKE abono',
+  });
+  check('recibo idempotente (no duplica pago)',
+    cobroDup.status === 200 && cobroDup.data?.id === cobro.data.id && cobroDup.data?._idempotente === true);
 
   // 6. Anular el recibo → la cuota debe revertirse
   const anularRecibo = await api('PATCH', `/api/recibos/${cobro.data.id}/anular`);
@@ -95,6 +119,12 @@ function check(nombre, ok, detalle = '') {
   const anularContrato = await api('PATCH', `/api/ventas/${c.id}/anular`, { motivo: 'SMOKE TEST limpieza' });
   check('anular contrato (caída en mesa)', anularContrato.status === 200 && anularContrato.data?.estado === 'cancelado');
   check('recibos del contrato anulados', Number(anularContrato.data?.recibos_anulados) >= 1);
+
+  // 10. Pago a contrato no-activo (Tanda B): el contrato ya está cancelado → 400
+  const pagoCancelado = await api('POST', '/api/recibos', {
+    persona_id: persona.id, contrato_id: c.id, valor: 10, forma_pago_id: 1, sala_id: 1,
+  });
+  check('recibos: pago a contrato cancelado rechazado', pagoCancelado.status === 400);
 
   console.log(`\n${fallos === 0 ? '✅ TODO OK' : `❌ ${fallos} fallo(s)`}`);
   process.exit(fallos === 0 ? 0 : 1);

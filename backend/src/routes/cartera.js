@@ -1,6 +1,10 @@
 const express = require('express');
 const pool = require('../db');
 const { paginate, paginatedResponse } = require('../utils/pagination');
+const { puedeAccederContrato } = require('../utils/acceso');
+
+// Roles que ven cartera de TODAS las salas (igual que el filtro del listado)
+const CARTERA_GLOBAL = ['admin', 'director', 'asesor_cartera', 'cartera'];
 
 const router = express.Router();
 
@@ -413,6 +417,9 @@ router.get('/historial/:contrato_id', async (req, res) => {
   }
 
   try {
+    if (!(await puedeAccederContrato(req.user, contratoId, CARTERA_GLOBAL))) {
+      return res.status(404).json({ error: 'Contrato no encontrado' });
+    }
     const result = await pool.query(
       `SELECT g.id, g.cuota_id, g.observacion, g.fecha_rellamar, g.created_at,
               tc.nombre AS tipificacion_nombre,
@@ -497,6 +504,9 @@ router.get('/refinanciacion/:contrato_id', async (req, res) => {
   }
 
   try {
+    if (!(await puedeAccederContrato(req.user, contratoId, CARTERA_GLOBAL))) {
+      return res.status(404).json({ error: 'Contrato no encontrado' });
+    }
     // Verificar refinanciación previa
     const refCheck = await pool.query(
       'SELECT id, created_at FROM refinanciaciones WHERE contrato_id = $1', [contratoId]

@@ -11,6 +11,9 @@ frontend/.env
 frontend/dist/
 frontend/.vite/
 
+# Archivos subidos en runtime (no versionar; en producción van al volumen de Railway)
+backend/uploads/
+
 # Logs
 *.log
 npm-debug.log*

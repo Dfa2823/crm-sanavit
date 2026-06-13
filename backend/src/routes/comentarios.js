@@ -1,5 +1,6 @@
 const express = require('express');
 const pool = require('../db');
+const { puedeAccederEntidad } = require('../utils/acceso');
 
 const router = express.Router();
 
@@ -56,6 +57,10 @@ router.get('/', async (req, res) => {
     return res.status(400).json({ error: 'entidad_tipo y entidad_id son requeridos' });
   }
   try {
+    // Acceso por sala: solo se leen comentarios de entidades de la sala del usuario
+    if (!(await puedeAccederEntidad(req.user, entidad_tipo, entidad_id))) {
+      return res.status(404).json({ error: 'Recurso no encontrado' });
+    }
     const result = await pool.query(`
       SELECT co.id, co.texto, co.created_at,
              u.id AS usuario_id, COALESCE(u.nombre, 'Sistema') AS usuario_nombre,
@@ -88,6 +93,10 @@ router.post('/', async (req, res) => {
     const ent = ENTIDADES[entidad_tipo];
     const existe = await pool.query(`SELECT 1 FROM ${ent.tabla} WHERE id = $1`, [entidad_id]);
     if (existe.rows.length === 0) {
+      return res.status(404).json({ error: `No existe el ${ent.label} indicado` });
+    }
+    // Acceso por sala: solo se comenta en entidades de la sala del usuario
+    if (!(await puedeAccederEntidad(req.user, entidad_tipo, entidad_id))) {
       return res.status(404).json({ error: `No existe el ${ent.label} indicado` });
     }
 

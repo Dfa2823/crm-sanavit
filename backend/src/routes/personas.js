@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
+const { puedeAccederPersona } = require('../utils/acceso');
 
 const router = express.Router();
 
@@ -51,9 +52,11 @@ router.get('/', auth, async (req, res) => {
       // Espacios normalizados en ambos lados: hay registros con dobles espacios
       // en nombres/apellidos y el nombre completo no coincidía.
       const term = `%${q.trim().replace(/\s+/g, ' ')}%`;
+      // No se devuelve `patologia` (dato de salud, LOPDP) en el listado de
+      // búsqueda — solo se ve en la ficha individual /:id, acotada por sala.
       result = await pool.query(`
         SELECT id, nombres, apellidos, telefono, telefono2, email, ciudad, edad,
-               tipo_documento, num_documento, situacion_laboral, patologia,
+               tipo_documento, num_documento, situacion_laboral,
                direccion,
                created_at
         FROM personas
@@ -68,7 +71,7 @@ router.get('/', auth, async (req, res) => {
     } else {
       result = await pool.query(`
         SELECT id, nombres, apellidos, telefono, telefono2, email, ciudad, edad,
-               tipo_documento, num_documento, situacion_laboral, patologia,
+               tipo_documento, num_documento, situacion_laboral,
                direccion,
                created_at
         FROM personas
@@ -86,6 +89,11 @@ router.get('/', auth, async (req, res) => {
 // GET /api/personas/:id — perfil completo
 router.get('/:id', auth, async (req, res) => {
   try {
+    // Control de acceso por sala: un usuario solo ve personas con algún
+    // registro (lead/visita/contrato) en su sala (salvo roles globales).
+    if (!(await puedeAccederPersona(req.user, req.params.id))) {
+      return res.status(404).json({ error: 'Persona no encontrada' });
+    }
     const personaRes = await pool.query(`
       SELECT p.*,
              l.id AS lead_id, l.estado AS lead_estado,
@@ -217,6 +225,10 @@ router.patch('/:id', auth, async (req, res) => {
 
 // GET /api/personas/:id/historia — historial 360° de una persona
 router.get('/:id/historia', auth, async (req, res) => {
+  // Control de acceso por sala (mismo criterio que GET /:id)
+  if (!(await puedeAccederPersona(req.user, req.params.id))) {
+    return res.status(404).json({ error: 'Persona no encontrada' });
+  }
   const { id } = req.params;
   try {
     // 1. Datos de la persona

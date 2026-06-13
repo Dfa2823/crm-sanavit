@@ -129,8 +129,10 @@ router.get('/detalle/:consultor_id', async (req, res) => {
   const { mes } = req.query;
   const { rol, id: userId } = req.user;
 
-  // Consultor solo puede ver sus propios detalles
-  if (rol === 'consultor' && parseInt(consultor_id, 10) !== userId) {
+  // Solo admin/director ven a cualquier consultor; cualquier otro rol solo
+  // puede ver SUS propios detalles (antes solo se restringía al rol 'consultor',
+  // dejando que otros roles vieran las comisiones de cualquiera).
+  if (!['admin', 'director'].includes(rol) && parseInt(consultor_id, 10) !== userId) {
     return res.status(403).json({ error: 'Sin permiso para ver datos de otro consultor' });
   }
 

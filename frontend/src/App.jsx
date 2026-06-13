@@ -62,6 +62,14 @@ function PrivateRoute({ children }) {
   return usuario ? children : <Navigate to="/login" replace />
 }
 
+// Rutas restringidas por rol (defensa en profundidad: el backend ya valida,
+// pero evita que un rol no autorizado vea siquiera la pantalla escribiendo la URL).
+function RoleRoute({ roles, children }) {
+  const { usuario } = useAuth()
+  if (usuario && roles.includes(usuario.rol)) return children
+  return <Navigate to="/" replace />
+}
+
 function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
@@ -94,7 +102,7 @@ function AppRoutes() {
           <Route path="sala/recepcion" element={<RecepcionPage />} />
           <Route path="sala/cliente/:id" element={<HojaDeVida />} />
           <Route path="kpis" element={<KPIsDashboard />} />
-          <Route path="admin" element={<AdminPage />} />
+          <Route path="admin" element={<RoleRoute roles={['admin', 'director']}><AdminPage /></RoleRoute>} />
           <Route path="cartera" element={<CarteraPage />} />
           <Route path="reportes" element={<ReportesPage />} />
           <Route path="outsourcing" element={<OutsourcingPage />} />
@@ -106,11 +114,11 @@ function AppRoutes() {
           <Route path="sac" element={<SACPage />} />
           <Route path="mercadeo/supervisor" element={<SupervisorDashboard />} />
           <Route path="inventario" element={<InventarioPage />} />
-          <Route path="liquidaciones" element={<LiquidacionesPage />} />
+          <Route path="liquidaciones" element={<RoleRoute roles={['admin', 'director']}><LiquidacionesPage /></RoleRoute>} />
           <Route path="alertas" element={<AlertasPage />} />
           <Route path="perfil" element={<PerfilPage />} />
           <Route path="importar" element={<ImportarPage />} />
-          <Route path="nomina" element={<NominaPage />} />
+          <Route path="nomina" element={<RoleRoute roles={['admin', 'director']}><NominaPage /></RoleRoute>} />
           <Route path="metas" element={<MetasPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
