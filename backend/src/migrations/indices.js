@@ -9,6 +9,12 @@ async function crearIndices() {
     'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_confirmador ON leads (confirmador_id) WHERE confirmador_id IS NOT NULL',
     'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_fecha_cita ON leads (fecha_cita) WHERE fecha_cita IS NOT NULL',
     'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_fecha_rellamar ON leads (fecha_rellamar) WHERE fecha_rellamar IS NOT NULL',
+    // FK sin índice individual (Tanda C, jun-2026): leads es la única tabla grande (142k)
+    'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_persona ON leads (persona_id)',
+    'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_fuente ON leads (fuente_id)',
+    'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_tipificacion ON leads (tipificacion_id)',
+    'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_outsourcing_empresa ON leads (outsourcing_empresa_id) WHERE outsourcing_empresa_id IS NOT NULL',
+    'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_outsourcing ON leads (outsourcing_id) WHERE outsourcing_id IS NOT NULL',
 
     // Personas
     'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_personas_telefono ON personas (telefono)',
