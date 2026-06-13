@@ -639,6 +639,14 @@ router.delete('/:id', auth, async (req, res) => {
 
     await client.query('COMMIT');
 
+    // Auditoría central (LOPDP): la eliminación de importación borra físicamente
+    // leads y personas huérfanas; dejamos rastro de quién, cuándo y cuántos.
+    req.audit('eliminar_importacion', 'importaciones_log', importacionId, {
+      leads_eliminados: leadsEliminados,
+      personas_eliminadas: personasEliminadas,
+      total_importados: impRes.rows[0].total_importados,
+    });
+
     res.json({
       ok: true,
       leads_eliminados: leadsEliminados,
