@@ -467,7 +467,7 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
       'Bono Tours', '# Tours', 'Bono Citas', '# Citas', 'Bono Meta',
       'Otros Ingresos', 'Total Ingresos',
       'IESS', 'Anticipo', 'Otras Ded.', 'Total Deducciones',
-      'NETO A PAGAR', 'Estado nomina', 'Observaciones',
+      'NETO A PAGAR', 'Estado nomina', 'Tipo liquidación', 'Observaciones',
     ]]
     data.forEach(emp => {
       resumen.push([
@@ -486,7 +486,7 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
         Number(emp.aporte_iess || 0), Number(emp.anticipo || 0),
         Number(emp.otras_deducciones || 0), Number(emp.total_deducciones || 0),
         Number(emp.neto_a_pagar || 0), emp.estado_nomina || '',
-        emp.observaciones || '',
+        emp.tipo_liquidacion || '', emp.observaciones || '',
       ])
     })
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumen), 'Resumen')

@@ -981,20 +981,29 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
 
   try {
     // 1. Obtener nóminas del mes
+    // nomina_mensual guarda UNA fila por tipo_liquidacion (completa/comisiones/
+    // garantizado). El reporte debe mostrar UNA por empleado; si no, cada empleado
+    // —y todas sus hojas por-empleado (Tours, Contratos, etc.)— salía duplicado.
+    // DISTINCT ON elige la liquidación más completa disponible por usuario.
     const nominaRes = await pool.query(`
-      SELECT n.*, u.nombre AS usuario_nombre, u.username, NULL::text AS email,
-        COALESCE(u.sueldo_base, 0)::numeric AS sueldo_base_usuario,
-        COALESCE(u.pct_comision_venta, 10)::numeric AS pct_comision_venta,
-        COALESCE(u.pct_desbloqueo, 30)::numeric AS pct_desbloqueo,
-        COALESCE(u.pct_comision_cobro, 0)::numeric AS pct_comision_cobro,
-        ro.nombre AS rol, ro.label AS rol_label,
-        s.nombre AS sala_nombre
-      FROM nomina_mensual n
-      JOIN usuarios u ON n.usuario_id = u.id
-      JOIN roles ro ON u.rol_id = ro.id
-      LEFT JOIN salas s ON n.sala_id = s.id
-      WHERE n.mes = $1 AND ($2::integer IS NULL OR n.sala_id = $2)
-      ORDER BY u.nombre
+      SELECT * FROM (
+        SELECT DISTINCT ON (n.usuario_id)
+          n.*, u.nombre AS usuario_nombre, u.username, NULL::text AS email,
+          COALESCE(u.sueldo_base, 0)::numeric AS sueldo_base_usuario,
+          COALESCE(u.pct_comision_venta, 10)::numeric AS pct_comision_venta,
+          COALESCE(u.pct_desbloqueo, 30)::numeric AS pct_desbloqueo,
+          COALESCE(u.pct_comision_cobro, 0)::numeric AS pct_comision_cobro,
+          ro.nombre AS rol, ro.label AS rol_label,
+          s.nombre AS sala_nombre
+        FROM nomina_mensual n
+        JOIN usuarios u ON n.usuario_id = u.id
+        JOIN roles ro ON u.rol_id = ro.id
+        LEFT JOIN salas s ON n.sala_id = s.id
+        WHERE n.mes = $1 AND ($2::integer IS NULL OR n.sala_id = $2)
+        ORDER BY n.usuario_id,
+                 CASE n.tipo_liquidacion WHEN 'completa' THEN 0 WHEN 'comisiones' THEN 1 ELSE 2 END
+      ) t
+      ORDER BY t.usuario_nombre
     `, [mes, salaParam]);
 
     if (nominaRes.rows.length === 0) {
@@ -1263,6 +1272,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
         sala_nombre: nom.sala_nombre,
         mes: nom.mes,
         estado_nomina: nom.estado,
+        tipo_liquidacion: nom.tipo_liquidacion,
 
         // Datos de sueldo
         sueldo_base_config: Number(nom.sueldo_base_config),
