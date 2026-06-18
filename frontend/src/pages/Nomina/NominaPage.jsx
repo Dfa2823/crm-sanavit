@@ -496,8 +496,8 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
     // consultor que cerró, outsourcing, calificación). Una fila autocontenida por venta.
     const ventasSheet = [[
       'Nº Contrato', 'Fecha contrato', 'Sala', 'Cliente', 'Teléfono', 'Patología',
-      'Monto total', 'Cuota inicial', 'Pagado', '% Pagado', 'Estado contrato',
-      'Comisión', 'Estado comisión',
+      'Subtotal sin IVA', 'IVA', 'Total con IVA', 'Cuota inicial', 'Pagado', '% Pagado', 'Estado contrato',
+      '% comisión', 'Comisión (sin IVA)', 'Estado comisión',
       'Fuente', 'Empresa outsourcing', 'TMK (origen)', 'Confirmador',
       'Hostess/Recepción', 'Consultor del tour', 'Consultor que cerró',
       'Calificación tour', 'Fecha tour',
@@ -506,9 +506,10 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
       ventasSheet.push([
         v.numero_contrato || '', toDate(v.fecha_contrato), v.sala_nombre || '',
         v.cliente || '', v.telefono || '', v.patologia || '',
-        Number(v.monto_total || 0), Number(v.cuota_inicial || 0), Number(v.pagado || 0),
+        Number(v.monto_sin_iva || 0), Number(v.iva || 0), Number(v.monto_total || 0),
+        Number(v.cuota_inicial || 0), Number(v.pagado || 0),
         Number(v.pct_pagado || 0), v.estado_contrato || '',
-        Number(v.comision || 0), v.estado_comision || '',
+        Number(v.pct_comision || 0), Number(v.comision || 0), v.estado_comision || '',
         v.fuente || '', v.outsourcing || '', v.tmk || '', v.confirmador || '',
         v.hostess || '', v.consultor_tour || '', v.consultor_cierre || '',
         v.calificacion_tour || '', toDate(v.fecha_tour),

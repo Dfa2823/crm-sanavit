@@ -245,7 +245,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
         SELECT
           COALESCE(SUM(CASE
             WHEN COALESCE(pagado.total_base, 0) / NULLIF(c.monto_total, 0) * 100 >= $3
-            THEN COALESCE(pagado.total_base, 0) * $4 / 100
+            THEN COALESCE(pagado.total_base, 0) * COALESCE(vi.factor_sin_iva, 1) * $4 / 100
             ELSE 0
           END), 0)::numeric AS comision_ventas,
           COUNT(CASE
@@ -260,6 +260,7 @@ router.post('/calcular', requireAdminOrDirector, async (req, res) => {
           FROM recibos r WHERE r.estado = 'activo'
           GROUP BY r.contrato_id
         ) pagado ON pagado.contrato_id = c.id
+        LEFT JOIN v_contrato_iva vi ON vi.contrato_id = c.id
         WHERE c.consultor_id = $1
           AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $2
           AND c.estado NOT IN ('cancelado')
@@ -1034,7 +1035,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
           CASE
             WHEN cs.id IS NOT NULL THEN 0
             WHEN c.monto_total > 0 AND COALESCE(pagado.total, 0) / c.monto_total * 100 >= $3
-            THEN ROUND(COALESCE(pagado.total_base, 0) * $4 / 100, 2)
+            THEN ROUND(COALESCE(pagado.total_base, 0) * COALESCE(vi.factor_sin_iva, 1) * $4 / 100, 2)
             ELSE 0
           END AS comision_calculada,
           COALESCE(pagado.total_base, 0)::numeric AS monto_base,
@@ -1054,6 +1055,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
           FROM recibos r WHERE r.estado = 'activo'
           GROUP BY r.contrato_id
         ) pagado ON pagado.contrato_id = c.id
+        LEFT JOIN v_contrato_iva vi ON vi.contrato_id = c.id
         LEFT JOIN comisiones_suspendidas cs ON cs.contrato_id = c.id AND cs.usuario_id = $1 AND cs.activo = true
         WHERE c.consultor_id = $1
           AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $2
@@ -1069,7 +1071,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
           COALESCE(cl.nombre, 'Sin cliente') AS cliente_nombre,
           COALESCE(pagos_mes.total_mes, 0)::numeric AS monto_pagado_mes,
           COALESCE(pagos_mes.total_base_mes, 0)::numeric AS monto_base_pagado_mes,
-          ROUND(COALESCE(pagos_mes.total_base_mes, 0) * $3 / 100, 2) AS comision_arrastre
+          ROUND(COALESCE(pagos_mes.total_base_mes, 0) * COALESCE(vi.factor_sin_iva, 1) * $3 / 100, 2) AS comision_arrastre
         FROM contratos c
         LEFT JOIN (
           SELECT p.id, p.nombres || ' ' || COALESCE(p.apellidos, '') AS nombre FROM personas p
@@ -1089,6 +1091,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
             AND TO_CHAR(r.fecha_pago, 'YYYY-MM') = $2
           GROUP BY r.contrato_id
         ) pagos_mes ON pagos_mes.contrato_id = c.id
+        LEFT JOIN v_contrato_iva vi ON vi.contrato_id = c.id
         WHERE c.consultor_id = $1
           AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') != $2
           AND c.estado NOT IN ('cancelado')
@@ -1376,7 +1379,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
         CASE WHEN c.monto_total > 0 THEN ROUND(COALESCE(pg.pagado, 0) / c.monto_total * 100, 2) ELSE 0 END AS pct_pagado,
         CASE WHEN cs.id IS NOT NULL THEN 0
              WHEN c.monto_total > 0 AND COALESCE(pg.pagado, 0) / c.monto_total * 100 >= COALESCE(u.pct_desbloqueo, 30)
-             THEN ROUND(COALESCE(pg.base, 0) * COALESCE(u.pct_comision_venta, 10) / 100, 2)
+             THEN ROUND(COALESCE(pg.base, 0) * COALESCE(vi.factor_sin_iva, 1) * COALESCE(u.pct_comision_venta, 10) / 100, 2)
              ELSE 0 END AS comision,
         CASE WHEN cs.id IS NOT NULL THEN 'suspendida'
              WHEN c.monto_total > 0 AND COALESCE(pg.pagado, 0) / c.monto_total * 100 >= COALESCE(u.pct_desbloqueo, 30)
@@ -1384,11 +1387,15 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
         chain.fuente_nombre, chain.outsourcing_nombre, chain.tmk_nombre, chain.confirmador_nombre,
         vis.hostess_nombre, vis.consultor_tour_nombre,
         u.nombre AS consultor_cierre,
-        vis.calificacion AS calificacion_tour, vis.fecha_tour
+        vis.calificacion AS calificacion_tour, vis.fecha_tour,
+        COALESCE(u.pct_comision_venta, 10) AS pct_comision,
+        COALESCE(vi.monto_sin_iva, c.monto_total) AS monto_sin_iva,
+        c.monto_total - COALESCE(vi.monto_sin_iva, c.monto_total) AS iva
       FROM contratos c
       JOIN personas p ON c.persona_id = p.id
       LEFT JOIN salas s ON c.sala_id = s.id
       LEFT JOIN usuarios u ON c.consultor_id = u.id
+      LEFT JOIN v_contrato_iva vi ON vi.contrato_id = c.id
       LEFT JOIN comisiones_suspendidas cs ON cs.contrato_id = c.id AND cs.activo = true
       LEFT JOIN (
         SELECT r.contrato_id, SUM(r.valor) AS pagado,
@@ -1435,6 +1442,9 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
       pagado: Number(v.pagado || 0),
       pct_pagado: Number(v.pct_pagado || 0),
       estado_contrato: v.estado_contrato,
+      monto_sin_iva: Number(v.monto_sin_iva || 0),
+      iva: Number(v.iva || 0),
+      pct_comision: Number(v.pct_comision || 0),
       comision: Number(v.comision || 0),
       estado_comision: v.estado_comision,
       fuente: v.fuente_nombre,

@@ -157,7 +157,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     sistema: 'CRM Sanavit Ecuador',
-    version: '2.0.1',
+    version: '2.0.2',
     fase: 'Fases 12–19 — Nómina, Metas, Timeline, Búsqueda Global, Notificaciones, Gráficos, Firma Digital, Dark Mode',
     timestamp: new Date().toISOString(),
     rutas: ['/api/auth','/api/personas','/api/leads','/api/citas','/api/kpis',
@@ -175,6 +175,9 @@ require('./migrations/tenants')().catch(e => console.warn('[TENANTS]', e.message
 
 // ── Crear índices de rendimiento al arrancar ────────────────
 require('./migrations/indices')().catch(e => console.warn('[INDICES]', e.message));
+
+// ── Vista de desglose de IVA por contrato (base de comisión sin IVA) ─────────
+require('./migrations/vista_contrato_iva')().catch(e => console.warn('[VISTA]', e.message));
 
 // ── 404 fallback ───────────────────────────────────────────
 app.use((req, res) => {

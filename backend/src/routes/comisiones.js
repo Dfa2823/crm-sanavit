@@ -89,7 +89,7 @@ router.get('/', async (req, res) => {
         COALESCE(SUM(
           CASE
             WHEN COALESCE(r.total_base, 0) / NULLIF(c.monto_total, 0) * 100 >= COALESCE(u.pct_desbloqueo, 30)
-            THEN r.total_base * COALESCE(u.pct_comision_venta, 10) / 100
+            THEN r.total_base * COALESCE(vi.factor_sin_iva, 1) * COALESCE(u.pct_comision_venta, 10) / 100
             ELSE 0
           END
         ), 0)                           AS comision_calculada
@@ -106,6 +106,7 @@ router.get('/', async (req, res) => {
         WHERE rr.estado = 'activo'
         GROUP BY rr.contrato_id
       ) r ON r.contrato_id = c.id
+      LEFT JOIN v_contrato_iva vi ON vi.contrato_id = c.id
       WHERE ro.nombre = 'consultor'
         AND u.activo = true
         ${whereStr}
@@ -160,7 +161,7 @@ router.get('/detalle/:consultor_id', async (req, res) => {
         CASE
           WHEN c.monto_total > 0
             AND COALESCE(r.total_base, 0) / c.monto_total * 100 >= COALESCE(cons.pct_desbloqueo, 30)
-          THEN ROUND(COALESCE(r.total_base, 0) * COALESCE(cons.pct_comision_venta, 10) / 100, 2)
+          THEN ROUND(COALESCE(r.total_base, 0) * COALESCE(vi.factor_sin_iva, 1) * COALESCE(cons.pct_comision_venta, 10) / 100, 2)
           ELSE 0
         END                                                                  AS comision_por_contrato,
         CASE
@@ -194,6 +195,7 @@ router.get('/detalle/:consultor_id', async (req, res) => {
         WHERE rr.estado = 'activo'
         GROUP BY rr.contrato_id
       ) r ON r.contrato_id = c.id
+      LEFT JOIN v_contrato_iva vi ON vi.contrato_id = c.id
       WHERE c.consultor_id = $1
         AND c.estado = 'activo'
         AND TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $2
