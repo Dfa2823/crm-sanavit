@@ -1359,7 +1359,96 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
       });
     }
 
-    res.json(reporte);
+    // ── Hoja "Ventas": UNA FILA POR CONTRATO del mes con toda la cadena comercial ──
+    // Cada venta (SQT) con quién intervino en cada etapa. La cadena (TMK, confirmador,
+    // fuente, outsourcing, patología) se resuelve desde el LEAD DE LA VISITA-TOUR
+    // (visitas_sala.lead_id, 100% poblado), no por "lead más reciente" — más exacto
+    // cuando una persona tiene varios leads. Fallback al lead más reciente si la
+    // visita no trae lead. Comisión: misma fórmula que "Contratos del mes".
+    const ventasRes = await pool.query(`
+      SELECT
+        c.numero_contrato, c.fecha_contrato, c.monto_total, c.cuota_inicial, c.estado AS estado_contrato,
+        s.nombre AS sala_nombre,
+        (p.nombres || ' ' || COALESCE(p.apellidos, '')) AS cliente,
+        p.telefono,
+        COALESCE(NULLIF(TRIM(chain.patologia), ''), NULLIF(TRIM(p.patologia), '')) AS patologia,
+        COALESCE(pg.pagado, 0) AS pagado,
+        CASE WHEN c.monto_total > 0 THEN ROUND(COALESCE(pg.pagado, 0) / c.monto_total * 100, 2) ELSE 0 END AS pct_pagado,
+        CASE WHEN cs.id IS NOT NULL THEN 0
+             WHEN c.monto_total > 0 AND COALESCE(pg.pagado, 0) / c.monto_total * 100 >= COALESCE(u.pct_desbloqueo, 30)
+             THEN ROUND(COALESCE(pg.base, 0) * COALESCE(u.pct_comision_venta, 10) / 100, 2)
+             ELSE 0 END AS comision,
+        CASE WHEN cs.id IS NOT NULL THEN 'suspendida'
+             WHEN c.monto_total > 0 AND COALESCE(pg.pagado, 0) / c.monto_total * 100 >= COALESCE(u.pct_desbloqueo, 30)
+             THEN 'desbloqueada' ELSE 'bloqueada' END AS estado_comision,
+        chain.fuente_nombre, chain.outsourcing_nombre, chain.tmk_nombre, chain.confirmador_nombre,
+        vis.hostess_nombre, vis.consultor_tour_nombre,
+        u.nombre AS consultor_cierre,
+        vis.calificacion AS calificacion_tour, vis.fecha_tour
+      FROM contratos c
+      JOIN personas p ON c.persona_id = p.id
+      LEFT JOIN salas s ON c.sala_id = s.id
+      LEFT JOIN usuarios u ON c.consultor_id = u.id
+      LEFT JOIN comisiones_suspendidas cs ON cs.contrato_id = c.id AND cs.activo = true
+      LEFT JOIN (
+        SELECT r.contrato_id, SUM(r.valor) AS pagado,
+               SUM(r.valor) - COALESCE((SELECT SUM(COALESCE(cu.monto_interes, 0)) FROM cuotas cu
+                  WHERE cu.contrato_id = r.contrato_id AND cu.estado = 'pagado'), 0) AS base
+        FROM recibos r WHERE r.estado = 'activo' GROUP BY r.contrato_id
+      ) pg ON pg.contrato_id = c.id
+      LEFT JOIN LATERAL (
+        SELECT v.fecha AS fecha_tour, v.calificacion, v.lead_id,
+               uct.nombre AS consultor_tour_nombre, uh.nombre AS hostess_nombre
+        FROM visitas_sala v
+        LEFT JOIN usuarios uct ON v.consultor_id = uct.id
+        LEFT JOIN usuarios uh ON v.hostess_id = uh.id
+        WHERE v.persona_id = c.persona_id AND v.fecha <= c.fecha_contrato
+        ORDER BY v.fecha DESC, v.id DESC
+        LIMIT 1
+      ) vis ON true
+      LEFT JOIN LATERAL (
+        SELECT ut.nombre AS tmk_nombre, ucf.nombre AS confirmador_nombre,
+               f.nombre AS fuente_nombre, oe.nombre AS outsourcing_nombre, l.patologia
+        FROM leads l
+        LEFT JOIN usuarios ut ON l.tmk_id = ut.id
+        LEFT JOIN usuarios ucf ON l.confirmador_id = ucf.id
+        LEFT JOIN fuentes f ON l.fuente_id = f.id
+        LEFT JOIN outsourcing_empresas oe ON l.outsourcing_empresa_id = oe.id
+        WHERE l.id = vis.lead_id OR (vis.lead_id IS NULL AND l.persona_id = c.persona_id)
+        ORDER BY (l.id = vis.lead_id) DESC NULLS LAST, l.created_at DESC
+        LIMIT 1
+      ) chain ON true
+      WHERE TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $1
+        AND ($2::integer IS NULL OR c.sala_id = $2)
+      ORDER BY c.numero_contrato
+    `, [mes, salaParam]);
+
+    const ventas = ventasRes.rows.map(v => ({
+      numero_contrato: v.numero_contrato,
+      fecha_contrato: v.fecha_contrato,
+      sala_nombre: v.sala_nombre,
+      cliente: v.cliente,
+      telefono: v.telefono,
+      patologia: v.patologia,
+      monto_total: Number(v.monto_total || 0),
+      cuota_inicial: Number(v.cuota_inicial || 0),
+      pagado: Number(v.pagado || 0),
+      pct_pagado: Number(v.pct_pagado || 0),
+      estado_contrato: v.estado_contrato,
+      comision: Number(v.comision || 0),
+      estado_comision: v.estado_comision,
+      fuente: v.fuente_nombre,
+      outsourcing: v.outsourcing_nombre,
+      tmk: v.tmk_nombre,
+      confirmador: v.confirmador_nombre,
+      hostess: v.hostess_nombre,
+      consultor_tour: v.consultor_tour_nombre,
+      consultor_cierre: v.consultor_cierre,
+      calificacion_tour: v.calificacion_tour,
+      fecha_tour: v.fecha_tour,
+    }));
+
+    res.json({ empleados: reporte, ventas });
   } catch (err) {
     console.error('Error en GET /api/nomina/reporte-validacion/:mes:', err);
     res.status(500).json({ error: msgError(err) });

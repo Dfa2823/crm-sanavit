@@ -393,6 +393,7 @@ function DrawerNomina({ registro, onClose, onUpdate, esAdmin }) {
 // ── Modal de Reporte de Validación ───────────────────────────────────────────
 function ModalReporteValidacion({ mes, salaId, onClose }) {
   const [data, setData] = useState([])
+  const [ventas, setVentas] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [expandido, setExpandido] = useState({})
@@ -405,7 +406,9 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
       const params = {}
       if (salaId) params.sala_id = salaId
       const result = await getReporteValidacion(mes, params)
-      setData(Array.isArray(result) ? result : [])
+      // El endpoint ahora devuelve { empleados, ventas }; se mantiene compat con el array previo.
+      setData(Array.isArray(result) ? result : (result.empleados || []))
+      setVentas(Array.isArray(result) ? [] : (result.ventas || []))
     } catch (err) {
       setError(err.response?.data?.error || 'Error al cargar reporte de validación')
     } finally {
@@ -487,6 +490,31 @@ function ModalReporteValidacion({ mes, salaId, onClose }) {
       ])
     })
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumen), 'Resumen')
+
+    // Hoja: Ventas — UNA FILA POR VENTA (SQT) con toda la cadena comercial y quién
+    // intervino en cada etapa (fuente, TMK, confirmador, hostess, consultor del tour,
+    // consultor que cerró, outsourcing, calificación). Una fila autocontenida por venta.
+    const ventasSheet = [[
+      'Nº Contrato', 'Fecha contrato', 'Sala', 'Cliente', 'Teléfono', 'Patología',
+      'Monto total', 'Cuota inicial', 'Pagado', '% Pagado', 'Estado contrato',
+      'Comisión', 'Estado comisión',
+      'Fuente', 'Empresa outsourcing', 'TMK (origen)', 'Confirmador',
+      'Hostess/Recepción', 'Consultor del tour', 'Consultor que cerró',
+      'Calificación tour', 'Fecha tour',
+    ]]
+    ventas.forEach(v => {
+      ventasSheet.push([
+        v.numero_contrato || '', toDate(v.fecha_contrato), v.sala_nombre || '',
+        v.cliente || '', v.telefono || '', v.patologia || '',
+        Number(v.monto_total || 0), Number(v.cuota_inicial || 0), Number(v.pagado || 0),
+        Number(v.pct_pagado || 0), v.estado_contrato || '',
+        Number(v.comision || 0), v.estado_comision || '',
+        v.fuente || '', v.outsourcing || '', v.tmk || '', v.confirmador || '',
+        v.hostess || '', v.consultor_tour || '', v.consultor_cierre || '',
+        v.calificacion_tour || '', toDate(v.fecha_tour),
+      ])
+    })
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ventasSheet), 'Ventas')
 
     // Hoja 2: Desglose del neto — 1 fila por (empleado, concepto > 0)
     const desglose = [['Empleado', 'Rol', 'Sala', 'Tipo', 'Concepto', 'Justificacion', 'Monto']]
