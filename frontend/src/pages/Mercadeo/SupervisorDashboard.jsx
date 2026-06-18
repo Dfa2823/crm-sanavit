@@ -310,7 +310,7 @@ function ManifiestoSection({ salaId }) {
           </select>
         </div>
         <button
-          onClick={() => data && exportarManifiestoXLSX(data, desde, hasta)}
+          onClick={() => data && exportarManifiestoXLSX({ ...data, tours: toursFiltrados, ventas: ventasFiltradas }, desde, hasta)}
           disabled={!data || loading}
           className="ml-auto bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium"
           title="Descarga el Excel con el formato de la planilla de liquidación (Manifiesto + Ventas con cadena completa + resúmenes por rol)"
