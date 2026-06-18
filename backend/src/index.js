@@ -157,7 +157,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     sistema: 'CRM Sanavit Ecuador',
-    version: '2.0.2',
+    version: '2.0.3',
     fase: 'Fases 12–19 — Nómina, Metas, Timeline, Búsqueda Global, Notificaciones, Gráficos, Firma Digital, Dark Mode',
     timestamp: new Date().toISOString(),
     rutas: ['/api/auth','/api/personas','/api/leads','/api/citas','/api/kpis',

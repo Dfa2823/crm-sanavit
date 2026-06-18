@@ -1427,7 +1427,7 @@ router.get('/reporte-validacion/:mes', requireAdminOrDirector, async (req, res) 
       ) chain ON true
       WHERE TO_CHAR(c.fecha_contrato, 'YYYY-MM') = $1
         AND ($2::integer IS NULL OR c.sala_id = $2)
-      ORDER BY c.numero_contrato
+      ORDER BY NULLIF(regexp_replace(c.numero_contrato, '[^0-9]', '', 'g'), '')::bigint NULLS LAST, c.id
     `, [mes, salaParam]);
 
     const ventas = ventasRes.rows.map(v => ({
